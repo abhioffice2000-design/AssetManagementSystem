@@ -1,17 +1,21 @@
 <div class="dashboard-container">
   <div class="grid grid-4 gap-24 mb-24">
     <app-stat-card label="Total Inventory" [value]="assetStats.total" icon="inventory_2" color="blue"></app-stat-card>
-    <app-stat-card label="Allocated Assets" [value]="assetStats.allocated" icon="assignment_ind" color="green"></app-stat-card>
-    <app-stat-card label="Pending Requests" [value]="pendingRequests" icon="pending_actions" color="amber"></app-stat-card>
-    <app-stat-card label="Available Assets" [value]="assetStats.available" icon="check_circle" color="teal"></app-stat-card>
+    <app-stat-card label="Allocated Assets" [value]="assetStats.allocated" icon="assignment_ind"
+      color="green"></app-stat-card>
+    <app-stat-card label="Pending Requests" [value]="pendingRequests" icon="pending_actions"
+      color="amber"></app-stat-card>
+    <app-stat-card label="Available Assets" [value]="assetStats.available" icon="check_circle"
+      color="teal"></app-stat-card>
   </div>
-
+  <!-- Hello -->
   <div class="card animate-slide-up">
     <div class="card-header border-0">
       <h3>Asset Manager View</h3>
     </div>
     <div class="card-body">
-      <p class="text-muted">This is a placeholder for the Asset Manager Dashboard. Full reports and inventory management would be displayed here.</p>
+      <p class="text-muted">This is a placeholder for the Asset Manager Dashboard. Full reports and inventory management
+        would be displayed here.</p>
     </div>
   </div>
 </div>
