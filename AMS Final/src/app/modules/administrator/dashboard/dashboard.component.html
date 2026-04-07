@@ -1,0 +1,28 @@
+<div class="dashboard-container">
+  <div class="grid grid-4 gap-24 mb-24">
+    <app-stat-card label="Total Users" [value]="userStats.total" icon="group" color="blue"></app-stat-card>
+    <app-stat-card label="Total Assets" [value]="assetStats.total" icon="inventory_2" color="green"></app-stat-card>
+    <app-stat-card label="Active Requests" [value]="reqStats.pending" icon="pending_actions" color="amber"></app-stat-card>
+    <app-stat-card label="System Health" value="99.9%" icon="health_and_safety" color="teal"></app-stat-card>
+  </div>
+
+  <div class="card animate-slide-up">
+    <div class="card-header border-0">
+      <h3>System Settings & Configuration</h3>
+    </div>
+    <div class="card-body grid grid-3 gap-16">
+      <button class="btn btn-outline" style="height: 100px; display: flex; flex-direction: column; gap: 8px;">
+        <span class="material-icons-outlined" style="font-size: 2rem;">people</span>
+        User Management
+      </button>
+      <button class="btn btn-outline" style="height: 100px; display: flex; flex-direction: column; gap: 8px;">
+        <span class="material-icons-outlined" style="font-size: 2rem;">account_tree</span>
+        Master Data
+      </button>
+      <button class="btn btn-outline" style="height: 100px; display: flex; flex-direction: column; gap: 8px;">
+        <span class="material-icons-outlined" style="font-size: 2rem;">settings_applications</span>
+        Asset Configuration
+      </button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,16 @@
+<div class="dashboard-container">
+  <div class="grid grid-3 gap-24 mb-24">
+    <app-stat-card label="Assigned Tickets" [value]="assignedTickets" icon="confirmation_number" color="blue"></app-stat-card>
+    <app-stat-card label="Pending Allocation" [value]="pendingAllocation" icon="outbox" color="amber"></app-stat-card>
+    <app-stat-card label="Completed" [value]="completed" icon="task_alt" color="green"></app-stat-card>
+  </div>
+
+  <div class="card animate-slide-up">
+    <div class="card-header border-0">
+      <h3>Allocation Team View</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">This is a placeholder for the Allocation Team Dashboard. Tickets and inventory view would be displayed here.</p>
+    </div>
+  </div>
+</div>
