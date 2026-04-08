@@ -28,7 +28,11 @@ export class PendingApprovalsComponent implements OnInit {
 
   refreshApprovals() {
     const user = this.authService.getCurrentUser();
-    this.pendingRequests = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD);
+    if (user) {
+      this.pendingRequests = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD);
+    } else {
+      this.pendingRequests = [];
+    }
   }
 
   get filteredRequests(): AssetRequest[] {
@@ -70,8 +74,10 @@ export class PendingApprovalsComponent implements OnInit {
   markAsAccept(): void {
     if (this.selectedRequest) {
       const user = this.authService.getCurrentUser();
-      // Actually accept the request using the RequestService
-      this.requestService.approveRequest(this.selectedRequest.id, user.id, user.name, "Approved by Team Lead", ApprovalStage.TEAM_LEAD);
+      if (user) {
+        // Actually accept the request using the RequestService
+        this.requestService.approveRequest(this.selectedRequest.id, user.id, user.name, "Approved by Team Lead", ApprovalStage.TEAM_LEAD);
+      }
       
       this.selectedRequest = null;
       this.refreshApprovals(); // Refresh table to remove the accepted item
@@ -81,8 +87,10 @@ export class PendingApprovalsComponent implements OnInit {
   markAsReject(): void {
     if (this.selectedRequest) {
       const user = this.authService.getCurrentUser();
-      // Actually reject the request using the RequestService
-      this.requestService.rejectRequest(this.selectedRequest.id, user.id, user.name, "Rejected by Team Lead", ApprovalStage.TEAM_LEAD);
+      if (user) {
+        // Actually reject the request using the RequestService
+        this.requestService.rejectRequest(this.selectedRequest.id, user.id, user.name, "Rejected by Team Lead", ApprovalStage.TEAM_LEAD);
+      }
       
       this.selectedRequest = null;
       this.refreshApprovals(); // Refresh table to remove the rejected item
