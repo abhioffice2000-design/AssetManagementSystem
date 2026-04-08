@@ -8,7 +8,7 @@ import { User } from '../../../core/models/user.model';
   styleUrls: ['./header.component.scss']
 })
 export class HeaderComponent implements OnInit {
-  currentUser!: User;
+  currentUser: User | null = null;
 
   constructor(
     private authService: AuthService

@@ -18,6 +18,7 @@ export class MyAssetsComponent implements OnInit {
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
+    if (!user) return;
     this.myAssets = this.assetService.getAssetsByUser(user.id);
   }
 

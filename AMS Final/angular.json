@@ -54,8 +54,8 @@
               "src/styles.scss"
             ],
             "scripts": [
-              "src/assets/js/jquery-3.6.0.min.js",
-              "src/assets/js/cordys.html5sdk.min.js"
+              "src/assets/js/jquery-3.6.1.min.js",
+              "src/assets/js/cordys.html5sdk.js"
             ]
           },
           "configurations": {
@@ -87,6 +87,9 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          },
           "configurations": {
             "production": {
               "browserTarget": "ams:build:production"
@@ -119,8 +122,8 @@
               "src/styles.scss"
             ],
             "scripts": [
-              "src/assets/js/jquery-3.6.0.min.js",
-              "src/assets/js/cordys.html5sdk.min.js"
+              "src/assets/js/jquery-3.6.1.min.js",
+              "src/assets/js/cordys.html5sdk.js"
             ]
           }
         }

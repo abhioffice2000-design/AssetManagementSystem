@@ -23,6 +23,8 @@ export class EmployeeDashboardComponent implements OnInit {
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
+    if (!user) return;
+
     this.myAssets = this.assetService.getAssetsByUser(user.id);
     this.pendingRequests = this.requestService.getRequestsByUser(user.id).filter(r => r.status === 'Pending' || r.status === 'In Progress');
     
