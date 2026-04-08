@@ -24,6 +24,8 @@ export class LeadDashboardComponent implements OnInit {
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
+    if (!user) return;
+    
     this.teamSize = this.userService.getUsersByTeam(user.team).length;
     this.teamAssets = this.assetService.getAssetsByTeam(user.team).length;
     this.pendingApprovals = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD).length;

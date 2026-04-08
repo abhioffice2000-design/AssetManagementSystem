@@ -17,7 +17,7 @@ interface NavItem {
   styleUrls: ['./sidebar.component.scss']
 })
 export class SidebarComponent implements OnInit, OnDestroy {
-  currentUser!: User;
+  currentUser: User | null = null;
   isCollapsed = false;
   currentRoute = '';
   navItems: NavItem[] = [];
@@ -44,6 +44,10 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   buildNavItems(): void {
+    if (!this.currentUser) {
+      this.navItems = [];
+      return;
+    }
     const role = this.currentUser.role;
     const base = this.authService.getRoleRoute(role);
 

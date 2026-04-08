@@ -29,6 +29,8 @@ export class ExtendWarrantyComponent implements OnInit {
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
+    if (!user) return;
+    
     // Only show assets that expire within 1 year or are already expired
     const allMyAssets = this.assetService.getAssetsByUser(user.id);
     const oneYearFromNow = new Date();
@@ -54,6 +56,7 @@ export class ExtendWarrantyComponent implements OnInit {
     if (this.warrantyForm.invalid || !this.selectedAsset) return;
 
     const user = this.authService.getCurrentUser();
+    if (!user) return;
     const formVal = this.warrantyForm.value;
 
     const newReq = {

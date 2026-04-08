@@ -2,14 +2,17 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { User, UserRole } from '../models/user.model';
 import { Router } from '@angular/router';
-import { of, throwError } from 'rxjs';
-import { delay, tap, switchMap, map, catchError } from 'rxjs/operators';
+import { of, throwError, from } from 'rxjs';
+import { delay, tap } from 'rxjs/operators';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HeroService } from './hero.service';
+
+declare var $: any;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private currentUserSubject: BehaviorSubject<User>;
-  public currentUser$: Observable<User>;
+  private currentUserSubject: BehaviorSubject<User | null>;
+  public currentUser$: Observable<User | null>;
   private themeSubject = new BehaviorSubject<string>('light');
   public theme$ = this.themeSubject.asObservable();
 
@@ -43,9 +46,9 @@ export class AuthService {
     }
   ];
 
-  constructor(private router: Router, private http: HttpClient) {
+  constructor(private router: Router, private http: HttpClient, private hs: HeroService) {
     const savedUser = localStorage.getItem('currentUser');
-    this.currentUserSubject = new BehaviorSubject<User>(savedUser ? JSON.parse(savedUser) : null);
+    this.currentUserSubject = new BehaviorSubject<User | null>(savedUser ? JSON.parse(savedUser) : null);
     this.currentUser$ = this.currentUserSubject.asObservable();
   }
 
@@ -66,110 +69,234 @@ export class AuthService {
     });
   }
 
-  register(userData: any): Observable<User> {
-    const cordysUrl = '/cordys/com.eibus.web.soap.Gateway.wcp';
-    const httpOptions = {
-      headers: new HttpHeaders({
-        'Content-Type': 'text/xml',
-        'Accept': 'text/xml'
-      }),
-      responseType: 'text' as 'json' // Required because SOAP returns XML, not JSON
-    };
+  /**
+   * Wraps the jQuery Deferred from $.cordys.authentication.sso.authenticate into a proper Promise.
+   */
+  private ssoAuthenticate(username: string, password: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      $.cordys.authentication.sso.authenticate(username, password)
+        .done(() => {
+          console.log(`SSO authentication successful for: ${username}`);
+          resolve();
+        })
+        .fail((err: any) => {
+          console.warn(`SSO authentication failed for: ${username}`, err);
+          reject(err);
+        });
+    });
+  }
 
+  /**
+   * Thoroughly clears all session data, storage, and cookies.
+   * This is used during the registration flow to ensure the admin session
+   * is completely removed before logging in as the new user.
+   */
+  private ssoLogout(): void {
+    try {
+      console.log('Clearing session and cookies...');
+
+      // Preserve the current theme
+      const currentTheme = this.themeSubject.value;
+
+      sessionStorage.clear();
+      localStorage.clear();
+
+      // Restore theme and any critical items
+      this.themeSubject.next(currentTheme);
+      document.documentElement.setAttribute('data-theme', currentTheme);
+
+      this.clearAllCookies();
+
+      if (typeof $ !== 'undefined' && $?.cordys?.authentication?.sso) {
+        // Use the SSO logout if available
+        if (typeof $.cordys.authentication.sso.logout === 'function') {
+          $.cordys.authentication.sso.logout();
+        } else if (typeof $.cordys.authentication.logout === 'function') {
+          $.cordys.authentication.logout();
+        }
+      }
+
+      console.log('SSO session cleared successfully.');
+    } catch (e) {
+      console.warn('SSO session clearing had issues, continuing anyway:', e);
+    }
+  }
+
+  private clearAllCookies(): void {
+    const cookies = document.cookie.split(";");
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i];
+      const eqPos = cookie.indexOf("=");
+      const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+    }
+  }
+
+  register(userData: any): Observable<User> {
+    return new Observable<User>(observer => {
+      this.executeRegistration(userData)
+        .then(newUser => {
+          observer.next(newUser);
+          observer.complete();
+        })
+        .catch(err => {
+          observer.error(err);
+        });
+    });
+  }
+
+  /**
+   * Async registration flow:
+   * 1. SSO auth with admin (sourabhs)
+   * 2. Create new user in Cordys
+   * 3. SSO logout
+   * 4. SSO auth with new user
+   * 5. DB entry saving
+   */
+  private async executeRegistration(userData: any): Promise<User> {
     const userName = `${userData.firstName} ${userData.lastName}`;
     const email = userData.email;
-    const userId = `USR${Date.now()}`;
+
+    // Role mapping:
+    // AMS_Employee = Employee        | rol_03
+    // AMS_Admin = Admin
+    // AMS_AssetManager = Asset Manager
+    // AMS_TeamLead = Team Lead
+    // AMS_AssetAllocationTeam = Asset Allocation Team
+    const cordysRole = 'AMS_Employee';
+    const dbRoleId = 'rol_03';
 
     const createUserSoap = `
-      <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-        <SOAP:Body>
-          <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
-            <User>
-              <UserName isAnonymous="">${email}</UserName>
-              <Description>${userName}</Description>
-              <Credentials allowDuplicate="true">
-                <UserIDPassword>
-                  <UserID>${email}</UserID>
-                  <Password>${userData.password}</Password>
-                </UserIDPassword>
-              </Credentials>
-              <Roles>
-                <Role application="">AMS_Employee</Role>
-              </Roles>
-            </User>
-          </CreateUserInOrganization>
-        </SOAP:Body>
-      </SOAP:Envelope>
-    `;
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName isAnonymous="">${email}</UserName>
+        <Description>${userName}</Description>
+        <Credentials allowDuplicate="true">
+          <UserIDPassword>
+            <UserID>${email}</UserID>
+            <Password>${userData.password}</Password>
+          </UserIDPassword>
+        </Credentials>
+        <Roles>
+          <Role application="">${cordysRole}</Role>
+        </Roles>
+      </User>
+    </CreateUserInOrganization>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
 
     const updateUsersSoap = `
-      <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-        <SOAP:Body>
-          <UpdateM_users xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
-            <tuple>
-              <new>
-                <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
-                  <user_id>${userId}</user_id>
-                  <name>${userName}</name>
-                  <email>${email}</email>
-                  <role_id>AMS_Employee</role_id>
-                  <status>Active</status>
-                  <project_id>null</project_id>
-                  <asset_type_id>null</asset_type_id>
-                  <created_at>${new Date().toISOString()}</created_at>
-                  <temp1>null</temp1>
-                  <temp2>null</temp2>
-                  <temp3>null</temp3>
-                  <temp4>null</temp4>
-                  <temp5>null</temp5>
-                  <temp6>null</temp6>
-                  <temp7>null</temp7>
-                </m_users>
-              </new>
-            </tuple>
-          </UpdateM_users>
-        </SOAP:Body>
-      </SOAP:Envelope>
-    `;
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_users xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <name>${userName}</name>
+            <email>${email}</email>
+            <role_id>${dbRoleId}</role_id>
+            <status>Active</status>
+            <project_id>null</project_id>
+            <asset_type_id>null</asset_type_id>
+            <created_at>${new Date().toISOString()}</created_at>
+            <temp1>null</temp1>
+            <temp2>null</temp2>
+            <temp3>null</temp3>
+            <temp4>null</temp4>
+            <temp5>null</temp5>
+            <temp6>null</temp6>
+            <temp7>null</temp7>
+          </m_users>
+        </new>
+      </tuple>
+    </UpdateM_users>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
 
-    return this.http.post<any>(cordysUrl, createUserSoap, httpOptions).pipe(
-      switchMap(() => this.http.post<any>(cordysUrl, updateUsersSoap, httpOptions)),
-      map(() => {
-        const newUser: User = {
-          id: userId,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          name: userName,
-          email: userData.email,
-          phone: userData.phoneNumber,
-          role: UserRole.EMPLOYEE,
-          department: userData.department || 'IT',
-          team: 'New Joiners',
-          designation: 'Associate',
-          isActive: true,
-          joinDate: new Date().toISOString().split('T')[0]
-        };
-        
-        this.mockUsers.push(newUser);
-        localStorage.setItem('currentUser', JSON.stringify(newUser));
-        this.currentUserSubject.next(newUser);
-        
-        return newUser;
-      }),
-      catchError(error => {
-        console.error('Registration SOAP API Error:', error);
-        return throwError(() => new Error('Registration failed over SOAP connection.'));
-      })
-    );
+    try {
+      // Step 1: SSO authenticate as admin
+      debugger;
+      console.log('Step 1: SSO authenticating as admin (sourabhs)...');
+      await this.ssoAuthenticate('sourabhs', 'sourabhs');
+      debugger;
+      // Step 2: Create new user in Cordys
+      console.log('Step 2: Creating user in Cordys...');
+      const createResp = await this.hs.ajax(null, null, {}, createUserSoap);
+      console.log('Step 2 result:', this.hs.xmltojson(createResp, 'User'));
+
+      // Step 3: SSO logout
+      console.log('Step 3: Logging out admin session...');
+      //   await this.ssoLogout();
+      debugger;
+      // Step 4: SSO authenticate as the new user
+      console.log('Step 4: SSO authenticating as new user...');
+      // await this.ssoAuthenticate(email, userData.password);
+      debugger;
+      // Step 5: Save user details in DB
+      console.log('Step 5: Saving user to database...');
+      const dbResp = await this.hs.ajax(null, null, {}, updateUsersSoap);
+      console.log('Step 5 result:', this.hs.xmltojson(dbResp, 'm_users'));
+
+      // Build and return the local user object
+      const newUser: User = {
+        id: email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        name: userName,
+        email: userData.email,
+        phone: userData.phoneNumber,
+        role: UserRole.EMPLOYEE,
+        department: userData.department || 'IT',
+        team: 'New Joiners',
+        designation: 'Associate',
+        isActive: true,
+        joinDate: new Date().toISOString().split('T')[0]
+      };
+
+      //   this.mockUsers.push(newUser);
+      //    localStorage.setItem('currentUser', JSON.stringify(newUser));
+      //  this.currentUserSubject.next(newUser);
+
+      return newUser;
+
+    } catch (err: any) {
+      console.error('Registration failed at:', err);
+      const errorText = err?.responseText || err?.message || String(err) || '';
+      if (errorText.toLowerCase().includes('already') || errorText.toLowerCase().includes('duplicate') || errorText.toLowerCase().includes('exist')) {
+        throw new Error('This email id is already used, try with some other id');
+      }
+      throw new Error(err?.message || 'Registration failed. Please try again.');
+    }
   }
 
   logout(): void {
-    localStorage.removeItem('currentUser');
-    this.currentUserSubject.next(null as any);
-    this.router.navigate(['/auth/login']);
+    try {
+      // Preserve theme across logout
+      const currentTheme = this.themeSubject.value;
+
+      sessionStorage.clear();
+      localStorage.clear();
+
+      // Restore theme and current role (if applicable)
+      this.themeSubject.next(currentTheme);
+
+      this.clearAllCookies();
+
+      if (typeof $ !== 'undefined' && $?.cordys?.authentication?.sso) {
+        $.cordys.authentication.sso.logout();
+      }
+
+      this.currentUserSubject.next(null);
+      this.router.navigate(['/auth/login']);
+    } catch (e) {
+      console.error('Logout error:', e);
+      this.router.navigate(['/auth/login']);
+    }
   }
 
-  getCurrentUser(): User {
+  getCurrentUser(): User | null {
     return this.currentUserSubject.value;
   }
 

@@ -29,7 +29,9 @@ export class ReturnAssetComponent implements OnInit {
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
-    this.myAssets = this.assetService.getAssetsByUser(user.id);
+    if (user) {
+      this.myAssets = this.assetService.getAssetsByUser(user.id);
+    }
     
     this.returnForm = this.fb.group({
       assetId: ['', Validators.required],
@@ -46,6 +48,7 @@ export class ReturnAssetComponent implements OnInit {
     if (this.returnForm.invalid || !this.selectedAsset) return;
 
     const user = this.authService.getCurrentUser();
+    if (!user) return;
     const formVal = this.returnForm.value;
 
     const newReq = {

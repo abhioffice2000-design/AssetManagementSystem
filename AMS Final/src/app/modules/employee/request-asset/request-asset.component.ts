@@ -59,6 +59,10 @@ export class RequestAssetComponent implements OnInit {
     if (this.requestForm.invalid) return;
 
     const user = this.authService.getCurrentUser();
+    if (!user) {
+      this.notificationService.showToast('You must be logged in to submit a request.', 'error');
+      return;
+    }
     const formVal = this.requestForm.value;
     const isDeptHead = user.role === 'Team Lead'; // Simplified for demo
     const skipTeamLead = formVal.hasEmailApproval || isDeptHead;
