@@ -1,20 +1,15 @@
 import { Component, OnInit } from '@angular/core';
-import { UserService } from '../../../core/services/user.service';
-import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { AssetRequest, ApprovalStage } from '../../../core/models/request.model';
 
 @Component({
-  selector: 'app-lead-dashboard',
-  templateUrl: './dashboard.component.html',
-  styleUrls: ['./dashboard.component.scss']
+  selector: 'app-pending-approvals',
+  templateUrl: './pending-approvals.component.html',
+  styleUrls: ['./pending-approvals.component.scss']
 })
-export class LeadDashboardComponent implements OnInit {
-  teamSize = 0;
-  teamAssets = 0;
-  pendingApprovalsCount = 0;
-  teamRequests: AssetRequest[] = [];
+export class PendingApprovalsComponent implements OnInit {
+  pendingRequests: AssetRequest[] = [];
   selectedRequest: AssetRequest | null = null;
 
   // Pagination & Filtering
@@ -24,29 +19,22 @@ export class LeadDashboardComponent implements OnInit {
 
   constructor(
     private authService: AuthService,
-    private userService: UserService,
-    private assetService: AssetService,
     private requestService: RequestService
   ) {}
 
   ngOnInit(): void {
+    this.refreshApprovals();
+  }
+
+  refreshApprovals() {
     const user = this.authService.getCurrentUser();
-    if (!user) return;
-    
-    this.teamSize = this.userService.getUsersByTeam(user.team).length;
-    this.teamAssets = this.assetService.getAssetsByTeam(user.team).length;
-    
-    // Count pending approvals specifically for the stat card
-    this.pendingApprovalsCount = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD).length;
-    
-    // Get ALL requests for this team lead's team for the table
-    this.teamRequests = this.requestService.getRequests().filter(req => req.requesterTeam === user.team);
+    this.pendingRequests = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD);
   }
 
   get filteredRequests(): AssetRequest[] {
-    if (!this.searchTerm.trim()) return this.teamRequests;
+    if (!this.searchTerm.trim()) return this.pendingRequests;
     const term = this.searchTerm.toLowerCase();
-    return this.teamRequests.filter(req => 
+    return this.pendingRequests.filter(req => 
       req.requestNumber.toLowerCase().includes(term) ||
       req.requesterName.toLowerCase().includes(term) ||
       req.category.toLowerCase().includes(term) ||
@@ -67,7 +55,7 @@ export class LeadDashboardComponent implements OnInit {
   changePage(page: number): void {
     if (page >= 1 && page <= this.totalPages) {
       this.currentPage = page;
-      this.selectedRequest = null; // Clear selection on page change
+      this.selectedRequest = null;
     }
   }
 
@@ -81,17 +69,23 @@ export class LeadDashboardComponent implements OnInit {
 
   markAsAccept(): void {
     if (this.selectedRequest) {
-      // In a real app we would call an API here.
-      // For now we just close the form.
+      const user = this.authService.getCurrentUser();
+      // Actually accept the request using the RequestService
+      this.requestService.approveRequest(this.selectedRequest.id, user.id, user.name, "Approved by Team Lead", ApprovalStage.TEAM_LEAD);
+      
       this.selectedRequest = null;
+      this.refreshApprovals(); // Refresh table to remove the accepted item
     }
   }
 
   markAsReject(): void {
     if (this.selectedRequest) {
-      // In a real app we would call an API here to reject.
-      // For now we just close the form.
+      const user = this.authService.getCurrentUser();
+      // Actually reject the request using the RequestService
+      this.requestService.rejectRequest(this.selectedRequest.id, user.id, user.name, "Rejected by Team Lead", ApprovalStage.TEAM_LEAD);
+      
       this.selectedRequest = null;
+      this.refreshApprovals(); // Refresh table to remove the rejected item
     }
   }
 
