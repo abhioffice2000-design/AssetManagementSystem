@@ -88,6 +88,48 @@ export class RequestService {
         { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
       ],
       comments: [], assignedAllocationTeamId: 'USR003'
+    },
+    {
+      id: 'REQ007', requestNumber: 'AR-2024-005', requesterId: 'USR005', requesterName: 'Ananya Desai',
+      requesterDepartment: 'Engineering', requesterTeam: 'Frontend', assetType: 'Software', category: 'IDE License',
+      justification: 'Need an IntelliJ IDEA Ultimate license for full-stack framework development.',
+      urgency: RequestUrgency.HIGH, status: RequestStatus.PENDING, currentStage: ApprovalStage.TEAM_LEAD,
+      hasEmailApproval: false, requestDate: '2024-12-15', lastUpdated: '2024-12-15',
+      requestType: RequestType.NEW_ASSET,
+      approvalChain: [
+        { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' },
+        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
+        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+      ],
+      comments: []
+    },
+    {
+      id: 'REQ008', requestNumber: 'AR-2024-006', requesterId: 'USR006', requesterName: 'Vikram Singh',
+      requesterDepartment: 'Engineering', requesterTeam: 'Frontend', assetType: 'Peripheral', category: 'Headphones',
+      justification: 'Noise cancelling headphones for better focus in open office.',
+      urgency: RequestUrgency.LOW, status: RequestStatus.PENDING, currentStage: ApprovalStage.TEAM_LEAD,
+      hasEmailApproval: false, requestDate: '2024-12-16', lastUpdated: '2024-12-16',
+      requestType: RequestType.NEW_ASSET,
+      approvalChain: [
+        { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' },
+        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
+        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+      ],
+      comments: []
+    },
+    {
+      id: 'REQ009', requestNumber: 'AR-2024-007', requesterId: 'USR005', requesterName: 'Ananya Desai',
+      requesterDepartment: 'Engineering', requesterTeam: 'Frontend', assetType: 'Software', category: 'Design Software',
+      justification: 'Figma Pro license for UI/UX testing and prototyping.',
+      urgency: RequestUrgency.MEDIUM, status: RequestStatus.PENDING, currentStage: ApprovalStage.TEAM_LEAD,
+      hasEmailApproval: false, requestDate: '2024-12-17', lastUpdated: '2024-12-17',
+      requestType: RequestType.NEW_ASSET,
+      approvalChain: [
+        { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' },
+        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
+        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+      ],
+      comments: []
     }
   ];
 
