@@ -53,7 +53,10 @@
             "styles": [
               "src/styles.scss"
             ],
-            "scripts": []
+            "scripts": [
+              "src/assets/js/jquery-3.6.0.min.js",
+              "src/assets/js/cordys.html5sdk.min.js"
+            ]
           },
           "configurations": {
             "production": {
@@ -115,7 +118,10 @@
             "styles": [
               "src/styles.scss"
             ],
-            "scripts": []
+            "scripts": [
+              "src/assets/js/jquery-3.6.0.min.js",
+              "src/assets/js/cordys.html5sdk.min.js"
+            ]
           }
         }
       }
