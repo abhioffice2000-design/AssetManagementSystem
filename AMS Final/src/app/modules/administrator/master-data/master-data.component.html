@@ -1,0 +1,327 @@
+<div class="page-container">
+  <div class="page-header master-header mb-24">
+    <div>
+      <h2 class="page-title">Master Data</h2>
+      <p class="page-subtitle">Manage asset types, categories, assets and project masters</p>
+    </div>
+    <div class="master-actions">
+      <div class="search-box master-search">
+        <span class="material-icons-outlined search-icon">search</span>
+        <input
+          type="text"
+          class="form-control"
+          placeholder="Search assets..."
+          [(ngModel)]="assetSearchTerm"
+          (ngModelChange)="filterAssets()" />
+      </div>
+      <button class="btn btn-primary add-asset-btn" (click)="openAddAssetModal()">
+        <span class="material-icons-outlined">add</span>
+        Add Asset
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-4 gap-16 mb-24">
+    <app-stat-card
+      *ngFor="let card of summaryCards"
+      [label]="card.label"
+      [value]="card.value"
+      [icon]="card.icon"
+      [color]="card.color">
+    </app-stat-card>
+  </div>
+
+  <div class="tab-bar mb-24">
+    <button class="tab-btn" [class.active]="activeTab === 'types'" (click)="setTab('types')">
+      <span class="material-icons-outlined">category</span>
+      Asset Types ({{ assetTypes.length }})
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'categories'" (click)="setTab('categories')">
+      <span class="material-icons-outlined">dashboard</span>
+      Subcategories ({{ assetCategories.length }})
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'assets'" (click)="setTab('assets')">
+      <span class="material-icons-outlined">inventory_2</span>
+      Assets ({{ assets.length }})
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'projects'" (click)="setTab('projects')">
+      <span class="material-icons-outlined">folder_open</span>
+      Projects ({{ projects.length }})
+    </button>
+  </div>
+
+  <div *ngIf="activeTab === 'types'" class="animate-slide-up">
+    <div class="grid grid-2 gap-16 mb-24">
+      <div class="card type-chart-card">
+        <div class="card-header border-0">
+          <div>
+            <h3>Asset Type Distribution</h3>
+            <p class="section-subtitle">Asset count by type</p>
+          </div>
+        </div>
+        <div class="card-body type-chart-body">
+          <canvas
+            baseChart
+            [type]="'bar'"
+            [data]="assetTypeChartData"
+            [options]="assetTypeChartOptions">
+          </canvas>
+        </div>
+      </div>
+
+      <div class="card type-summary-card">
+        <div class="card-header border-0">
+          <div>
+            <h3>Quick Totals</h3>
+            <p class="section-subtitle">Snapshot of your asset type masters</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="type-total-box">
+            <div class="type-total-value">{{ totalAssetTypeCount }}</div>
+            <div class="type-total-label">Total Assets Across All Types</div>
+          </div>
+
+          <div class="type-total-box type-total-box-alt">
+            <div class="type-total-value">{{ totalAssetTypeValue | currency:'INR':'symbol':'1.0-0' }}</div>
+            <div class="type-total-label">Combined Asset Value</div>
+          </div>
+
+          <div class="type-summary-list">
+            <div class="type-summary-item" *ngFor="let item of assetTypes">
+              <div class="type-summary-head">
+                <span class="badge" [ngClass]="getTypeBadgeClass(item.type)">{{ item.type }}</span>
+                <strong>{{ item.count }}</strong>
+              </div>
+              <div class="type-summary-meta">
+                <span>{{ getAssetTypeShare(item.count) }}% of assets</span>
+                <span>{{ item.value | currency:'INR':'symbol':'1.0-0' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Asset Type Summary</h3>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Asset Type</th>
+                <th>Total Assets</th>
+                <th>Share</th>
+                <th>Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let item of assetTypes">
+                <td>
+                  <div class="asset-type-cell">
+                    <div class="master-icon asset-type-icon" [ngClass]="getTypeBadgeClass(item.type)">
+                      <span class="material-icons-outlined">category</span>
+                    </div>
+                    <span>{{ item.type }}</span>
+                  </div>
+                </td>
+                <td>{{ item.count }}</td>
+                <td>{{ getAssetTypeShare(item.count) }}%</td>
+                <td>{{ item.value | currency:'INR':'symbol':'1.0-0' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="activeTab === 'categories'" class="animate-slide-up">
+    <div class="grid grid-3 gap-16">
+      <div class="card category-card" *ngFor="let cat of assetCategories">
+        <div class="card-body">
+          <div class="master-card-head">
+            <div class="master-icon purple">
+              <span class="material-icons-outlined">{{ cat.icon }}</span>
+            </div>
+            <span class="badge" [ngClass]="getTypeBadgeClass(cat.type)">{{ cat.type }}</span>
+          </div>
+          <h4 class="category-name">{{ cat.name }}</h4>
+          <p class="category-meta">{{ cat.subCategories.length }} subcategories</p>
+          <div class="chip-list">
+            <span class="chip" *ngFor="let sub of cat.subCategories">{{ sub }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="activeTab === 'assets'" class="animate-slide-up">
+    <div class="card">
+      <div class="card-header">
+        <h3>Asset Master Table</h3>
+        <select class="form-control asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="filterAssets()">
+          <option value="">All Types</option>
+          <option *ngFor="let type of assetTypeOptions" [value]="type">{{ type }}</option>
+        </select>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Condition</th>
+                <th>Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let asset of filteredAssets">
+                <td>
+                  <div class="asset-cell">
+                    <div class="asset-avatar">{{ asset.assetTag.slice(0, 2) }}</div>
+                    <div>
+                      <div class="asset-name">{{ asset.name }}</div>
+                      <div class="asset-meta">{{ asset.assetTag }} | {{ asset.vendor }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="badge" [ngClass]="getTypeBadgeClass(asset.type)">{{ asset.type }}</span></td>
+                <td>{{ asset.category }} / {{ asset.subCategory }}</td>
+                <td><span class="badge" [ngClass]="getStatusBadgeClass(asset.status)">{{ formatAssetStatus(asset.status) }}</span></td>
+                <td><span class="badge" [ngClass]="getConditionBadgeClass(asset.condition)">{{ asset.condition }}</span></td>
+                <td>{{ asset.location }}</td>
+              </tr>
+              <tr *ngIf="filteredAssets.length === 0">
+                <td colspan="6" class="empty-state">
+                  <span class="material-icons-outlined">search_off</span>
+                  No assets found
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="activeTab === 'projects'" class="animate-slide-up">
+    <div class="card">
+      <div class="card-header">
+        <h3>Project Master Table</h3>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Department</th>
+                <th>Team Lead</th>
+                <th>Status</th>
+                <th>Assets</th>
+                <th>Members</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let project of projects">
+                <td>
+                  <div class="project-cell">
+                    <div class="project-code">{{ project.projectCode }}</div>
+                    <div class="project-name">{{ project.name }}</div>
+                  </div>
+                </td>
+                <td>{{ project.department }}</td>
+                <td>{{ project.teamLead }}</td>
+                <td><span class="badge" [ngClass]="getProjectBadgeClass(project.status)">{{ project.status }}</span></td>
+                <td>{{ project.assetCount }}</td>
+                <td>{{ project.memberCount }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="showAddAssetModal">
+  <div class="modal-container animate-slide-up asset-modal">
+    <div class="modal-header">
+      <h3>Add Asset</h3>
+      <button class="btn-icon" (click)="closeAddAssetModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <div class="grid grid-2 gap-16">
+        <div class="form-group">
+          <label>Asset Type</label>
+          <select class="form-control" [(ngModel)]="newAsset.type" (ngModelChange)="onAssetTypeChange($event)">
+            <option value="">Select type</option>
+            <option *ngFor="let type of assetTypeOptions" [value]="type">{{ type }}</option>
+          </select>
+          <div class="field-error" *ngIf="isFieldInvalid('type')">Please select an asset type.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Asset Category</label>
+          <select class="form-control" [(ngModel)]="newAsset.category" (ngModelChange)="onAssetCategoryChange($event)" [disabled]="categoryDisabled">
+            <option value="">{{ categoryDisabled ? 'Select type first' : 'Select category' }}</option>
+            <option *ngFor="let category of getCategoriesForSelectedType()" [value]="category.name">
+              {{ category.name }}
+            </option>
+          </select>
+          <div class="field-error" *ngIf="submittedAssetForm && !categoryDisabled && !newAsset.category">
+            Please select an asset category.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" class="form-control" [(ngModel)]="newAsset.name" placeholder="Asset name">
+          <div class="field-error" *ngIf="isFieldInvalid('name')">Asset name is required.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Serial Number</label>
+          <input type="text" class="form-control" [(ngModel)]="newAsset.serialNumber" placeholder="Serial number">
+          <div class="field-error" *ngIf="isFieldInvalid('serialNumber')">Serial number is required.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Purchase Date</label>
+          <input type="date" class="form-control" [(ngModel)]="newAsset.purchaseDate">
+          <div class="field-error" *ngIf="isFieldInvalid('purchaseDate')">Purchase date is required.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Warranty Expiry</label>
+          <input type="date" class="form-control" [(ngModel)]="newAsset.warrantyExpiry">
+          <div class="field-error" *ngIf="isFieldInvalid('warrantyExpiry')">Warranty expiry is required.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Status</label>
+          <select class="form-control" [(ngModel)]="newAsset.status">
+            <option value="">Select status</option>
+            <option *ngFor="let status of assetStatusOptions" [value]="status">{{ formatAssetStatus(status) }}</option>
+          </select>
+          <div class="field-error" *ngIf="isFieldInvalid('status')">Please select a status.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeAddAssetModal()">Cancel</button>
+      <button class="btn btn-primary" (click)="saveAsset()">Save Asset</button>
+    </div>
+  </div>
+</div>

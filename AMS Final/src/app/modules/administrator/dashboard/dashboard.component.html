@@ -2,27 +2,80 @@
   <div class="grid grid-4 gap-24 mb-24">
     <app-stat-card label="Total Users" [value]="userStats.total" icon="group" color="blue"></app-stat-card>
     <app-stat-card label="Total Assets" [value]="assetStats.total" icon="inventory_2" color="green"></app-stat-card>
-    <app-stat-card label="Active Requests" [value]="reqStats.pending" icon="pending_actions" color="amber"></app-stat-card>
-    <app-stat-card label="System Health" value="99.9%" icon="health_and_safety" color="teal"></app-stat-card>
+    <app-stat-card label="Active Requests" [value]="reqStats.pending" icon="pending_actions"
+      color="amber"></app-stat-card>
   </div>
 
-  <div class="card animate-slide-up">
-    <div class="card-header border-0">
-      <h3>System Settings & Configuration</h3>
+  <div class="grid grid-3 gap-24 mb-24 animate-slide-up">
+    <app-stat-card
+      *ngFor="let metric of adminHighlights"
+      [label]="metric.label"
+      [value]="metric.value"
+      [icon]="metric.icon"
+      [color]="metric.color">
+    </app-stat-card>
+  </div>
+
+  <div class="grid grid-2 gap-24 mb-24 animate-slide-up">
+    <div class="card chart-card">
+      <div class="card-header border-0">
+        <h3>Asset Status</h3>
+        <p class="chart-subtitle">Available / Allocated / Maintenance</p>
+      </div>
+      <div class="card-body chart-body">
+        <canvas
+          baseChart
+          [type]="assetStatusChartType"
+          [data]="assetStatusChartData"
+          [options]="assetStatusChartOptions">
+        </canvas>
+      </div>
     </div>
-    <div class="card-body grid grid-3 gap-16">
-      <button class="btn btn-outline" style="height: 100px; display: flex; flex-direction: column; gap: 8px;">
-        <span class="material-icons-outlined" style="font-size: 2rem;">people</span>
-        User Management
-      </button>
-      <button class="btn btn-outline" style="height: 100px; display: flex; flex-direction: column; gap: 8px;">
-        <span class="material-icons-outlined" style="font-size: 2rem;">account_tree</span>
-        Master Data
-      </button>
-      <button class="btn btn-outline" style="height: 100px; display: flex; flex-direction: column; gap: 8px;">
-        <span class="material-icons-outlined" style="font-size: 2rem;">settings_applications</span>
-        Asset Configuration
-      </button>
+
+    <div class="card chart-card">
+      <div class="card-header border-0">
+        <h3>Request Trend</h3>
+        <p class="chart-subtitle">Requests raised per month</p>
+      </div>
+      <div class="card-body chart-body">
+        <canvas
+          baseChart
+          [type]="requestTrendChartType"
+          [data]="requestTrendChartData"
+          [options]="requestTrendChartOptions">
+        </canvas>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="card-header border-0">
+        <h3>Asset Sub Categories</h3>
+        <p class="chart-subtitle">Laptops, phones, monitors, and more</p>
+      </div>
+      <div class="card-body chart-body">
+        <canvas
+          baseChart
+          [type]="assetCategoryChartType"
+          [data]="assetCategoryChartData"
+          [options]="assetCategoryChartOptions">
+        </canvas>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="card-header border-0">
+        <h3>User Roles</h3>
+        <p class="chart-subtitle">Administrator / AM / TL / Employee</p>
+      </div>
+      <div class="card-body chart-body">
+        <canvas
+          baseChart
+          [type]="userRoleChartType"
+          [data]="userRoleChartData"
+          [options]="userRoleChartOptions">
+        </canvas>
+      </div>
     </div>
   </div>
+
 </div>
