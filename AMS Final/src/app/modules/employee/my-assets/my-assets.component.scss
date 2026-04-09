@@ -1,1 +1,122 @@
 .text-danger { color: var(--accent-red); font-weight: 600; }
+
+.text-primary { color: var(--primary-color); }
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  white-space: nowrap;
+  
+  .material-icons-outlined {
+    font-size: 18px;
+  }
+}
+
+.btn-outline-danger {
+  border: 1px solid var(--accent-red);
+  background: white; /* Ensure white background instead of transparent */
+  color: var(--accent-red);
+  transition: all 0.2s;
+  
+  &:hover {
+    background: var(--accent-red);
+    color: white;
+    filter: brightness(0.95);
+  }
+}
+
+.btn-outline-primary {
+  border: 1px solid var(--primary-color);
+  background: white; /* Ensure white background instead of transparent */
+  color: var(--primary-color);
+  transition: all 0.2s;
+  
+  &:hover {
+    background: var(--primary-color);
+    color: white;
+    filter: brightness(0.95);
+  }
+}
+
+.asset-preview-card {
+  background: var(--bg-card);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  
+  .asset-tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  
+  .asset-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 2px;
+  }
+  
+  .asset-meta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+}
+
+.form-group {
+  .form-label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-dark);
+    margin-bottom: 8px;
+    
+    &.required::after {
+      content: '*';
+      color: var(--text-danger);
+      margin-left: 4px;
+    }
+  }
+  
+  .form-control {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    padding: 12px;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+    background: var(--bg-white);
+    
+    &:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+  }
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.error-msg {
+  font-size: 0.8rem;
+  color: var(--text-danger);
+  margin-top: 4px;
+}

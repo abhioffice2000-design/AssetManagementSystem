@@ -21,14 +21,28 @@ export class EmployeeDashboardComponent implements OnInit {
     private requestService: RequestService
   ) {}
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
     const user = this.authService.getCurrentUser();
     if (!user) return;
 
-    this.myAssets = this.assetService.getAssetsByUser(user.id);
+    // Fetch assets from Cordys
+    try {
+      this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
+      
+      // If Cordys returns nothing, fallback to mock data to ensure the UI isn't empty during testing
+      if (this.myAssets.length === 0) {
+        this.myAssets = this.assetService.getAssetsByUser(user.id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch assets from Cordys', error);
+      this.myAssets = this.assetService.getAssetsByUser(user.id);
+    }
+
     this.pendingRequests = this.requestService.getRequestsByUser(user.id).filter(r => r.status === 'Pending' || r.status === 'In Progress');
-    
-    // Calculate expiring warranty (within 90 days)
+    this.calculateExpiringWarranty();
+  }
+
+  private calculateExpiringWarranty(): void {
     const now = new Date();
     const ninetyDaysFromNow = new Date();
     ninetyDaysFromNow.setDate(now.getDate() + 90);

@@ -9,10 +9,12 @@ import { MyAssetsComponent } from './my-assets/my-assets.component';
 import { RequestAssetComponent } from './request-asset/request-asset.component';
 import { ReturnAssetComponent } from './return-asset/return-asset.component';
 import { ExtendWarrantyComponent } from './extend-warranty/extend-warranty.component';
+import { MyRequestsComponent } from './my-requests/my-requests.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: EmployeeDashboardComponent },
   { path: 'my-assets', component: MyAssetsComponent },
+  { path: 'my-requests', component: MyRequestsComponent },
   { path: 'request-asset', component: RequestAssetComponent },
   { path: 'return-asset', component: ReturnAssetComponent },
   { path: 'extend-warranty', component: ExtendWarrantyComponent },
@@ -23,6 +25,7 @@ const routes: Routes = [
   declarations: [
     EmployeeDashboardComponent,
     MyAssetsComponent,
+    MyRequestsComponent,
     RequestAssetComponent,
     ReturnAssetComponent,
     ExtendWarrantyComponent
