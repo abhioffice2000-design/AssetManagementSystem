@@ -12,16 +12,18 @@ export class RoleGuard implements CanActivate {
     const expectedRole = route.data['role'];
     const currentUser = this.authService.getCurrentUser();
 
-    if (currentUser && currentUser.role === expectedRole) {
+    if (!currentUser) {
+      this.router.navigate(['/auth/login']);
+      return false;
+    }
+
+    if (currentUser.role === expectedRole) {
       return true;
     }
 
-    // Automatically switch their session role to match the URL they hand-typed
-    if (expectedRole) {
-      this.authService.switchRole(expectedRole);
-      return true;
-    }
-
+    // Redirect to their own dashboard if they try to access another role's area
+    const ownDashboard = this.authService.getRoleRoute(currentUser.role);
+    this.router.navigate([ownDashboard]);
     return false;
   }
 }

@@ -57,11 +57,17 @@
   --sidebar-width: 260px;
   --sidebar-collapsed-width: 72px;
   --header-height: 64px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
   --radius-full: 9999px;
+
+  /* Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  --glass-blur: 10px;
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -238,12 +244,23 @@ h5 { font-size: 1rem; font-weight: 500; line-height: 1.5; }
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--transition-base), transform var(--transition-base);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
 }
 
 .card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .card-header {
@@ -266,49 +283,72 @@ h5 { font-size: 1rem; font-weight: 500; line-height: 1.5; }
 /* --- Stat Cards --- */
 .stat-card {
   background: var(--bg-card);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border-color);
-  padding: 24px;
+  padding: 28px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  box-shadow: var(--shadow-sm);
+  gap: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
   transition: all var(--transition-base);
+  position: relative;
 }
 
 .stat-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  box-shadow: 0 12px 25px -5px rgba(0, 0, 0, 0.08);
+  transform: translateY(-4px);
 }
 
 .stat-card .stat-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-md);
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
+  transition: transform var(--transition-base);
 }
 
-.stat-card .stat-icon.blue { background: var(--accent-blue-bg); color: var(--accent-blue); }
-.stat-card .stat-icon.green { background: var(--accent-green-bg); color: var(--accent-green); }
-.stat-card .stat-icon.amber { background: var(--accent-amber-bg); color: var(--accent-amber); }
-.stat-card .stat-icon.red { background: var(--accent-red-bg); color: var(--accent-red); }
-.stat-card .stat-icon.purple { background: var(--accent-purple-bg); color: var(--accent-purple); }
-.stat-card .stat-icon.teal { background: var(--accent-teal-bg); color: var(--accent-teal); }
+.stat-card:hover .stat-icon {
+  transform: scale(1.1) rotate(-5deg);
+}
+
+.stat-card .stat-icon.blue { 
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); 
+  color: var(--accent-blue); 
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.15);
+}
+.stat-card .stat-icon.green { 
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); 
+  color: var(--accent-green); 
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.15);
+}
+.stat-card .stat-icon.amber { 
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); 
+  color: var(--accent-amber); 
+  box-shadow: 0 4px 10px rgba(245, 158, 11, 0.15);
+}
+.stat-card .stat-icon.red { 
+  background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); 
+  color: var(--accent-red); 
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.15);
+}
 
 .stat-card .stat-info h3 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  line-height: 1;
-  margin-bottom: 4px;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.1;
+  margin-bottom: 2px;
 }
 
 .stat-card .stat-info p {
-  font-size: 0.857rem;
+  font-size: 0.928rem;
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
 }
 
 /* --- Tables --- */
