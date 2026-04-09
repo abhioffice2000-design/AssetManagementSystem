@@ -6,7 +6,7 @@ import { Chart, ChartData, ChartOptions, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
-type MasterTab = 'types' | 'categories' | 'assets' | 'projects';
+type MasterTab = 'types' | 'categories' | 'assets';
 type AddAssetForm = {
   type: AssetType | '';
   category: string;
@@ -90,17 +90,17 @@ export class MasterDataComponent implements OnInit {
     private adminDataService: AdminDataService
   ) {}
 
-  ngOnInit(): void {
-    this.loadData();
+  async ngOnInit(): Promise<void> {
+    await this.loadData();
   }
 
-  loadData(): void {
+  async loadData(): Promise<void> {
     const assetStats = this.assetService.getAssetStats();
 
     this.assetTypes = assetStats.byType;
     this.assetCategories = this.assetService.getCategories();
     this.assets = this.assetService.getAssets();
-    this.projects = this.adminDataService.getProjects();
+    this.projects = await this.getResolvedProjects();
     this.filterAssets();
 
     this.summaryCards = [
@@ -210,7 +210,7 @@ export class MasterDataComponent implements OnInit {
 
     this.assetService.addAsset(asset);
     this.closeAddAssetModal();
-    this.loadData();
+    void this.loadData();
     this.activeTab = 'assets';
   }
 
@@ -277,6 +277,15 @@ export class MasterDataComponent implements OnInit {
 
   formatAssetStatus(status: AssetStatus): string {
     return status === AssetStatus.IN_REPAIR ? 'Maintenance' : status;
+  }
+
+  private async getResolvedProjects(): Promise<Project[]> {
+    try {
+      return await this.adminDataService.getProjectsFromDB();
+    } catch (error) {
+      console.error('Unable to load DB projects for master data.', error);
+      return [];
+    }
   }
 
   private createEmptyAsset(): AddAssetForm {

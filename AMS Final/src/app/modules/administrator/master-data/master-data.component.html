@@ -44,65 +44,9 @@
       <span class="material-icons-outlined">inventory_2</span>
       Assets ({{ assets.length }})
     </button>
-    <button class="tab-btn" [class.active]="activeTab === 'projects'" (click)="setTab('projects')">
-      <span class="material-icons-outlined">folder_open</span>
-      Projects ({{ projects.length }})
-    </button>
   </div>
 
   <div *ngIf="activeTab === 'types'" class="animate-slide-up">
-    <div class="grid grid-2 gap-16 mb-24">
-      <div class="card type-chart-card">
-        <div class="card-header border-0">
-          <div>
-            <h3>Asset Type Distribution</h3>
-            <p class="section-subtitle">Asset count by type</p>
-          </div>
-        </div>
-        <div class="card-body type-chart-body">
-          <canvas
-            baseChart
-            [type]="'bar'"
-            [data]="assetTypeChartData"
-            [options]="assetTypeChartOptions">
-          </canvas>
-        </div>
-      </div>
-
-      <div class="card type-summary-card">
-        <div class="card-header border-0">
-          <div>
-            <h3>Quick Totals</h3>
-            <p class="section-subtitle">Snapshot of your asset type masters</p>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="type-total-box">
-            <div class="type-total-value">{{ totalAssetTypeCount }}</div>
-            <div class="type-total-label">Total Assets Across All Types</div>
-          </div>
-
-          <div class="type-total-box type-total-box-alt">
-            <div class="type-total-value">{{ totalAssetTypeValue | currency:'INR':'symbol':'1.0-0' }}</div>
-            <div class="type-total-label">Combined Asset Value</div>
-          </div>
-
-          <div class="type-summary-list">
-            <div class="type-summary-item" *ngFor="let item of assetTypes">
-              <div class="type-summary-head">
-                <span class="badge" [ngClass]="getTypeBadgeClass(item.type)">{{ item.type }}</span>
-                <strong>{{ item.count }}</strong>
-              </div>
-              <div class="type-summary-meta">
-                <span>{{ getAssetTypeShare(item.count) }}% of assets</span>
-                <span>{{ item.value | currency:'INR':'symbol':'1.0-0' }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="card">
       <div class="card-header">
         <h3>Asset Type Summary</h3>
@@ -211,44 +155,6 @@
     </div>
   </div>
 
-  <div *ngIf="activeTab === 'projects'" class="animate-slide-up">
-    <div class="card">
-      <div class="card-header">
-        <h3>Project Master Table</h3>
-      </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Department</th>
-                <th>Team Lead</th>
-                <th>Status</th>
-                <th>Assets</th>
-                <th>Members</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let project of projects">
-                <td>
-                  <div class="project-cell">
-                    <div class="project-code">{{ project.projectCode }}</div>
-                    <div class="project-name">{{ project.name }}</div>
-                  </div>
-                </td>
-                <td>{{ project.department }}</td>
-                <td>{{ project.teamLead }}</td>
-                <td><span class="badge" [ngClass]="getProjectBadgeClass(project.status)">{{ project.status }}</span></td>
-                <td>{{ project.assetCount }}</td>
-                <td>{{ project.memberCount }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <div class="modal-overlay" *ngIf="showAddAssetModal">

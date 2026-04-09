@@ -1,4 +1,6 @@
 import { Injectable } from '@angular/core';
+import { User } from '../models/user.model';
+import { HeroService } from './hero.service';
 
 export interface Allocation {
   id: string;
@@ -82,6 +84,8 @@ export interface Role {
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
 
+  constructor(private heroService: HeroService) {}
+
   private allocations: Allocation[] = [
     { id: 'ALL001', allocationId: 'ALLOC-2024-001', assetId: 'AST001', assetTag: 'HW-LAP-001', assetName: 'Dell Latitude 5540', assetType: 'Hardware', userId: 'USR005', userName: 'Ananya Desai', department: 'Engineering', team: 'Frontend', allocatedBy: 'Priya Sharma', allocationDate: '2024-03-20', status: 'Active', requestId: 'REQ001' },
     { id: 'ALL002', allocationId: 'ALLOC-2024-002', assetId: 'AST002', assetTag: 'HW-LAP-002', assetName: 'MacBook Pro 14"', assetType: 'Hardware', userId: 'USR004', userName: 'Suresh Patel', department: 'Engineering', team: 'Frontend', allocatedBy: 'Priya Sharma', allocationDate: '2024-01-15', status: 'Active' },
@@ -107,21 +111,6 @@ export class AdminDataService {
     { id: 'MNT005', logId: 'MNT-2024-005', assetId: 'AST015', assetTag: 'HW-LAP-006', assetName: 'MacBook Air M2', assetType: 'Hardware', maintenanceType: 'Repair', description: 'Battery replacement - capacity degraded to 60%', vendor: 'Apple Authorized Service', cost: 12000, scheduledDate: '2024-07-10', completedDate: '2024-07-15', status: 'Completed', performedBy: 'Apple Technician', notes: 'Post repair decided to retire asset' }
   ];
 
-  private projects: Project[] = [
-    { id: 'PRJ001', projectCode: 'PRJ-2024-001', name: 'AMS Platform Development', description: 'Internal Asset Management System development project', department: 'Engineering', teamLead: 'Suresh Patel', startDate: '2024-01-01', status: 'Active', assetCount: 8, memberCount: 5 },
-    { id: 'PRJ002', projectCode: 'PRJ-2024-002', name: 'Network Infrastructure Upgrade', description: 'Upgrading office network infrastructure to gigabit standard', department: 'IT', teamLead: 'Arjun Reddy', startDate: '2024-06-01', endDate: '2024-12-31', status: 'Active', assetCount: 4, memberCount: 3 },
-    { id: 'PRJ003', projectCode: 'PRJ-2023-001', name: 'UX Redesign Initiative', description: 'Complete redesign of customer-facing applications', department: 'Design', teamLead: 'Meera Nair', startDate: '2023-08-01', endDate: '2024-06-30', status: 'Completed', assetCount: 3, memberCount: 4 },
-    { id: 'PRJ004', projectCode: 'PRJ-2024-003', name: 'Cloud Migration', description: 'Moving on-premise services to AWS cloud infrastructure', department: 'Engineering', teamLead: 'Arjun Reddy', startDate: '2024-09-01', status: 'On Hold', assetCount: 0, memberCount: 6 }
-  ];
-
-  private roles: Role[] = [
-    { id: 'ROL001', name: 'Administrator', code: 'ADMIN', description: 'Full system access including user, asset and configuration management', permissions: ['manage_users', 'manage_assets', 'manage_config', 'view_reports', 'manage_roles', 'manage_projects'], userCount: 1, isActive: true },
-    { id: 'ROL002', name: 'Asset Manager', code: 'AM', description: 'Manages asset inventory, approvals and reporting', permissions: ['manage_assets', 'approve_requests', 'view_reports', 'manage_categories'], userCount: 1, isActive: true },
-    { id: 'ROL003', name: 'Asset Allocation Team', code: 'AAT', description: 'Handles physical asset allocation and return processing', permissions: ['allocate_assets', 'process_returns', 'view_assets', 'manage_tickets'], userCount: 2, isActive: true },
-    { id: 'ROL004', name: 'Team Lead', code: 'TL', description: 'Approves asset requests from team members', permissions: ['approve_team_requests', 'view_team_assets', 'request_assets'], userCount: 2, isActive: true },
-    { id: 'ROL005', name: 'Employee', code: 'EMP', description: 'Can request assets, view assigned assets and submit returns', permissions: ['request_assets', 'view_my_assets', 'return_assets', 'extend_warranty'], userCount: 4, isActive: true }
-  ];
-
   getAllocations(): Allocation[] { return [...this.allocations]; }
   getActiveAllocations(): Allocation[] { return this.allocations.filter(a => a.status === 'Active'); }
   getOverdueAllocations(): Allocation[] { return this.allocations.filter(a => a.status === 'Overdue'); }
@@ -131,18 +120,142 @@ export class AdminDataService {
   getMaintenanceLogs(): MaintenanceLog[] { return [...this.maintenanceLogs]; }
   getMaintenanceByStatus(status: string): MaintenanceLog[] { return this.maintenanceLogs.filter(m => m.status === status); }
 
-  getProjects(): Project[] { return [...this.projects]; }
-  getProjectsByStatus(status: string): Project[] { return this.projects.filter(p => p.status === status); }
+  async getProjectsFromDB(): Promise<Project[]> {
+    const getAllProjectsSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllProjectsDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
 
-  getRoles(): Role[] { return [...this.roles]; }
+    const response = await this.heroService.ajax(null, null, {}, getAllProjectsSoap);
+    let projectsData = this.heroService.xmltojson(response, 'm_projects');
+
+    if (!projectsData) {
+      return [];
+    }
+
+    if (!Array.isArray(projectsData)) {
+      projectsData = [projectsData];
+    }
+
+    return projectsData.map((projectData: any) => ({
+      id: projectData.project_code || projectData.project_name,
+      projectCode: this.normalizeNullable(projectData.project_code, '-'),
+      name: this.normalizeNullable(projectData.project_name, 'Untitled Project'),
+      description: '',
+      department: '',
+      teamLead: this.normalizeNullable(projectData.team_lead, '-'),
+      startDate: '',
+      endDate: '',
+      status: this.normalizeNullable(projectData.temp1, 'Active') as Project['status'],
+      assetCount: 0,
+      memberCount: this.normalizeNumber(projectData.members)
+    })) as Project[];
+  }
+
+  async getProjectsByStatus(status: string): Promise<Project[]> {
+    const projects = await this.getProjectsFromDB();
+    return projects.filter(project => project.status === status);
+  }
+
+  async getRolesFromDB(): Promise<Role[]> {
+    const getAllRolesSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllRoles xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, getAllRolesSoap);
+    let rolesData = this.heroService.xmltojson(response, 'm_roles');
+
+    if (!rolesData) {
+      return [];
+    }
+
+    if (!Array.isArray(rolesData)) {
+      rolesData = [rolesData];
+    }
+
+    return rolesData.map((roleData: any) => {
+      const roleName = this.normalizeNullable(roleData.role_name, roleData.role_id || 'Role');
+      return {
+        id: roleData.role_id || roleName,
+        name: roleName,
+        code: (roleData.role_id || '').toUpperCase(),
+        description: '',
+        permissions: [],
+        userCount: this.normalizeNumber(roleData.employee_count),
+        isActive: true
+      };
+    }) as Role[];
+  }
+
+  async GetAllUserRoleProjectDetails(): Promise<User[]> {
+    const getAllUsersSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllUserRoleProjectDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, getAllUsersSoap);
+    let usersData = this.heroService.xmltojson(response, 'm_users');
+
+    if (!usersData) {
+      return [];
+    }
+
+    if (!Array.isArray(usersData)) {
+      usersData = [usersData];
+    }
+
+    return usersData.map((userData: any) => ({
+      id: userData.user_id || userData.email,
+      name: userData.name || 'Unknown User',
+      email: userData.email || '',
+      role: userData.m_roles?.role || userData.role || userData.role_id,
+      isActive: (userData.status || '').toLowerCase() === 'active',
+      joinDate: (userData.created_at || new Date().toISOString()).split('T')[0]
+    })) as User[];
+  }
+
+  getUserStatsFromUsers(users: User[]) {
+    const roles = [...new Set(users.map(user => this.normalizeNullable(user.role, 'Unknown')).filter(Boolean))];
+    return {
+      total: users.length,
+      active: users.filter(user => user.isActive).length,
+      inactive: users.filter(user => !user.isActive).length,
+      byRole: roles.map(role => ({
+        role,
+        count: users.filter(user => user.role === role).length
+      }))
+    };
+  }
 
   getAdminStats() {
     return {
       totalAllocations: this.allocations.filter(a => a.status === 'Active').length,
       overdueReturns: this.allocations.filter(a => a.status === 'Overdue').length,
       maintenanceActive: this.maintenanceLogs.filter(m => m.status === 'In Progress' || m.status === 'Scheduled').length,
-      activeProjects: this.projects.filter(p => p.status === 'Active').length,
+      activeProjects: 0,
       totalMaintenanceCost: this.maintenanceLogs.filter(m => m.status === 'Completed').reduce((sum, m) => sum + m.cost, 0)
     };
+  }
+
+  private normalizeNullable(value: any, fallback: string): string {
+    if (value === null || value === undefined) {
+      return fallback;
+    }
+
+    const normalized = String(value).trim();
+    return !normalized || normalized.toLowerCase() === 'null' ? fallback : normalized;
+  }
+
+  private normalizeNumber(value: any): number {
+    const normalized = this.normalizeNullable(value, '0');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 }
