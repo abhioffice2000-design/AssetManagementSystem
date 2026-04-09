@@ -1,9 +1,16 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { AssetRequest, RequestType, RequestUrgency, RequestStatus, ApprovalStage, ApprovalEntry } from '../models/request.model';
+import { BehaviorSubject, Observable, of } from 'rxjs';
+import { AssetRequest, RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../models/request.model';
+import { HeroService } from './hero.service';
+
+declare var $: any;
 
 @Injectable({ providedIn: 'root' })
 export class RequestService {
+  // private requests: AssetRequest[] = [];
+  private requestsLoaded = false;
+
+  constructor(private hs: HeroService) { }
   private requests: AssetRequest[] = [
     {
       id: 'REQ001', requestNumber: 'AR-2024-001', requesterId: 'USR005', requesterName: 'Ananya Desai',
@@ -133,17 +140,182 @@ export class RequestService {
     }
   ];
 
-  getRequests(): AssetRequest[] { return [...this.requests]; }
+  /**
+   * Fetches pending asset requests from the Cordys SOAP service (Getpendingrequest).
+   * Parses the XML/JSON response and maps each tuple into the AssetRequest model.
+   */
+  async fetchPendingRequestsFromService(): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getpendingrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
 
-  getRequestById(id: string): AssetRequest | undefined { return this.requests.find(r => r.id === id); }
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
 
-  getRequestsByUser(userId: string): AssetRequest[] { return this.requests.filter(r => r.requesterId === userId); }
+      if (!tuples) {
+        console.warn('No tuples found in Getpendingrequest response');
+        this.requests = [];
+        this.requestsLoaded = true;
+        return [];
+      }
 
-  getRequestsByStatus(status: RequestStatus): AssetRequest[] { return this.requests.filter(r => r.status === status); }
+      // Ensure tuples is always an array (single result comes as object)
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
 
-  getRequestsByStage(stage: ApprovalStage): AssetRequest[] { return this.requests.filter(r => r.currentStage === stage); }
+      this.requests = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
+      this.requestsLoaded = true;
 
-  getRequestsByType(type: RequestType): AssetRequest[] { return this.requests.filter(r => r.requestType === type); }
+      console.log(`Fetched ${this.requests.length} pending requests from service`);
+      return [...this.requests];
+    } catch (err) {
+      console.error('Failed to fetch requests from Getpendingrequest:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Maps a single tuple from the SOAP response to the AssetRequest interface.
+   * Response structure: tuple > old > t_asset_requests
+   */
+  private mapTupleToRequest(tuple: any): AssetRequest {
+    const reqData = tuple?.old?.t_asset_requests || tuple?.t_asset_requests || tuple;
+
+    // Extract nested user info
+    const userInfo = reqData?.m_users || {};
+
+    // Map urgency string to enum
+    const urgency = this.mapToUrgency(reqData?.urgency || '');
+
+    // Map status string to enum
+    const status = this.mapToStatus(reqData?.status || '');
+
+    // Determine request type from asset_type or default
+    const requestType = this.mapToRequestType(reqData?.request_type || reqData?.asset_type || '');
+
+    // Determine current approval stage based on status
+    const currentStage = this.determineStage(status);
+
+    // Parse email approval
+    const hasEmailApproval = reqData?.email_approval === 'true' || reqData?.email_approval === true;
+
+    // Format date
+    const createdAt = reqData?.created_at || '';
+    const requestDate = createdAt ? createdAt.split('T')[0] : '';
+
+    return {
+      id: reqData?.request_id || '',
+      requestNumber: reqData?.request_id || '',
+      requesterId: reqData?.user_id || userInfo?.user_id || '',
+      requesterName: userInfo?.name || '',
+      requesterEmail: userInfo?.email || '',
+      requesterDepartment: this.getNullableValue(userInfo?.department) || '',
+      requesterTeam: this.getNullableValue(userInfo?.team) || '',
+      assetType: reqData?.asset_type || '',
+      category: reqData?.asset_type || '',
+      subCategory: this.getNullableValue(reqData?.sub_category),
+      justification: reqData?.reason || '',
+      urgency: urgency,
+      status: status,
+      currentStage: currentStage,
+      hasEmailApproval: hasEmailApproval,
+      emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
+      requestDate: requestDate,
+      lastUpdated: requestDate,
+      requestType: requestType,
+      approvalChain: [
+        { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' },
+        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
+        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+      ],
+      comments: [],
+      // Requester details from nested m_users
+      requesterStatus: this.getNullableValue(userInfo?.status),
+      requesterProject: this.getNullableValue(userInfo?.project_id),
+      requesterRole: this.getNullableValue(userInfo?.role_id)
+    };
+  }
+
+  /**
+   * Handles null/xsi:nil values from the SOAP response.
+   */
+  private getNullableValue(value: any): string | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'object' && value !== null) {
+      if (value['@nil'] === 'true' || value['@null'] === 'true') return undefined;
+      return undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') return undefined;
+    return String(value);
+  }
+
+  private mapToUrgency(urgency: string): RequestUrgency {
+    const normalized = urgency.toLowerCase();
+    if (normalized.includes('critical')) return RequestUrgency.CRITICAL;
+    if (normalized.includes('high')) return RequestUrgency.HIGH;
+    if (normalized.includes('medium')) return RequestUrgency.MEDIUM;
+    if (normalized.includes('low')) return RequestUrgency.LOW;
+    return RequestUrgency.MEDIUM; // default
+  }
+
+  private mapToStatus(status: string): RequestStatus {
+    const normalized = status.toLowerCase();
+    if (normalized.includes('pending')) return RequestStatus.PENDING;
+    if (normalized.includes('approved')) return RequestStatus.APPROVED;
+    if (normalized.includes('rejected')) return RequestStatus.REJECTED;
+    if (normalized.includes('progress')) return RequestStatus.IN_PROGRESS;
+    if (normalized.includes('completed')) return RequestStatus.COMPLETED;
+    if (normalized.includes('cancelled')) return RequestStatus.CANCELLED;
+    if (normalized.includes('draft')) return RequestStatus.DRAFT;
+    return RequestStatus.PENDING; // default
+  }
+
+  private mapToRequestType(type: string): RequestType {
+    const normalized = type.toLowerCase();
+    if (normalized.includes('return')) return RequestType.RETURN_ASSET;
+    if (normalized.includes('warranty') || normalized.includes('extend')) return RequestType.EXTEND_WARRANTY;
+    return RequestType.NEW_ASSET; // default
+  }
+
+  private determineStage(status: RequestStatus): ApprovalStage {
+    switch (status) {
+      case RequestStatus.PENDING: return ApprovalStage.ASSET_MANAGER;
+      case RequestStatus.APPROVED: return ApprovalStage.ALLOCATION;
+      case RequestStatus.COMPLETED: return ApprovalStage.COMPLETED;
+      default: return ApprovalStage.TEAM_LEAD;
+    }
+  }
+
+  getRequests(): AssetRequest[] {
+    return [...this.requests];
+  }
+
+  isLoaded(): boolean {
+    return this.requestsLoaded;
+  }
+
+  getRequestById(id: string): AssetRequest | undefined {
+    return this.requests.find(r => r.id === id);
+  }
+
+  getRequestsByUser(userId: string): AssetRequest[] {
+    return this.requests.filter(r => r.requesterId === userId);
+  }
+
+  getRequestsByStatus(status: RequestStatus): AssetRequest[] {
+    return this.requests.filter(r => r.status === status);
+  }
+
+  getRequestsByStage(stage: ApprovalStage): AssetRequest[] {
+    return this.requests.filter(r => r.currentStage === stage);
+  }
+
+  getRequestsByType(type: RequestType): AssetRequest[] {
+    return this.requests.filter(r => r.requestType === type);
+  }
 
   getPendingApprovals(approverId: string, stage: ApprovalStage): AssetRequest[] {
     return this.requests.filter(r =>

@@ -1,0 +1,408 @@
+<div class="requests-container">
+  <!-- Page Header -->
+  <div class="page-header animate-slide-up">
+    <div class="page-title">
+      <span class="material-icons-outlined title-icon">assignment</span>
+      <div>
+        <h2>Asset Requests</h2>
+        <p class="text-muted">Review and manage asset requests requiring your approval</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="grid grid-4 gap-16 mb-24 animate-slide-up">
+    <div class="mini-stat-card">
+      <div class="mini-stat-icon bg-blue">
+        <span class="material-icons-outlined">inbox</span>
+      </div>
+      <div class="mini-stat-info">
+        <span class="mini-stat-value">{{ requestStats.total }}</span>
+        <span class="mini-stat-label">Total Requests</span>
+      </div>
+    </div>
+    <div class="mini-stat-card">
+      <div class="mini-stat-icon bg-amber">
+        <span class="material-icons-outlined">pending_actions</span>
+      </div>
+      <div class="mini-stat-info">
+        <span class="mini-stat-value">{{ pendingRequests.length }}</span>
+        <span class="mini-stat-label">Awaiting Action</span>
+      </div>
+    </div>
+    <div class="mini-stat-card">
+      <div class="mini-stat-icon bg-green">
+        <span class="material-icons-outlined">check_circle</span>
+      </div>
+      <div class="mini-stat-info">
+        <span class="mini-stat-value">{{ requestStats.approved + requestStats.completed }}</span>
+        <span class="mini-stat-label">Approved</span>
+      </div>
+    </div>
+    <div class="mini-stat-card">
+      <div class="mini-stat-icon bg-red">
+        <span class="material-icons-outlined">cancel</span>
+      </div>
+      <div class="mini-stat-info">
+        <span class="mini-stat-value">{{ requestStats.rejected }}</span>
+        <span class="mini-stat-label">Rejected</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div class="card animate-slide-up" *ngIf="isLoading" style="padding: 0; overflow: hidden;">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <h4>Loading requests...</h4>
+      <p class="text-muted">Fetching pending requests from the server</p>
+    </div>
+  </div>
+
+  <!-- Error State -->
+  <div class="card animate-slide-up" *ngIf="!isLoading && loadError" style="padding: 0; overflow: hidden;">
+    <div class="error-state">
+      <span class="material-icons-outlined error-icon">error_outline</span>
+      <h4>Failed to load requests</h4>
+      <p class="text-muted">{{ loadError }}</p>
+      <button class="btn-retry" (click)="loadRequests()">
+        <span class="material-icons-outlined">refresh</span>
+        Retry
+      </button>
+    </div>
+  </div>
+
+  <ng-container *ngIf="!isLoading && !loadError">
+    <!-- Tabs & Filter Bar -->
+    <div class="tabs-bar animate-slide-up">
+      <div class="tabs">
+        <button class="tab-btn" [class.active]="activeTab === 'pending'" (click)="switchTab('pending')">
+          <span class="material-icons-outlined">pending_actions</span>
+          Pending Approval
+          <span class="tab-badge" *ngIf="pendingRequests.length > 0">{{ pendingRequests.length }}</span>
+        </button>
+        <button class="tab-btn" [class.active]="activeTab === 'all'" (click)="switchTab('all')">
+          <span class="material-icons-outlined">list_alt</span>
+          All Requests
+        </button>
+      </div>
+    </div>
+
+    <div class="card filter-bar animate-slide-up">
+      <div class="search-box">
+        <span class="material-icons-outlined search-icon">search</span>
+        <input type="text" [(ngModel)]="searchTerm" (ngModelChange)="onSearchChange()"
+          placeholder="Search by request number, requester, or category..." />
+      </div>
+      <div class="filter-group">
+        <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
+          <option value="">All Urgencies</option>
+          <option *ngFor="let u of urgencies" [value]="u">{{ u }}</option>
+        </select>
+        <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()" *ngIf="activeTab === 'all'">
+          <option value="">All Statuses</option>
+          <option *ngFor="let s of statuses" [value]="s">{{ s }}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Requests List -->
+    <div class="requests-list animate-slide-up">
+      <div class="request-card card" *ngFor="let req of filteredRequests">
+        <div class="request-row">
+          <div class="request-main">
+            <div class="request-header">
+              <span class="request-number">{{ req.id }}</span>
+              <span class="urgency-badge" [ngClass]="getUrgencyClass(req.urgency)">{{ req.urgency | uppercase }}</span>
+              <span class="request-type-badge">{{ req.requestType }}</span>
+            </div>
+            <div class="request-info">
+              <h4>{{ req.category }}<span *ngIf="req.subCategory"> — {{ req.subCategory }}</span></h4>
+              <p class="text-muted">{{ req.justification }}</p>
+            </div>
+            <div class="request-meta">
+              <span class="meta-item">
+                <span class="material-icons-outlined">person</span>
+                {{ req.requesterName }}
+              </span>
+              <span class="meta-item">
+                <span class="material-icons-outlined">business</span>
+                {{ req.requesterDepartment }} — {{ req.requesterTeam }}
+              </span>
+              <span class="meta-item">
+                <span class="material-icons-outlined">schedule</span>
+                {{ getTimeSince(req.requestDate) }}
+              </span>
+            </div>
+          </div>
+          <div class="request-actions">
+            <app-status-badge [status]="req.status"></app-status-badge>
+            <div class="action-buttons">
+              <button class="btn-detail" (click)="openDetailModal(req)">
+                <span class="material-icons-outlined">info</span>
+                Detail
+              </button>
+              <ng-container *ngIf="activeTab === 'pending'">
+                <button class="btn-approve" (click)="openActionModal(req, 'approve')">
+                  <span class="material-icons-outlined">check</span>
+                  Approve
+                </button>
+                <button class="btn-reject" (click)="openActionModal(req, 'reject')">
+                  <span class="material-icons-outlined">close</span>
+                  Reject
+                </button>
+              </ng-container>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state card" *ngIf="filteredRequests.length === 0">
+        <span class="material-icons-outlined empty-icon">task_alt</span>
+        <h4 *ngIf="activeTab === 'pending'">No pending approvals</h4>
+        <h4 *ngIf="activeTab === 'all'">No requests found</h4>
+        <p class="text-muted">
+          {{ activeTab === 'pending' ? 'All caught up! There are no requests awaiting your approval.' : 'Try adjusting
+          your search or filter criteria.' }}
+        </p>
+      </div>
+    </div>
+  </ng-container>
+
+  <!-- Action Modal -->
+  <div class="modal-overlay" *ngIf="showActionModal" (click)="closeActionModal()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header" [class.modal-approve]="actionType === 'approve'"
+        [class.modal-reject]="actionType === 'reject'">
+        <h3>
+          <span class="material-icons-outlined">{{ actionType === 'approve' ? 'check_circle' : 'cancel' }}</span>
+          {{ actionType === 'approve' ? 'Approve' : 'Reject' }} Request
+        </h3>
+        <button class="btn-icon-close" (click)="closeActionModal()">
+          <span class="material-icons-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body" *ngIf="selectedRequest">
+        <div class="modal-request-summary">
+          <div class="summary-row">
+            <label>Request</label>
+            <span>{{ selectedRequest.requestNumber }}</span>
+          </div>
+          <div class="summary-row">
+            <label>Requester</label>
+            <span>{{ selectedRequest.requesterName }} ({{ selectedRequest.requesterDepartment }})</span>
+          </div>
+          <div class="summary-row">
+            <label>Asset</label>
+            <span>{{ selectedRequest.category }} — {{ selectedRequest.subCategory }}</span>
+          </div>
+          <div class="summary-row">
+            <label>Justification</label>
+            <span>{{ selectedRequest.justification }}</span>
+          </div>
+        </div>
+        <div class="comments-section">
+          <label>Comments <span class="text-muted">(optional)</span></label>
+          <textarea [(ngModel)]="actionComments" rows="3" placeholder="Add your comments here..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="closeActionModal()">Cancel</button>
+        <button class="btn-confirm" [class.btn-confirm-approve]="actionType === 'approve'"
+          [class.btn-confirm-reject]="actionType === 'reject'" (click)="confirmAction()">
+          <span class="material-icons-outlined">{{ actionType === 'approve' ? 'check' : 'close' }}</span>
+          {{ actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" *ngIf="showDetailModal" (click)="closeDetailModal()">
+    <div class="modal-content modal-detail" (click)="$event.stopPropagation()">
+      <div class="modal-header modal-detail-header">
+        <h3>
+          <span class="material-icons-outlined">assignment</span>
+          Request Details
+        </h3>
+        <button class="btn-icon-close" (click)="closeDetailModal()">
+          <span class="material-icons-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body" *ngIf="detailRequest">
+
+        <!-- Request Info Grid -->
+        <div class="detail-section">
+          <h4 class="detail-section-title">
+            <span class="material-icons-outlined">person</span>
+            Requester Information
+          </h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>Name</label>
+              <span>{{ detailRequest.requesterName }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Email</label>
+              <span class="email-link">{{ getRequesterEmail(detailRequest) }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Asset Type</label>
+              <span>{{ detailRequest.assetType }}<span *ngIf="detailRequest.category && detailRequest.category !== ''"> — {{ detailRequest.category }}</span></span>
+            </div>
+            <div class="detail-item">
+              <label>Urgency</label>
+              <span class="urgency-badge" [ngClass]="getUrgencyClass(detailRequest.urgency)">{{ detailRequest.urgency | uppercase }}</span>
+            </div>
+            <div class="detail-item">
+              <label>User Status</label>
+              <span class="status-badge" [class.status-active]="detailRequest.requesterStatus === 'Active'">{{ detailRequest.requesterStatus || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Project ID</label>
+              <span>{{ detailRequest.requesterProject || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Role ID</label>
+              <span>{{ detailRequest.requesterRole || '—' }}</span>
+            </div>
+            <div class="detail-item full-col">
+
+              <label>Reason</label>
+              <span>{{ detailRequest.justification }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Date</label>
+              <span>{{ detailRequest.requestDate }}</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Provide Asset Section -->
+        <div class="detail-section">
+          <h4 class="detail-section-title">
+            <span class="material-icons-outlined">inventory_2</span>
+            Provide Asset
+          </h4>
+          <div class="detail-grid">
+            <div class="detail-item full-col">
+              <label>Select Asset</label>
+              <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
+                <option value="">-- Select Available Asset --</option>
+                <option *ngFor="let asset of availableAssets" [value]="asset.id">
+                  {{ asset.name }}
+                </option>
+              </select>
+            </div>
+            <div class="detail-item">
+              <label>Asset ID</label>
+              <span class="mono-text">{{ detailRequest.assignedAssetId || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Type ID</label>
+              <span>{{ detailRequest.assignedTypeId || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Sub Category ID</label>
+              <span>{{ detailRequest.assignedSubCategoryId || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Serial Number</label>
+              <span>{{ detailRequest.assignedSerial || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Purchase Date</label>
+              <span>{{ detailRequest.assignedPurchaseDate || '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <label>Warranty Expiry</label>
+              <span>{{ detailRequest.assignedWarrantyExpiry || '—' }}</span>
+            </div>
+            <!-- <div class="detail-item">
+              <label>Stock Status</label>
+              <span class="stock-status" [ngClass]="selectedAssetId ? 'in-stock' : 'out-of-stock'">
+                <span class="dot"></span> {{ selectedAssetId ? 'Asset Selected' : 'Not Yet Assigned' }}
+              </span>
+            </div> -->
+
+          </div>
+
+        </div>
+        <!-- Approval Chain -->
+
+        <div class="detail-section">
+          <h4 class="detail-section-title">
+            <span class="material-icons-outlined">account_tree</span>
+            Approval Chain
+          </h4>
+          <div class="approval-timeline">
+            <div class="timeline-item" *ngFor="let entry of detailRequest.approvalChain; let last = last"
+              [ngClass]="getApprovalStageClass(entry.action)">
+              <div class="timeline-connector" *ngIf="!last"></div>
+              <div class="timeline-dot">
+                <span class="material-icons-outlined">{{ getApprovalIcon(entry.action) }}</span>
+              </div>
+              <div class="timeline-content">
+                <div class="timeline-header">
+                  <span class="timeline-stage">{{ entry.stage }}</span>
+                  <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action
+                    }}</span>
+                </div>
+                <div class="timeline-meta" *ngIf="entry.approverName">
+                  <span class="material-icons-outlined">person</span>
+                  {{ entry.approverName }}
+                </div>
+                <div class="timeline-meta" *ngIf="entry.timestamp">
+                  <span class="material-icons-outlined">schedule</span>
+                  {{ entry.timestamp | date: 'dd MMM yyyy, hh:mm a' }}
+                </div>
+                <div class="timeline-comment" *ngIf="entry.comments">
+                  <span class="material-icons-outlined">chat</span>
+                  {{ entry.comments }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comments -->
+        <div class="detail-section" *ngIf="detailRequest.comments && detailRequest.comments.length > 0">
+          <h4 class="detail-section-title">
+            <span class="material-icons-outlined">comment</span>
+            Comments
+          </h4>
+          <div class="comment-list">
+            <div class="comment-item" *ngFor="let c of detailRequest.comments">
+              <div class="comment-avatar">{{ c.userName.charAt(0) }}</div>
+              <div class="comment-body">
+                <div class="comment-header">
+                  <span class="comment-author">{{ c.userName }}</span>
+                  <span class="comment-time">{{ getTimeSince(c.timestamp) }}</span>
+                </div>
+                <p>{{ c.comment }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" (click)="closeDetailModal()">Close</button>
+        <ng-container
+          *ngIf="detailRequest && detailRequest.currentStage === 'Asset Manager Approval' && detailRequest.status === 'Pending'">
+          <button class="btn-approve" (click)="closeDetailModal(); openActionModal(detailRequest, 'approve')">
+            <span class="material-icons-outlined">check</span>
+            Approve
+          </button>
+          <button class="btn-reject" (click)="closeDetailModal(); openActionModal(detailRequest, 'reject')">
+            <span class="material-icons-outlined">close</span>
+            Reject
+          </button>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+</div>
