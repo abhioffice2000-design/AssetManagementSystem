@@ -1,8 +1,10 @@
 import { Component, OnInit } from '@angular/core';
-import { UserService } from '../../../core/services/user.service';
-import { User, UserRole } from '../../../core/models/user.model';
+import { User } from '../../../core/models/user.model';
 import { AssetService } from '../../../core/services/asset.service';
 import { Asset } from '../../../core/models/asset.model';
+import { AdminDataService, Role, Project, Allocation } from '../../../core/services/admin-data.service';
+
+type UserTab = 'users' | 'roles' | 'projects' | 'assignments';
 
 @Component({
   selector: 'app-user-management',
@@ -14,9 +16,24 @@ export class UserManagementComponent implements OnInit {
   filteredUsers: User[] = [];
   searchTerm = '';
   selectedRole = '';
-  userRoles = Object.values(UserRole);
+  userRoles: string[] = [];
   currentPage = 1;
   pageSize = 5;
+
+  activeTab: UserTab = 'users';
+
+  roles: Role[] = [];
+  projects: Project[] = [];
+  allocations: Allocation[] = [];
+
+  showAddUserModal = false;
+  showAddRoleModal = false;
+  showAddProjectModal = false;
+  showAssignAssetModal = false;
+
+  newRole: Partial<Role> = { name: '', code: '', description: '', isActive: true };
+  newProject: Partial<Project> = { name: '', projectCode: '', department: '', teamLead: '', status: 'Active' };
+  newAllocation: Partial<Allocation> = { assetId: '', userId: '', department: '', status: 'Active' };
 
   showEditModal = false;
   showInactiveModal = false;
@@ -27,14 +44,34 @@ export class UserManagementComponent implements OnInit {
   selectedUserAssets: Asset[] = [];
 
   constructor(
-    private userService: UserService,
-    private assetService: AssetService
+    private assetService: AssetService,
+    private adminDataService: AdminDataService
   ) {}
 
-  ngOnInit(): void {
-    this.users = this.userService.getUsers();
+  async ngOnInit(): Promise<void> {
+    await this.loadUsers();
+    await this.loadRoles();
+    await this.loadProjects();
+    this.allocations = this.adminDataService.getAllocations();
     this.filterUsers();
   }
+
+  setTab(tab: UserTab): void {
+    this.activeTab = tab;
+  }
+
+  // Modals for add
+  openAddUserModal(): void { this.showAddUserModal = true; }
+  closeAddUserModal(): void { this.showAddUserModal = false; }
+
+  openAddRoleModal(): void { this.showAddRoleModal = true; }
+  closeAddRoleModal(): void { this.showAddRoleModal = false; }
+
+  openAddProjectModal(): void { this.showAddProjectModal = true; }
+  closeAddProjectModal(): void { this.showAddProjectModal = false; }
+
+  openAssignAssetModal(): void { this.showAssignAssetModal = true; }
+  closeAssignAssetModal(): void { this.showAssignAssetModal = false; }
 
   filterUsers(): void {
     this.filteredUsers = this.users.filter(user => {
@@ -82,14 +119,20 @@ export class UserManagementComponent implements OnInit {
   }
 
   getRoleBadgeClass(role: string): string {
-    const map: Record<string, string> = {
-      [UserRole.ADMINISTRATOR]: 'badge-blue',
-      [UserRole.ASSET_MANAGER]: 'badge-green',
-      [UserRole.ALLOCATION_TEAM]: 'badge-amber',
-      [UserRole.TEAM_LEAD]: 'badge-teal',
-      [UserRole.EMPLOYEE]: 'badge-default'
-    };
-    return map[role] || 'badge-default';
+    const normalizedRole = role.toLowerCase();
+    if (normalizedRole.includes('admin')) {
+      return 'badge-blue';
+    }
+    if (normalizedRole.includes('asset manager')) {
+      return 'badge-green';
+    }
+    if (normalizedRole.includes('allocation')) {
+      return 'badge-amber';
+    }
+    if (normalizedRole.includes('lead')) {
+      return 'badge-teal';
+    }
+    return 'badge-default';
   }
 
   openEditModal(user: User): void {
@@ -105,9 +148,7 @@ export class UserManagementComponent implements OnInit {
 
   saveUser(): void {
     if (this.editingUser) {
-      this.userService.updateUser(this.editingUser);
-      // Refresh list
-      this.users = this.userService.getUsers();
+      this.users = this.users.map(user => user.id === this.editingUser!.id ? { ...this.editingUser! } : user);
       this.filterUsers();
       this.closeEditModal();
     }
@@ -126,9 +167,7 @@ export class UserManagementComponent implements OnInit {
   confirmInactive(): void {
     if (this.userToDeactivate) {
       const updatedUser = { ...this.userToDeactivate, isActive: false };
-      this.userService.updateUser(updatedUser);
-      // Refresh list
-      this.users = this.userService.getUsers();
+      this.users = this.users.map(user => user.id === updatedUser.id ? updatedUser : user);
       this.filterUsers();
       this.closeInactiveModal();
     }
@@ -136,8 +175,7 @@ export class UserManagementComponent implements OnInit {
 
   toggleUserActive(user: User): void {
     const updatedUser = { ...user, isActive: !user.isActive };
-    this.userService.updateUser(updatedUser);
-    this.users = this.userService.getUsers();
+    this.users = this.users.map(item => item.id === updatedUser.id ? updatedUser : item);
     this.filterUsers();
   }
 
@@ -151,5 +189,34 @@ export class UserManagementComponent implements OnInit {
     this.showAssetsModal = false;
     this.selectedUser = null;
     this.selectedUserAssets = [];
+  }
+
+  private async loadUsers(): Promise<void> {
+    try {
+      this.users = await this.adminDataService.GetAllUserRoleProjectDetails();
+    } catch (error) {
+      console.error('Unable to load DB users for admin user management.', error);
+      this.users = [];
+    }
+  }
+
+  private async loadRoles(): Promise<void> {
+    try {
+      this.roles = await this.adminDataService.getRolesFromDB();
+      this.userRoles = this.roles.map(role => role.name);
+    } catch (error) {
+      console.error('Unable to load DB roles for admin user management.', error);
+      this.roles = [];
+      this.userRoles = [];
+    }
+  }
+
+  private async loadProjects(): Promise<void> {
+    try {
+      this.projects = await this.adminDataService.getProjectsFromDB();
+    } catch (error) {
+      console.error('Unable to load DB projects for admin user management.', error);
+      this.projects = [];
+    }
   }
 }

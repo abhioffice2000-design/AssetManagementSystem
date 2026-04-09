@@ -1,5 +1,4 @@
 import { Component, OnInit } from '@angular/core';
-import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AdminDataService } from '../../../core/services/admin-data.service';
@@ -16,12 +15,7 @@ export class AdminDashboardComponent implements OnInit {
   userStats: any = {};
   assetStats: any = {};
   reqStats: any = {};
-  adminHighlights: Array<{
-    label: string;
-    value: number | string;
-    icon: string;
-    color: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'teal';
-  }> = [];
+  activeProjects = 0;
 
   assetStatusChartType: 'doughnut' = 'doughnut';
   requestTrendChartType: 'line' = 'line';
@@ -94,23 +88,21 @@ export class AdminDashboardComponent implements OnInit {
   };
 
   constructor(
-    private userService: UserService,
     private assetService: AssetService,
     private requestService: RequestService,
     private adminDataService: AdminDataService
   ) { }
 
-  ngOnInit(): void {
-    this.userStats = this.userService.getUserStats();
+  async ngOnInit(): Promise<void> {
+    await this.loadDashboardData();
+  }
+
+  private async loadDashboardData(): Promise<void> {
     this.assetStats = this.assetService.getAssetStats();
     this.reqStats = this.requestService.getRequestStats();
-
-    const adminStats = this.adminDataService.getAdminStats();
-    this.adminHighlights = [
-      { label: 'Overdue Returns', value: adminStats.overdueReturns, icon: 'assignment_late', color: 'red' },
-      { label: 'Active Projects', value: adminStats.activeProjects, icon: 'folder_open', color: 'purple' },
-      { label: 'Inactive Users', value: this.userStats.inactive, icon: 'person_off', color: 'teal' }
-    ];
+    this.userStats = await this.getResolvedUserStats();
+    const roleStats = await this.getResolvedRoleStats();
+    this.activeProjects = await this.getResolvedActiveProjectCount();
 
     this.assetStatusChartData = {
       labels: ['Available', 'Allocated', 'Maintenance'],
@@ -163,15 +155,44 @@ export class AdminDashboardComponent implements OnInit {
     };
 
     this.userRoleChartData = {
-      labels: this.userStats.byRole.map((item: any) => item.role),
+      labels: roleStats.map((item: any) => item.name),
       datasets: [
         {
-          data: this.userStats.byRole.map((item: any) => item.count),
+          data: roleStats.map((item: any) => item.userCount),
           backgroundColor: ['#0f172a', '#2563eb', '#f59e0b', '#14b8a6', '#8b5cf6'],
           borderWidth: 0
         }
       ]
     };
+  }
+
+  private async getResolvedUserStats(): Promise<any> {
+    try {
+      const users = await this.adminDataService.GetAllUserRoleProjectDetails();
+      return this.adminDataService.getUserStatsFromUsers(users);
+    } catch (error) {
+      console.error('Unable to load DB user stats for dashboard.', error);
+      return this.adminDataService.getUserStatsFromUsers([]);
+    }
+  }
+
+  private async getResolvedRoleStats(): Promise<Array<{ name: string; userCount: number }>> {
+    try {
+      return await this.adminDataService.getRolesFromDB();
+    } catch (error) {
+      console.error('Unable to load DB role stats for dashboard.', error);
+      return [];
+    }
+  }
+
+  private async getResolvedActiveProjectCount(): Promise<number> {
+    try {
+      const activeProjects = await this.adminDataService.getProjectsByStatus('Active');
+      return activeProjects.length;
+    } catch (error) {
+      console.error('Unable to load DB project stats for dashboard.', error);
+      return 0;
+    }
   }
 
   private buildRequestTrend(requests: Array<{ requestDate: string }>): { labels: string[]; counts: number[] } {

@@ -4,16 +4,7 @@
     <app-stat-card label="Total Assets" [value]="assetStats.total" icon="inventory_2" color="green"></app-stat-card>
     <app-stat-card label="Active Requests" [value]="reqStats.pending" icon="pending_actions"
       color="amber"></app-stat-card>
-  </div>
-
-  <div class="grid grid-3 gap-24 mb-24 animate-slide-up">
-    <app-stat-card
-      *ngFor="let metric of adminHighlights"
-      [label]="metric.label"
-      [value]="metric.value"
-      [icon]="metric.icon"
-      [color]="metric.color">
-    </app-stat-card>
+    <app-stat-card label="Active Projects" [value]="activeProjects" icon="folder_open" color="purple"></app-stat-card>
   </div>
 
   <div class="grid grid-2 gap-24 mb-24 animate-slide-up">
