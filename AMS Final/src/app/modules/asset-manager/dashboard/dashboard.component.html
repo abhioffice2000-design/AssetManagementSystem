@@ -10,88 +10,135 @@
     </div>
   </div>
 
-  <!-- Top Stat Cards -->
-  <div class="grid grid-4 gap-24 mb-24 animate-slide-up">
-    <app-stat-card label="Total Inventory" [value]="totalInventory" icon="inventory_2" color="blue"></app-stat-card>
-    <app-stat-card label="Allocated Assets" [value]="allocatedAssets" icon="assignment_ind" color="green"></app-stat-card>
-    <app-stat-card label="Pending Requests" [value]="pendingRequests" icon="pending_actions" color="amber"></app-stat-card>
-    <app-stat-card label="Available Assets" [value]="availableAssets" icon="check_circle" color="teal"></app-stat-card>
-  </div>
-
-  <!-- Assets by Type — Overview Bar Chart -->
-  <div class="card section-card animate-slide-up mb-24">
-    <div class="section-header">
-      <div class="section-title">
-        <span class="material-icons-outlined">pie_chart</span>
-        <h3>Assets by Type</h3>
-      </div>
-      <span class="section-subtitle">Distribution of {{ grandTotal }} assets across types</span>
-    </div>
-    <div class="section-body">
-      <div class="type-bar-list">
-        <div class="type-bar-item" *ngFor="let item of typeBreakdown">
-          <div class="type-bar-label">
-            <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
-              <span class="material-icons-outlined">{{ item.icon }}</span>
-            </div>
-            <div class="type-label-text">
-              <span class="type-name">{{ item.type }}</span>
-              <span class="type-count">{{ item.count }} assets</span>
-            </div>
-          </div>
-          <div class="type-bar-track">
-            <div class="type-bar-fill" [style.width.%]="getTypePercentage(item.count)" [style.background]="item.color">
-            </div>
-          </div>
-          <span class="type-percentage" [style.color]="item.color">{{ getTypePercentage(item.count) }}%</span>
-        </div>
-      </div>
+  <!-- Loading State -->
+  <div class="card animate-slide-up" *ngIf="isLoading" style="padding: 0; overflow: hidden;">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <h4>Loading dashboard...</h4>
+      <p class="text-muted">Fetching asset data from the server</p>
     </div>
   </div>
 
-  <!-- Type ↔ Sub-Category Breakdown -->
-  <div class="card section-card animate-slide-up">
-    <div class="section-header">
-      <div class="section-title">
-        <span class="material-icons-outlined">account_tree</span>
-        <h3>Type & Sub-Category Breakdown</h3>
-      </div>
-      <span class="section-subtitle">Detailed inventory distribution</span>
+  <!-- Error State -->
+  <div class="card animate-slide-up" *ngIf="!isLoading && loadError" style="padding: 0; overflow: hidden;">
+    <div class="error-state">
+      <span class="material-icons-outlined error-icon">error_outline</span>
+      <h4>Failed to load dashboard</h4>
+      <p class="text-muted">{{ loadError }}</p>
+      <button class="btn-retry" (click)="loadDashboardData()">
+        <span class="material-icons-outlined">refresh</span>
+        Retry
+      </button>
     </div>
-    <div class="section-body">
-      <div class="type-group" *ngFor="let item of typeBreakdown">
-        <!-- Type Header -->
-        <div class="type-group-header">
-          <div class="type-group-title">
-            <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
-              <span class="material-icons-outlined">{{ item.icon }}</span>
-            </div>
-            <span class="type-group-name">{{ item.type }}</span>
-          </div>
-          <div class="type-group-stats">
-            <span class="type-group-count" [style.background]="item.bgColor"
-              [style.color]="item.color">{{ item.count }}</span>
-            <span class="type-group-pct">{{ getTypePercentage(item.count) }}% of total</span>
-          </div>
+  </div>
+
+  <!-- Main Content -->
+  <ng-container *ngIf="!isLoading && !loadError">
+    <!-- Top Stat Cards -->
+    <div class="grid grid-4 gap-24 mb-24 animate-slide-up">
+      <app-stat-card label="Total Inventory" [value]="totalInventory" icon="inventory_2" color="blue"></app-stat-card>
+      <app-stat-card label="Allocated Assets" [value]="allocatedAssets" icon="assignment_ind" color="green"></app-stat-card>
+      <app-stat-card label="Pending Requests" [value]="pendingRequests" icon="pending_actions" color="amber"></app-stat-card>
+      <app-stat-card label="Available Assets" [value]="availableAssets" icon="check_circle" color="teal"></app-stat-card>
+    </div>
+
+    <!-- Assets by Type — Overview Bar Chart -->
+    <div class="card section-card animate-slide-up mb-24">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="material-icons-outlined">pie_chart</span>
+          <h3>Assets by Type</h3>
+        </div>
+        <span class="section-subtitle">Distribution of {{ grandTotal }} assets across types</span>
+      </div>
+      <div class="section-body">
+        <!-- Empty state when no types -->
+        <div class="empty-state" *ngIf="typeBreakdown.length === 0">
+          <span class="material-icons-outlined">inventory_2</span>
+          <p>No asset data available</p>
         </div>
 
-        <!-- Sub-Category List -->
-        <div class="subcat-list">
-          <div class="subcat-item" *ngFor="let sub of item.subCategories">
-            <div class="subcat-info">
-              <span class="subcat-dot" [style.background]="item.color"></span>
-              <span class="subcat-name">{{ sub.name }}</span>
+        <div class="pie-chart-wrapper" *ngIf="typeBreakdown.length > 0">
+          <div class="pie-chart-container">
+            <div class="pie-chart" [ngStyle]="{'background': getPieChartGradient()}"></div>
+            <!-- Optional inner circle for a donut chart if preferred, but pie is fine too; we'll leave it as a pie for exact request or donut for better modern look -->
+            <div class="donut-hole">
+               <span class="donut-total">{{ grandTotal }}</span>
+               <span class="donut-label">Total</span>
             </div>
-            <div class="subcat-bar-wrap">
-              <div class="subcat-bar-track">
-                <div class="subcat-bar-fill" [style.width.%]="getSubCatPercentage(sub.count, item.count)"
-                  [style.background]="item.color"></div>
+          </div>
+          
+          <div class="pie-legend-list">
+            <div class="pie-legend-item" *ngFor="let item of typeBreakdown">
+              <div class="pie-legend-header">
+                <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
+                  <span class="material-icons-outlined">{{ item.icon }}</span>
+                </div>
+                <div class="pie-legend-text">
+                  <span class="type-name">{{ item.type }}</span>
+                  <span class="type-count">{{ item.count }} assets ({{ getTypePercentage(item.count) }}%)</span>
+                </div>
               </div>
             </div>
-            <span class="subcat-count">{{ sub.count }}</span>
           </div>
         </div>
       </div>
     </div>
-  </div>
+
+    <!-- Type & Sub-Category Breakdown -->
+    <div class="card section-card animate-slide-up" *ngIf="typeBreakdown.length > 0">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="material-icons-outlined">account_tree</span>
+          <h3>Type & Sub-Category Breakdown</h3>
+        </div>
+        <span class="section-subtitle">Detailed inventory distribution</span>
+      </div>
+      <div class="section-body">
+        <div class="type-group" *ngFor="let item of typeBreakdown">
+          <!-- Type Header -->
+          <div class="type-group-header">
+            <div class="type-group-title">
+              <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
+                <span class="material-icons-outlined">{{ item.icon }}</span>
+              </div>
+              <span class="type-group-name">{{ item.type }}</span>
+            </div>
+            <div class="type-group-stats">
+              <span class="type-group-count" [style.background]="item.bgColor"
+                [style.color]="item.color">{{ item.count }}</span>
+              <span class="type-group-pct">{{ getTypePercentage(item.count) }}% of total</span>
+            </div>
+          </div>
+
+          <!-- Sub-Category List -->
+          <div class="subcat-list" *ngIf="item.subCategories && item.subCategories.length > 0">
+            <div class="subcat-item" *ngFor="let sub of item.subCategories">
+              <div class="subcat-info">
+                <span class="subcat-dot" [style.background]="item.color"></span>
+                <span class="subcat-name">{{ sub.name }}</span>
+              </div>
+              <div class="subcat-bar-wrap">
+                <div class="subcat-bar-track">
+                  <div class="subcat-bar-fill" [style.width.%]="getSubCatPercentage(sub.count, item.count)"
+                    [style.background]="item.color"></div>
+                </div>
+              </div>
+              <span class="subcat-count">{{ sub.count }}</span>
+            </div>
+          </div>
+
+          <!-- No sub-categories -->
+          <div class="subcat-list" *ngIf="!item.subCategories || item.subCategories.length === 0">
+            <div class="subcat-item">
+              <div class="subcat-info">
+                <span class="subcat-dot" [style.background]="item.color" style="opacity:0.4"></span>
+                <span class="subcat-name text-muted">No sub-categories available</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </ng-container>
 </div>

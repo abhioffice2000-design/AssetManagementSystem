@@ -117,27 +117,8 @@
     </div>
   </div>
 
-  <!-- Top Assets & Request Summary -->
-  <div class="grid grid-2 gap-24 mb-24">
-    <!-- Top 5 Most Valuable Assets -->
-    <div class="card animate-slide-up">
-      <div class="card-header">
-        <h3>
-          <span class="material-icons-outlined">trending_up</span>
-          Top 5 Highest Value Assets
-        </h3>
-      </div>
-      <div class="card-body p-0">
-        <div class="top-asset-item" *ngFor="let asset of topAssets; let i = index">
-          <span class="rank-badge">#{{ i + 1 }}</span>
-          <div class="top-asset-info">
-            <span class="top-asset-name">{{ asset.name }}</span>
-            <span class="top-asset-meta">{{ asset.assetTag }} · {{ asset.vendor }}</span>
-          </div>
-          <span class="top-asset-cost">{{ formatCurrency(asset.cost) }}</span>
-        </div>
-      </div>
-    </div>
+  <!-- Request Summary -->
+  <div class="mb-24">
 
     <!-- Request Summary -->
     <div class="card animate-slide-up">
@@ -177,7 +158,6 @@
       </div>
     </div>
   </div>
-
   <!-- Team Holdings & Warranty Alerts -->
   <div class="grid grid-2 gap-24 mb-24">
     <!-- Team-wise Holdings -->
@@ -242,4 +222,173 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== Monthly & Yearly Report: Requested vs Approved vs Rejected ===== -->
+  <div class="card section-card animate-slide-up mb-24">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="material-icons-outlined">bar_chart</span>
+        <h3>Requested vs Approved vs Rejected</h3>
+      </div>
+      <div class="report-tabs">
+        <button class="report-tab" [class.active]="activeReportTab === 'monthly'"
+          (click)="switchReportTab('monthly')">
+          <span class="material-icons-outlined">calendar_month</span> Monthly
+        </button>
+        <button class="report-tab" [class.active]="activeReportTab === 'yearly'"
+          (click)="switchReportTab('yearly')">
+          <span class="material-icons-outlined">date_range</span> Yearly
+        </button>
+      </div>
+    </div>
+
+    <div class="section-body">
+      <!-- Legend -->
+      <div class="chart-legend">
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #3b82f6;"></span> Requested
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #10b981;"></span> Approved
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #ef4444;"></span> Rejected
+        </div>
+      </div>
+
+      <!-- Monthly View -->
+      <div class="report-chart" *ngIf="activeReportTab === 'monthly'">
+        <div class="report-row" *ngFor="let row of monthlyData">
+          <span class="report-label">{{ row.month }}</span>
+          <div class="report-bars">
+            <div class="report-bar-group">
+              <div class="report-bar requested" [style.width.%]="getBarWidth(row.requested)">
+                <span class="bar-val">{{ row.requested }}</span>
+              </div>
+            </div>
+            <div class="report-bar-group">
+              <div class="report-bar approved" [style.width.%]="getBarWidth(row.approved)">
+                <span class="bar-val">{{ row.approved }}</span>
+              </div>
+            </div>
+            <div class="report-bar-group">
+              <div class="report-bar rejected" [style.width.%]="getBarWidth(row.rejected)">
+                <span class="bar-val">{{ row.rejected }}</span>
+              </div>
+            </div>
+          </div>
+          <span class="report-rate" title="Approval Rate">{{ getApprovalRate(row.approved, row.requested) }}%</span>
+        </div>
+      </div>
+
+      <!-- Yearly View -->
+      <div class="report-chart" *ngIf="activeReportTab === 'yearly'">
+        <div class="report-row" *ngFor="let row of yearlyData">
+          <span class="report-label report-label-wide">{{ row.year }}</span>
+          <div class="report-bars">
+            <div class="report-bar-group">
+              <div class="report-bar requested" [style.width.%]="getBarWidth(row.requested)">
+                <span class="bar-val">{{ row.requested }}</span>
+              </div>
+            </div>
+            <div class="report-bar-group">
+              <div class="report-bar approved" [style.width.%]="getBarWidth(row.approved)">
+                <span class="bar-val">{{ row.approved }}</span>
+              </div>
+            </div>
+            <div class="report-bar-group">
+              <div class="report-bar rejected" [style.width.%]="getBarWidth(row.rejected)">
+                <span class="bar-val">{{ row.rejected }}</span>
+              </div>
+            </div>
+          </div>
+          <span class="report-rate" title="Approval Rate">{{ getApprovalRate(row.approved, row.requested) }}%</span>
+        </div>
+      </div>
+
+      <!-- Summary Footer -->
+      <div class="report-summary">
+        <div class="summary-item">
+          <span class="summary-label">Total Requested</span>
+          <span class="summary-value text-blue">{{ activeReportTab === 'monthly' ? monthlyTotals.requested : yearlyTotals.requested }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Total Approved</span>
+          <span class="summary-value text-green">{{ activeReportTab === 'monthly' ? monthlyTotals.approved : yearlyTotals.approved }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Total Rejected</span>
+          <span class="summary-value text-red">{{ activeReportTab === 'monthly' ? monthlyTotals.rejected : yearlyTotals.rejected }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Approval Rate</span>
+          <span class="summary-value text-teal">{{ getApprovalRate(
+            activeReportTab === 'monthly' ? monthlyTotals.approved : yearlyTotals.approved,
+            activeReportTab === 'monthly' ? monthlyTotals.requested : yearlyTotals.requested
+          ) }}%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Team-wise Asset Holding ===== -->
+  <div class="card section-card animate-slide-up mb-24">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="material-icons-outlined">groups</span>
+        <h3>Team-wise Asset Holding</h3>
+      </div>
+      <span class="section-subtitle">{{ teamHoldingTotal.assets }} assets across {{ teamAssetHoldings.length }} teams</span>
+    </div>
+    <div class="section-body">
+      <div class="team-holding-list">
+        <div class="team-holding-card" *ngFor="let team of teamAssetHoldings">
+          <div class="team-card-header">
+            <div class="team-info">
+              <div class="team-avatar">
+                <span class="material-icons-outlined">group</span>
+              </div>
+              <div class="team-details">
+                <span class="team-name">{{ team.team }}</span>
+                <span class="team-dept">{{ team.department }} · Lead: {{ team.lead }}</span>
+              </div>
+            </div>
+            <div class="team-stats-right">
+              <span class="team-total-badge">{{ team.totalAssets }} assets</span>
+              <span class="team-value">{{ formatCurrency(team.totalValue) }}</span>
+            </div>
+          </div>
+          <div class="team-card-body">
+            <div class="team-breakdown">
+              <div class="breakdown-item">
+                <span class="material-icons-outlined" style="color: #3b82f6; font-size: 18px;">computer</span>
+                <span class="breakdown-label">Hardware</span>
+                <span class="breakdown-count">{{ team.hardware }}</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="material-icons-outlined" style="color: #8b5cf6; font-size: 18px;">code</span>
+                <span class="breakdown-label">Software</span>
+                <span class="breakdown-count">{{ team.software }}</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="material-icons-outlined" style="color: #10b981; font-size: 18px;">mouse</span>
+                <span class="breakdown-label">Peripheral</span>
+                <span class="breakdown-count">{{ team.peripheral }}</span>
+              </div>
+              <div class="breakdown-item">
+                <span class="material-icons-outlined" style="color: #6b7280; font-size: 18px;">person</span>
+                <span class="breakdown-label">Per Member</span>
+                <span class="breakdown-count">{{ getAssetsPerMember(team.totalAssets, team.members) }}</span>
+              </div>
+            </div>
+            <div class="team-bar-track">
+              <div class="team-bar-fill" [style.width.%]="getTeamPercentage(team.totalAssets)"></div>
+            </div>
+            <span class="team-pct">{{ getTeamPercentage(team.totalAssets) }}% of total</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>

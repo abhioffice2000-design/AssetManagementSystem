@@ -65,7 +65,7 @@
       <span class="material-icons-outlined error-icon">error_outline</span>
       <h4>Failed to load requests</h4>
       <p class="text-muted">{{ loadError }}</p>
-      <button class="btn-retry" (click)="loadRequests()">
+      <button class="btn-retry" (click)="loadAllData()">
         <span class="material-icons-outlined">refresh</span>
         Retry
       </button>
@@ -291,8 +291,8 @@
               <label>Select Asset</label>
               <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
                 <option value="">-- Select Available Asset --</option>
-                <option *ngFor="let asset of availableAssets" [value]="asset.id">
-                  {{ asset.name }}
+                <option *ngFor="let asset of availableAssets" [value]="asset.asset_id">
+                  {{ asset.asset_name }}
                 </option>
               </select>
             </div>
