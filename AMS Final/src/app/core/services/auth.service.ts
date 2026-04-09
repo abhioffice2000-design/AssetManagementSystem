@@ -16,35 +16,7 @@ export class AuthService {
   private themeSubject = new BehaviorSubject<string>('light');
   public theme$ = this.themeSubject.asObservable();
 
-  private mockUsers: User[] = [
-    {
-      id: 'USR001', name: 'Admin User', email: 'admin@adnate.com',
-      role: UserRole.ADMINISTRATOR, department: 'IT', team: 'System Admin',
-      designation: 'System Administrator', isActive: true, joinDate: '2023-01-15'
-    },
-    {
-      id: 'USR002', name: 'Rajesh Kumar', email: 'rajesh@adnate.com',
-      role: UserRole.ASSET_MANAGER, department: 'IT', team: 'Asset Management',
-      designation: 'Senior Asset Manager', isActive: true, joinDate: '2023-03-10'
-    },
-    {
-      id: 'USR003', name: 'Priya Sharma', email: 'priya@adnate.com',
-      role: UserRole.ALLOCATION_TEAM, department: 'IT', team: 'Asset Allocation',
-      designation: 'Asset Allocation Specialist', isActive: true, joinDate: '2023-05-20'
-    },
-    {
-      id: 'USR004', name: 'Suresh Patel', email: 'suresh@adnate.com',
-      role: UserRole.TEAM_LEAD, department: 'Engineering', team: 'Frontend',
-      designation: 'Team Lead', isActive: true, joinDate: '2022-08-01',
-      managerId: 'USR002'
-    },
-    {
-      id: 'USR005', name: 'Ananya Desai', email: 'ananya@adnate.com',
-      role: UserRole.EMPLOYEE, department: 'Engineering', team: 'Frontend',
-      designation: 'Software Engineer', isActive: true, joinDate: '2024-01-10',
-      managerId: 'USR004'
-    }
-  ];
+
 
   constructor(private router: Router, private http: HttpClient, private hs: HeroService) {
     const savedUser = localStorage.getItem('currentUser');
@@ -53,20 +25,85 @@ export class AuthService {
   }
 
   login(email: string, password: string): Observable<User> {
-    // Mock login logic
-    const user = this.mockUsers.find(u => u.email === email);
-    if (user) {
-      return of(user).pipe(
-        delay(1000),
-        tap(u => {
-          localStorage.setItem('currentUser', JSON.stringify(u));
-          this.currentUserSubject.next(u);
+    return new Observable<User>(observer => {
+      this.executeLogin(email, password)
+        .then(user => {
+          console.log('Login successful, user data obtained:', user);
+          localStorage.setItem('currentUser', JSON.stringify(user));
+          this.currentUserSubject.next(user);
+          observer.next(user);
+          observer.complete();
         })
-      );
-    }
-    return new Observable(subscriber => {
-      setTimeout(() => subscriber.error({ message: 'Invalid credentials' }), 1000);
+        .catch(err => {
+          console.error('Login flow failed overall:', err);
+          observer.error(err);
+        });
     });
+  }
+
+  private async executeLogin(email: string, password: string): Promise<User> {
+    // 1. SSO Authenticate
+    await this.ssoAuthenticate(email, password);
+
+    // 2. Fetch User Details from DB
+    return await this.getUserFromDB(email);
+  }
+
+  private async getUserFromDB(email: string): Promise<User> {
+    const getAllUsersSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getallusers xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    console.log('Step 2: Fetching all users from DB...');
+    const resp = await this.hs.ajax(null, null, {}, getAllUsersSoap);
+    console.log('Step 2: DB response received:', resp);
+
+    let usersData = this.hs.xmltojson(resp, 'm_users');
+    console.log('Step 2: Parsed users data:', usersData);
+
+    if (!usersData) {
+      console.warn('Step 2: No user records found in database.');
+      throw new Error('User record not found in database.');
+    }
+
+    // Ensure it's an array for searching
+    if (!Array.isArray(usersData)) {
+      usersData = [usersData];
+    }
+
+    // Find the user by local search (since Getallusers returns the whole list)
+    const userData = usersData.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+
+    if (!userData) {
+      console.warn('Step 2: User record not found in the list for email:', email);
+      throw new Error('User record not found in database.');
+    }
+
+    return {
+      id: userData.email,
+      name: userData.name,
+      email: userData.email,
+      role: this.mapRoleIdToUserRole(userData.role_id),
+      department: userData.department || 'IT',
+      team: userData.team || 'General',
+      designation: userData.designation || 'Specialist',
+      isActive: userData.status === 'Active',
+      joinDate: userData.created_at || new Date().toISOString().split('T')[0]
+    };
+  }
+
+  private mapRoleIdToUserRole(roleId: string): UserRole {
+    switch (roleId) {
+      case 'rol_01': return UserRole.ADMINISTRATOR;
+      case 'rol_02': return UserRole.TEAM_LEAD;
+      case 'rol_03': return UserRole.EMPLOYEE;
+      case 'rol_04': return UserRole.ASSET_MANAGER;
+      case 'rol_05': return UserRole.ALLOCATION_TEAM;
+      default: return UserRole.EMPLOYEE;
+    }
   }
 
   /**
@@ -107,14 +144,16 @@ export class AuthService {
 
       this.clearAllCookies();
 
-      if (typeof $ !== 'undefined' && $?.cordys?.authentication?.sso) {
-        // Use the SSO logout if available
-        if (typeof $.cordys.authentication.sso.logout === 'function') {
-          $.cordys.authentication.sso.logout();
-        } else if (typeof $.cordys.authentication.logout === 'function') {
+      /* 
+      // Commented out as this triggers a GET request to Gateway.wcp causing 500 errors in this environment
+      if (typeof $ !== 'undefined' && $.cordys?.authentication) {
+        if (typeof $.cordys.authentication.logout === 'function') {
           $.cordys.authentication.logout();
+        } else if ($.cordys.authentication.sso && typeof $.cordys.authentication.sso.logout === 'function') {
+          $.cordys.authentication.sso.logout();
         }
       }
+      */
 
       console.log('SSO session cleared successfully.');
     } catch (e) {
@@ -124,12 +163,36 @@ export class AuthService {
 
   private clearAllCookies(): void {
     const cookies = document.cookie.split(";");
+    const domain = window.location.hostname;
+    const path = '/';
+
+    console.log('Performing aggressive session purge...');
+
+    // Explicitly target known Cordys and Session cookies
+    const targetCookies = ['SAMLart', 'ct', 'saml', 'JSESSIONID', 'CordysUser'];
+
     for (let i = 0; i < cookies.length; i++) {
       const cookie = cookies[i];
       const eqPos = cookie.indexOf("=");
       const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
-      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+
+      // Standard expiry
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=" + path;
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=" + path + ";domain=" + domain;
+
+      // Try without leading dot for domain if applicable
+      if (domain.startsWith('.')) {
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=" + path + ";domain=" + domain.substring(1);
+      }
     }
+
+    // Force clear known targets just in case they weren't in the enumerable list
+    targetCookies.forEach(name => {
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=" + path;
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=" + path + ";domain=" + domain;
+    });
+
+    console.log('Cookies and local session artifacts cleared.');
   }
 
   register(userData: any): Observable<User> {
@@ -255,8 +318,7 @@ export class AuthService {
         joinDate: new Date().toISOString().split('T')[0]
       };
 
-      //   this.mockUsers.push(newUser);
-      //    localStorage.setItem('currentUser', JSON.stringify(newUser));
+      //   localStorage.setItem('currentUser', JSON.stringify(newUser));
       //  this.currentUserSubject.next(newUser);
 
       return newUser;
@@ -284,9 +346,17 @@ export class AuthService {
 
       this.clearAllCookies();
 
-      if (typeof $ !== 'undefined' && $?.cordys?.authentication?.sso) {
-        $.cordys.authentication.sso.logout();
+      /* 
+      // Commented out as this triggers a GET request to Gateway.wcp causing 500 errors in this environment
+      if (typeof $ !== 'undefined' && $.cordys?.authentication) {
+        console.log('Executing Cordys logout...');
+        if (typeof $.cordys.authentication.logout === 'function') {
+          $.cordys.authentication.logout();
+        } else if ($.cordys.authentication.sso && typeof $.cordys.authentication.sso.logout === 'function') {
+          $.cordys.authentication.sso.logout();
+        }
       }
+      */
 
       this.currentUserSubject.next(null);
       this.router.navigate(['/auth/login']);
@@ -300,16 +370,7 @@ export class AuthService {
     return this.currentUserSubject.value;
   }
 
-  switchRole(role: UserRole): void {
-    const user = this.mockUsers.find(u => u.role === role);
-    if (user) {
-      this.currentUserSubject.next(user);
-    }
-  }
 
-  getAllRoleUsers(): User[] {
-    return this.mockUsers;
-  }
 
   getInitials(name: string): string {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
