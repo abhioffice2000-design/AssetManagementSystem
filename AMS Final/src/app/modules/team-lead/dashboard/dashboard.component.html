@@ -1,5 +1,5 @@
 <div class="dashboard-container">
-  <div class="grid grid-3 gap-24 mb-24">
+  <div class="grid grid-3 gap-8 mb-16">
     <app-stat-card label="Team Size" [value]="teamSize" icon="groups" color="blue"></app-stat-card>
     <app-stat-card label="Team Assets" [value]="teamAssets" icon="devices" color="green"></app-stat-card>
     <app-stat-card label="Pending Approvals" [value]="pendingApprovalsCount" icon="fact_check" color="amber"></app-stat-card>
@@ -25,13 +25,11 @@
               <th>Urgency</th>
               <th>Status</th>
               <th>Date</th>
+              <th class="text-center">Action</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let req of paginatedRequests" 
-                (click)="selectRequest(req)" 
-                class="clickable-row"
-                [class.selected]="selectedRequest?.id === req.id">
+            <tr *ngFor="let req of paginatedRequests">
               <td><strong>{{req.requestNumber}}</strong></td>
               <td>{{req.requesterName}}</td>
               <td>{{req.category}}</td>
@@ -51,9 +49,24 @@
                 </span>
               </td>
               <td>
-                <span class="badge badge-warning">{{req.status}}</span>
+                <span class="badge" 
+                      [ngClass]="{
+                        'badge-warning': req.status === 'Pending' || req.status === 'In Progress', 
+                        'badge-success': req.status === 'Approved' || req.status === 'Completed',
+                        'badge-danger': req.status === 'Rejected' || req.status === 'Cancelled'
+                      }">
+                  {{req.status}}
+                </span>
               </td>
-              <td>{{req.requestDate | date}}</td>
+              <td>{{req.requestDate | date:'mediumDate'}}</td>
+              <td class="text-center">
+                <button *ngIf="req.status === 'Pending'" 
+                        (click)="selectRequest(req)" 
+                        class="btn btn-icon btn-primary"
+                        title="Process Request">
+                  <span class="material-icons-outlined" style="font-size: 18px;">edit</span>
+                </button>
+              </td>
             </tr>
             <tr *ngIf="teamRequests.length === 0">
               <td colspan="7" class="text-center text-muted m-24 p-24">

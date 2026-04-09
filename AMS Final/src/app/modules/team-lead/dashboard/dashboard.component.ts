@@ -4,6 +4,8 @@ import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { AssetRequest, ApprovalStage } from '../../../core/models/request.model';
+import { HeroService } from '../../../core/services/hero.service';
+
 
 @Component({
   selector: 'app-lead-dashboard',
@@ -21,32 +23,34 @@ export class LeadDashboardComponent implements OnInit {
   currentPage = 1;
   pageSize = 5;
   searchTerm = '';
+  data: any = { table: [] };
+  user: any;
+  userDetails: any;
 
   constructor(
     private authService: AuthService,
     private userService: UserService,
     private assetService: AssetService,
-    private requestService: RequestService
-  ) {}
+    private hs: HeroService
+  ) { }
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
     if (!user) return;
     
-    this.teamSize = this.userService.getUsersByTeam(user.team).length;
-    this.teamAssets = this.assetService.getAssetsByTeam(user.team).length;
+    const activeTeam = user.team || 'General';
     
-    // Count pending approvals specifically for the stat card
-    this.pendingApprovalsCount = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD).length;
+    // Maintain existing logic for team size and assets as requested
+    this.teamSize = this.userService.getUsersByTeam(activeTeam).length;
+    this.teamAssets = this.assetService.getAssetsByTeam(activeTeam).length;
     
-    // Get ALL requests for this team lead's team for the table
-    this.teamRequests = this.requestService.getRequests().filter(req => req.requesterTeam === user.team);
+    this.getuser();
   }
 
   get filteredRequests(): AssetRequest[] {
     if (!this.searchTerm.trim()) return this.teamRequests;
     const term = this.searchTerm.toLowerCase();
-    return this.teamRequests.filter(req => 
+    return this.teamRequests.filter(req =>
       req.requestNumber.toLowerCase().includes(term) ||
       req.requesterName.toLowerCase().includes(term) ||
       req.category.toLowerCase().includes(term) ||
@@ -62,6 +66,29 @@ export class LeadDashboardComponent implements OnInit {
 
   get totalPages(): number {
     return Math.ceil(this.filteredRequests.length / this.pageSize) || 1;
+  }
+
+  getuser() {
+    this.hs.ajax('GetUserDetails', 'http://schemas.cordys.com/UserManagement/1.0/User', {}
+    ).then((resp: any) => {
+      this.user = this.hs.xmltojson(resp, "User");
+      this.getuserdetails();
+    }).catch(err => {
+      console.error("Error fetching user details in getuser:", err);
+    });
+  }
+  getuserdetails() {
+    // Ensuring we have a valid username from the first API call
+    const targetUsername = this.user?.UserName || this.user?.username || '';
+    
+    this.hs.ajax('Getuserbyusername', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { username: targetUsername } // Capitalized 'Username' is the standard for Cordys DB operations
+    ).then((resp: any) => {
+      this.userDetails = this.hs.xmltojson(resp, "m_users");
+      this.getallrequests();
+    }).catch(err => {
+      console.error("Error fetching detailed user info in getuserdetails:", err);
+    });
   }
 
   changePage(page: number): void {
@@ -98,5 +125,39 @@ export class LeadDashboardComponent implements OnInit {
   onSearch(event: Event) {
     this.searchTerm = (event.target as HTMLInputElement).value;
     this.currentPage = 1;
+  }
+  getallrequests() {
+    this.hs.ajax('GetAllProjectRequests', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { project_id: this.userDetails.project_id }
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, "t_asset_requests");
+      const rawData = Array.isArray(result) ? result : [result];
+
+      // Map database fields to the AssetRequest interface fields used in the template
+      this.teamRequests = rawData.map((item: any) => {
+        const userInfo = item.m_users || {};
+        return {
+          id: item.request_id || '',
+          requestNumber: item.request_id || '', // Using request_id as requestNumber
+          requesterName: userInfo.name || 'User',
+          requesterTeam: userInfo.team || '',
+          category: item.asset_type || '',
+          assetType: item.asset_type || '',
+          urgency: item.urgency || 'Medium',
+          status: item.status || 'Pending',
+          requestDate: item.created_at || '',
+          currentStage: 'Pending' // Initial default
+        } as any;
+      });
+
+      this.data.table = rawData;
+      
+      // Calculate live pending count from the API data
+      this.pendingApprovalsCount = this.teamRequests.filter(r => r.status === 'Pending').length;
+      
+      console.log("Mapped team requests:", this.teamRequests);
+    }).catch(err => {
+      console.error("Error fetching requests:", err);
+    });
   }
 }

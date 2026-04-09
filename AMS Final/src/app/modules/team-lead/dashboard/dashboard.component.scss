@@ -1,4 +1,14 @@
 /* Styles for lead dashboard */
+.dashboard-container {
+  overflow: hidden;
+  height: calc(100vh - 80px); /* Adjust to fit without scrolling */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 
 .table-custom-bordered {
   border: none;
