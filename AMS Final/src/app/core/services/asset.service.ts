@@ -27,6 +27,153 @@ export class AssetService {
 
   constructor(private hs: HeroService) {}
 
+  // Stores raw asset detail records from Getassetdetails (for "Provide Asset" dropdown)
+  private assetDetailRecords: any[] = [];
+
+  /**
+   * Fetches asset details from the Cordys SOAP service (Getassetdetails).
+   * Used for the "Provide Asset" dropdown — returns lightweight asset records.
+   */
+  async fetchAssetDetailsFromService(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getassetdetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in Getassetdetails response');
+        this.assetDetailRecords = [];
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      this.assetDetailRecords = tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.m_assets || tuple?.m_assets || tuple;
+        return {
+          asset_id: data?.asset_id || '',
+          asset_name: data?.asset_name || '',
+          type_id: data?.type_id || '',
+          sub_category_id: data?.sub_category_id || '',
+          serial_number: this.getNullableValue(data?.serial_number) || '',
+          purchase_date: data?.purchase_date || '',
+          warranty_expiry: data?.warranty_expiry || '',
+          status: data?.status || ''
+        };
+      });
+
+      console.log(`Fetched ${this.assetDetailRecords.length} asset details from Getassetdetails`);
+      return [...this.assetDetailRecords];
+    } catch (err) {
+      console.error('Failed to fetch asset details from Getassetdetails:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Returns the stored asset detail records from the last Getassetdetails call.
+   */
+  getAssetDetailRecords(): any[] {
+    return [...this.assetDetailRecords];
+  }
+
+  /**
+   * Finds a specific asset detail record by asset_id.
+   */
+  getAssetDetailById(assetId: string): any | undefined {
+    return this.assetDetailRecords.find(a => a.asset_id === assetId);
+  }
+
+   /**
+    * Fetches allocated asset details from the Cordys SOAP service (Getallocatedasset).
+    */
+   async fetchAllocatedAssetsFromService(): Promise<any[]> {
+     const soapRequest = `
+ <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+   <SOAP:Body>
+     <Getallocatedasset xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+   </SOAP:Body>
+ </SOAP:Envelope>`.trim();
+ 
+     try {
+       const response = await this.hs.ajax(null, null, {}, soapRequest);
+       const tuples = this.hs.xmltojson(response, 'tuple');
+ 
+       if (!tuples) {
+         console.warn('No tuples found in Getallocatedasset response');
+         return [];
+       }
+ 
+       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+ 
+       const allocatedAssets = tupleArray.map((tuple: any) => {
+         const data = tuple?.old?.m_assets || tuple?.m_assets || tuple;
+         return {
+           asset_id: data?.asset_id || '',
+           asset_name: data?.asset_name || '',
+           type_id: data?.type_id || '',
+           sub_category_id: data?.sub_category_id || '',
+           serial_number: this.getNullableValue(data?.serial_number) || '',
+           purchase_date: data?.purchase_date || '',
+           warranty_expiry: data?.warranty_expiry || '',
+           status: data?.status || ''
+         };
+       });
+ 
+       console.log(`Fetched ${allocatedAssets.length} allocated assets from Getallocatedasset`);
+       return allocatedAssets;
+     } catch (err) {
+       console.error('Failed to fetch allocated assets from Getallocatedasset:', err);
+       throw err;
+     }
+   }
+ 
+   /**
+    * Fetches asset counts grouped by type from the Cordys SOAP service (GetAssetTypeWiseCount).
+    * Returns: [{ type_id, type_name, asset_count }]
+   */
+  async fetchAssetTypeWiseCount(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetTypeWiseCount xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetAssetTypeWiseCount response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      const result = tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.m_asset_types || tuple?.m_asset_types || tuple;
+        return {
+          type_id: data?.type_id || '',
+          type_name: data?.type_name || '',
+          asset_count: parseInt(data?.asset_count, 10) || 0
+        };
+      });
+
+      console.log(`Fetched ${result.length} type-wise counts from GetAssetTypeWiseCount`);
+      return result;
+    } catch (err) {
+      console.error('Failed to fetch asset type-wise count:', err);
+      throw err;
+    }
+  }
+
   /**
    * Fetches all asset details from the Cordys SOAP service (Getallassetdetails).
    * Parses the XML/JSON response and maps each tuple into the Asset model.

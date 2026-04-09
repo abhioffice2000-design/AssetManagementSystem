@@ -4,7 +4,6 @@ import { AssetRequest, ApprovalStage, RequestStatus, RequestUrgency } from '../.
 import { AuthService } from '../../../core/services/auth.service';
 import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
-import { Asset, AssetStatus } from '../../../core/models/asset.model';
 
 @Component({
   selector: 'app-asset-requests',
@@ -21,7 +20,7 @@ export class AssetRequestsComponent implements OnInit {
   selectedUrgency = '';
   statuses = Object.values(RequestStatus);
   urgencies = Object.values(RequestUrgency);
-  availableAssets: Asset[] = [];
+  availableAssets: any[] = [];
   selectedAssetId = '';
 
   showActionModal = false;
@@ -46,19 +45,27 @@ export class AssetRequestsComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadRequests();
-    this.availableAssets = this.assetService.getAssetsByStatus(AssetStatus.AVAILABLE);
+    this.loadAllData();
   }
 
-  async loadRequests(): Promise<void> {
+  async loadAllData(): Promise<void> {
     this.isLoading = true;
     this.loadError = '';
 
     try {
-      const requests = await this.requestService.fetchPendingRequestsFromService();
-      this.allRequests = requests;
-      this.requestStats = this.requestService.getRequestStats();
-      this.pendingRequests = this.requestService.getPendingApprovals('', ApprovalStage.ASSET_MANAGER);
+      // Fetch all three in parallel: all requests, pending requests, and available assets
+      const [allReqs, pendingReqs] = await Promise.all([
+        this.requestService.fetchAllRequestsFromService(),
+        this.requestService.fetchPendingRequestsFromService(),
+        this.loadAvailableAssets()
+      ]);
+
+      this.allRequests = allReqs;
+      this.pendingRequests = pendingReqs;
+
+      // Stats from all requests (total count across all statuses)
+      this.requestStats = this.requestService.getAllRequestStats();
+
       this.applyFilters();
     } catch (err: any) {
       console.error('Failed to load requests:', err);
@@ -68,6 +75,17 @@ export class AssetRequestsComponent implements OnInit {
       this.pendingRequests = [];
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  async loadAvailableAssets(): Promise<void> {
+    try {
+      const allAssets = await this.assetService.fetchAssetDetailsFromService();
+      this.availableAssets = allAssets.filter(a => a.status === 'Available');
+      console.log(`Loaded ${this.availableAssets.length} available assets for dropdown`);
+    } catch (err) {
+      console.error('Failed to load available assets:', err);
+      this.availableAssets = [];
     }
   }
 
@@ -149,7 +167,7 @@ export class AssetRequestsComponent implements OnInit {
     }
 
     this.closeActionModal();
-    this.loadRequests();
+    this.loadAllData();
   }
 
   getTimeSince(dateStr: string): string {
@@ -212,14 +230,14 @@ export class AssetRequestsComponent implements OnInit {
       return;
     }
 
-    const asset = this.availableAssets.find(a => a.id === assetId);
+    const asset = this.availableAssets.find(a => a.asset_id === assetId);
     if (asset) {
-      this.detailRequest.assignedAssetId = asset.assetTag;
-      this.detailRequest.assignedTypeId = asset.type;
-      this.detailRequest.assignedSubCategoryId = asset.subCategory || '—';
-      this.detailRequest.assignedSerial = asset.serialNumber;
-      this.detailRequest.assignedPurchaseDate = asset.purchaseDate || '—';
-      this.detailRequest.assignedWarrantyExpiry = asset.warrantyExpiry || '—';
+      this.detailRequest.assignedAssetId = asset.asset_id;
+      this.detailRequest.assignedTypeId = asset.type_id;
+      this.detailRequest.assignedSubCategoryId = asset.sub_category_id || '—';
+      this.detailRequest.assignedSerial = asset.serial_number || '—';
+      this.detailRequest.assignedPurchaseDate = asset.purchase_date || '—';
+      this.detailRequest.assignedWarrantyExpiry = asset.warranty_expiry || '—';
     }
   }
 }

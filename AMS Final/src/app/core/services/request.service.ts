@@ -139,6 +139,8 @@ export class RequestService {
       comments: []
     }
   ];
+  // Stores all requests from Getallrequest (separate from pending)
+  private allRequestsList: AssetRequest[] = [];
 
   /**
    * Fetches pending asset requests from the Cordys SOAP service (Getpendingrequest).
@@ -175,6 +177,62 @@ export class RequestService {
       console.error('Failed to fetch requests from Getpendingrequest:', err);
       throw err;
     }
+  }
+
+  /**
+   * Fetches ALL asset requests from the Cordys SOAP service (Getallrequest).
+   * Used for the "All Requests" tab — returns requests of every status.
+   */
+  async fetchAllRequestsFromService(): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getallrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in Getallrequest response');
+        this.allRequestsList = [];
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      this.allRequestsList = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
+
+      console.log(`Fetched ${this.allRequestsList.length} total requests from Getallrequest`);
+      return [...this.allRequestsList];
+    } catch (err) {
+      console.error('Failed to fetch requests from Getallrequest:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Returns the stored all-requests list.
+   */
+  getAllRequests(): AssetRequest[] {
+    return [...this.allRequestsList];
+  }
+
+  /**
+   * Returns stats computed from all requests (not just pending).
+   */
+  getAllRequestStats() {
+    const list = this.allRequestsList;
+    return {
+      total: list.length,
+      pending: list.filter(r => r.status === RequestStatus.PENDING).length,
+      approved: list.filter(r => r.status === RequestStatus.APPROVED).length,
+      rejected: list.filter(r => r.status === RequestStatus.REJECTED).length,
+      completed: list.filter(r => r.status === RequestStatus.COMPLETED).length,
+      inProgress: list.filter(r => r.status === RequestStatus.IN_PROGRESS).length
+    };
   }
 
   /**
@@ -215,7 +273,7 @@ export class RequestService {
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
       assetType: reqData?.asset_type || '',
-      category: reqData?.asset_type || '',
+      category: this.getNullableValue(reqData?.category) || '',
       subCategory: this.getNullableValue(reqData?.sub_category),
       justification: reqData?.reason || '',
       urgency: urgency,
