@@ -1,0 +1,200 @@
+<div class="tickets-page" [class.drawer-open]="drawerOpen">
+
+  <!-- ─── Main Content ─────────────────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h2>Ticket Issue</h2>
+        <p>Manage and track asset allocation requests</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-pill unresolved-pill">
+          <span class="material-icons">pending_actions</span>
+          <span>{{ unresolvedTickets.length }} Unresolved</span>
+        </div>
+        <div class="stat-pill resolved-pill">
+          <span class="material-icons">task_alt</span>
+          <span>{{ resolvedTickets.length }} Resolved</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs-navigation">
+      <button [class.active]="activeTab === 'unresolved'" (click)="setTab('unresolved')">
+        <span class="material-icons">pending_actions</span>
+        Unresolved
+        <span class="tab-count" *ngIf="unresolvedTickets.length > 0">{{ unresolvedTickets.length }}</span>
+      </button>
+      <button [class.active]="activeTab === 'resolved'" (click)="setTab('resolved')">
+        <span class="material-icons">task_alt</span>
+        Resolved
+        <span class="tab-count resolved-count" *ngIf="resolvedTickets.length > 0">{{ resolvedTickets.length }}</span>
+      </button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper" *ngIf="!loading; else loadingTemplate">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticket ID</th>
+            <th>Requestor</th>
+            <th>Asset Type</th>
+            <th>Status</th>
+            <th>Request Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let ticket of filteredTickets" [class.row-selected]="selectedTicket?.ticketId === ticket.ticketId">
+            <td class="ticket-id">{{ ticket.ticketId }}</td>
+            <td>
+              <div class="user-cell">
+                <div class="avatar">{{ ticket.requestorName.charAt(0) }}</div>
+                <span>{{ ticket.requestorName }}</span>
+              </div>
+            </td>
+            <td>{{ ticket.assetType }}</td>
+            <td>
+              <span class="status-badge" [ngClass]="getStatusClass(ticket.status)">
+                {{ ticket.status }}
+              </span>
+            </td>
+            <td>{{ ticket.assignedDate | date:'mediumDate' }}</td>
+            <td>
+              <div class="action-group">
+                <button class="btn-view" (click)="openDetails(ticket)">
+                  <span class="material-icons">visibility</span>
+                  View Details
+                </button>
+                <button *ngIf="activeTab === 'unresolved'" class="btn-allocate" (click)="allocate(ticket)">
+                  <span class="material-icons">check_circle</span>
+                </button>
+                <button *ngIf="activeTab === 'unresolved'" class="btn-reject" (click)="reject(ticket)">
+                  <span class="material-icons">cancel</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="filteredTickets.length === 0">
+            <td colspan="6" class="no-data">
+              <span class="material-icons">inbox</span>
+              <p>No {{ activeTab }} tickets found.</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- ─── Details Drawer ───────────────────────────────────────────────────── -->
+  <div class="drawer-overlay" *ngIf="drawerOpen" (click)="closeDetails()"></div>
+
+  <div class="details-drawer" [class.open]="drawerOpen">
+    <div class="drawer-header" *ngIf="selectedTicket">
+      <div>
+        <span class="drawer-label">Ticket Details</span>
+        <h3>{{ selectedTicket.ticketId }}</h3>
+      </div>
+      <button class="close-btn" (click)="closeDetails()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+
+    <div class="drawer-body" *ngIf="selectedTicket">
+
+      <!-- Status Banner -->
+      <div class="status-banner" [ngClass]="getStatusClass(selectedTicket.status)">
+        <span class="material-icons">info</span>
+        {{ selectedTicket.status }}
+      </div>
+
+      <!-- Detail Rows -->
+      <div class="detail-section">
+        <h4>Request Info</h4>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Ticket ID</span>
+            <span class="detail-value mono">{{ selectedTicket.ticketId }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Requestor Name</span>
+            <span class="detail-value">{{ selectedTicket.requestorName }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Request Date</span>
+            <span class="detail-value">{{ selectedTicket.assignedDate | date:'longDate' }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Team Lead</span>
+            <span class="detail-value">{{ selectedTicket.teamLeadName }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Asset Manager</span>
+            <span class="detail-value">{{ selectedTicket.assetManagerName }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>Asset Info</h4>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Asset Type</span>
+            <span class="detail-value">{{ selectedTicket.assetType }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Subcategory</span>
+            <span class="detail-value">{{ selectedTicket.subCategory }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Asset Name</span>
+            <span class="detail-value">{{ selectedTicket.assetName }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Asset ID</span>
+            <span class="detail-value mono">{{ selectedTicket.assetId }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Warranty Expiry</span>
+            <span class="detail-value" [class.expiring-text]="isExpiringSoon(selectedTicket.warrantyExpiry)">
+              {{ selectedTicket.warrantyExpiry !== '—' ? (selectedTicket.warrantyExpiry | date:'mediumDate') : '—' }}
+              <span class="expiring-tag" *ngIf="isExpiringSoon(selectedTicket.warrantyExpiry)">Expiring Soon</span>
+            </span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Availability Status</span>
+            <span class="avail-badge" [ngClass]="getAvailClass(selectedTicket.availabilityStatus)">
+              {{ selectedTicket.availabilityStatus }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons inside Drawer -->
+      <div class="drawer-actions" *ngIf="activeTab === 'unresolved'">
+        <button class="drawer-btn-allocate" (click)="allocate(selectedTicket); closeDetails()">
+          <span class="material-icons">check_circle</span>
+          Allocate
+        </button>
+        <button class="drawer-btn-reject" (click)="reject(selectedTicket); closeDetails()">
+          <span class="material-icons">cancel</span>
+          Reject
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<ng-template #loadingTemplate>
+  <div class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading tickets...</p>
+  </div>
+</ng-template>
