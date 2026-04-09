@@ -3,6 +3,7 @@ export interface AssetRequest {
   requestNumber: string;
   requesterId: string;
   requesterName: string;
+  requesterEmail?: string;
   requesterDepartment: string;
   requesterTeam: string;
   assetType: string;
@@ -21,6 +22,15 @@ export interface AssetRequest {
   allocatedAssetId?: string;
   comments: RequestComment[];
   requestType: RequestType;
+  assignedAssetId?: string;
+  assignedTypeId?: string;
+  assignedSubCategoryId?: string;
+  assignedSerial?: string;
+  assignedPurchaseDate?: string;
+  assignedWarrantyExpiry?: string;
+  requesterStatus?: string;
+  requesterProject?: string;
+  requesterRole?: string;
 }
 
 export enum RequestType {

@@ -1,123 +1,14 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
 import { Asset, AssetType, AssetStatus, AssetCondition, AssetCategory } from '../models/asset.model';
+import { HeroService } from './hero.service';
+
+declare var $: any;
 
 @Injectable({ providedIn: 'root' })
 export class AssetService {
-  private assets: Asset[] = [
-    {
-      id: 'AST001', assetTag: 'HW-LAP-001', name: 'Dell Latitude 5540', type: AssetType.HARDWARE,
-      category: 'Laptop', subCategory: 'Business', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
-      location: 'Hyderabad - Floor 3', purchaseDate: '2024-03-15', warrantyExpiry: '2027-03-15',
-      vendor: 'Dell Technologies', serialNumber: 'DL5540-HYD-001', cost: 85000,
-      condition: AssetCondition.GOOD, specifications: 'i7-1365U, 16GB RAM, 512GB SSD'
-    },
-    {
-      id: 'AST002', assetTag: 'HW-LAP-002', name: 'MacBook Pro 14"', type: AssetType.HARDWARE,
-      category: 'Laptop', subCategory: 'Premium', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR004', assignedToName: 'Suresh Patel', department: 'Engineering', team: 'Frontend',
-      location: 'Hyderabad - Floor 3', purchaseDate: '2024-01-10', warrantyExpiry: '2027-01-10',
-      vendor: 'Apple Inc.', serialNumber: 'MBP14-HYD-002', cost: 195000,
-      condition: AssetCondition.GOOD, specifications: 'M3 Pro, 18GB RAM, 512GB SSD'
-    },
-    {
-      id: 'AST003', assetTag: 'HW-MON-001', name: 'Dell UltraSharp U2723QE', type: AssetType.HARDWARE,
-      category: 'Monitor', subCategory: '4K', status: AssetStatus.AVAILABLE,
-      location: 'Hyderabad - Store', purchaseDate: '2024-06-20', warrantyExpiry: '2027-06-20',
-      vendor: 'Dell Technologies', serialNumber: 'DU27-HYD-001', cost: 45000,
-      condition: AssetCondition.NEW
-    },
-    {
-      id: 'AST004', assetTag: 'SW-LIC-001', name: 'Microsoft 365 Business', type: AssetType.SOFTWARE,
-      category: 'Productivity Suite', subCategory: 'License', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
-      location: 'Cloud', purchaseDate: '2024-01-01', warrantyExpiry: '2025-12-31',
-      vendor: 'Microsoft', serialNumber: 'MS365-BUS-001', cost: 12000,
-      condition: AssetCondition.GOOD
-    },
-    {
-      id: 'AST005', assetTag: 'HW-LAP-003', name: 'HP EliteBook 840', type: AssetType.HARDWARE,
-      category: 'Laptop', subCategory: 'Business', status: AssetStatus.AVAILABLE,
-      location: 'Bangalore - Store', purchaseDate: '2024-08-10', warrantyExpiry: '2027-08-10',
-      vendor: 'HP Inc.', serialNumber: 'HPE840-BLR-001', cost: 78000,
-      condition: AssetCondition.NEW, specifications: 'i5-1345U, 16GB RAM, 256GB SSD'
-    },
-    {
-      id: 'AST006', assetTag: 'NW-RTR-001', name: 'Cisco Catalyst 9200', type: AssetType.NETWORK,
-      category: 'Router', subCategory: 'Enterprise', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR003', assignedToName: 'IT Infrastructure', department: 'IT', team: 'Network',
-      location: 'Hyderabad - Server Room', purchaseDate: '2023-11-01', warrantyExpiry: '2026-11-01',
-      vendor: 'Cisco Systems', serialNumber: 'CC9200-HYD-001', cost: 320000,
-      condition: AssetCondition.GOOD
-    },
-    {
-      id: 'AST007', assetTag: 'HW-LAP-004', name: 'Lenovo ThinkPad X1 Carbon', type: AssetType.HARDWARE,
-      category: 'Laptop', subCategory: 'Ultra-Premium', status: AssetStatus.IN_REPAIR,
-      location: 'Hyderabad - Service Center', purchaseDate: '2023-06-15', warrantyExpiry: '2026-06-15',
-      vendor: 'Lenovo', serialNumber: 'LTP-X1C-HYD-001', cost: 165000,
-      condition: AssetCondition.FAIR, specifications: 'i7-1365U, 32GB RAM, 1TB SSD'
-    },
-    {
-      id: 'AST008', assetTag: 'PR-KBD-001', name: 'Logitech MX Keys', type: AssetType.PERIPHERAL,
-      category: 'Keyboard', subCategory: 'Wireless', status: AssetStatus.AVAILABLE,
-      location: 'Hyderabad - Store', purchaseDate: '2024-09-01', warrantyExpiry: '2026-09-01',
-      vendor: 'Logitech', serialNumber: 'LMX-KBD-001', cost: 8500,
-      condition: AssetCondition.NEW
-    },
-    {
-      id: 'AST009', assetTag: 'SW-LIC-002', name: 'JetBrains IntelliJ IDEA', type: AssetType.SOFTWARE,
-      category: 'Development Tools', subCategory: 'IDE License', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR004', assignedToName: 'Suresh Patel', department: 'Engineering', team: 'Frontend',
-      location: 'Cloud', purchaseDate: '2024-04-01', warrantyExpiry: '2025-03-31',
-      vendor: 'JetBrains', serialNumber: 'JB-IDEA-001', cost: 15000,
-      condition: AssetCondition.GOOD
-    },
-    {
-      id: 'AST010', assetTag: 'HW-MON-002', name: 'LG 27UK850-W', type: AssetType.HARDWARE,
-      category: 'Monitor', subCategory: '4K', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
-      location: 'Hyderabad - Floor 3', purchaseDate: '2024-05-10', warrantyExpiry: '2027-05-10',
-      vendor: 'LG Electronics', serialNumber: 'LG27-HYD-002', cost: 38000,
-      condition: AssetCondition.GOOD
-    },
-    {
-      id: 'AST011', assetTag: 'HW-LAP-005', name: 'Dell Inspiron 15', type: AssetType.HARDWARE,
-      category: 'Laptop', subCategory: 'Standard', status: AssetStatus.AVAILABLE,
-      location: 'Chennai - Store', purchaseDate: '2024-10-01', warrantyExpiry: '2027-10-01',
-      vendor: 'Dell Technologies', serialNumber: 'DI15-CHN-001', cost: 55000,
-      condition: AssetCondition.NEW, specifications: 'i5-1235U, 8GB RAM, 256GB SSD'
-    },
-    {
-      id: 'AST012', assetTag: 'FR-DSK-001', name: 'Standing Desk Motorized', type: AssetType.FURNITURE,
-      category: 'Desk', subCategory: 'Motorized', status: AssetStatus.AVAILABLE,
-      location: 'Hyderabad - Store', purchaseDate: '2024-07-15', warrantyExpiry: '2029-07-15',
-      vendor: 'Featherlite', serialNumber: 'FL-DSK-HYD-001', cost: 28000,
-      condition: AssetCondition.NEW
-    },
-    {
-      id: 'AST013', assetTag: 'PR-MSE-001', name: 'Logitech MX Master 3S', type: AssetType.PERIPHERAL,
-      category: 'Mouse', subCategory: 'Wireless', status: AssetStatus.ALLOCATED,
-      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
-      location: 'Hyderabad - Floor 3', purchaseDate: '2024-03-15', warrantyExpiry: '2026-03-15',
-      vendor: 'Logitech', serialNumber: 'LMX-MSE-001', cost: 7500,
-      condition: AssetCondition.GOOD
-    },
-    {
-      id: 'AST014', assetTag: 'SW-LIC-003', name: 'Adobe Creative Cloud', type: AssetType.SOFTWARE,
-      category: 'Design Tools', subCategory: 'License', status: AssetStatus.AVAILABLE,
-      location: 'Cloud', purchaseDate: '2024-01-01', warrantyExpiry: '2025-12-31',
-      vendor: 'Adobe', serialNumber: 'ACC-LIC-003', cost: 35000,
-      condition: AssetCondition.GOOD
-    },
-    {
-      id: 'AST015', assetTag: 'HW-LAP-006', name: 'MacBook Air M2', type: AssetType.HARDWARE,
-      category: 'Laptop', subCategory: 'Standard', status: AssetStatus.RETIRED,
-      location: 'Hyderabad - Store', purchaseDate: '2022-01-10', warrantyExpiry: '2025-01-10',
-      vendor: 'Apple Inc.', serialNumber: 'MBA-M2-HYD-001', cost: 125000,
-      condition: AssetCondition.POOR
-    }
-  ];
+  private assets: Asset[] = [];
+  private assetsLoaded = false;
 
   private categories: AssetCategory[] = [
     { id: 'CAT001', name: 'Laptop', type: AssetType.HARDWARE, subCategories: ['Standard', 'Business', 'Premium', 'Ultra-Premium'], icon: 'laptop_mac' },
@@ -134,8 +25,139 @@ export class AssetService {
     { id: 'CAT012', name: 'Chair', type: AssetType.FURNITURE, subCategories: ['Standard', 'Ergonomic', 'Executive'], icon: 'chair' }
   ];
 
+  constructor(private hs: HeroService) {}
+
+  /**
+   * Fetches all asset details from the Cordys SOAP service (Getallassetdetails).
+   * Parses the XML/JSON response and maps each tuple into the Asset model.
+   */
+  async fetchAssetsFromService(): Promise<Asset[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getallassetdetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in Getallassetdetails response');
+        this.assets = [];
+        this.assetsLoaded = true;
+        return [];
+      }
+
+      // Ensure tuples is always an array (single result comes as object)
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      this.assets = tupleArray.map((tuple: any) => this.mapTupleToAsset(tuple));
+      this.assetsLoaded = true;
+
+      console.log(`Fetched ${this.assets.length} assets from service`);
+      return [...this.assets];
+    } catch (err) {
+      console.error('Failed to fetch assets from Getallassetdetails:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Maps a single tuple from the SOAP response to the Asset interface.
+   * The response structure is: tuple > old > m_assets
+   */
+  private mapTupleToAsset(tuple: any): Asset {
+    const assetData = tuple?.old?.m_assets || tuple?.m_assets || tuple;
+
+    // Extract nested type info
+    const typeInfo = assetData?.m_asset_types || {};
+    const subCatInfo = assetData?.m_asset_subcategories || {};
+
+    // Map type_name to AssetType enum
+    const typeName = typeInfo?.type_name || '';
+    const assetType = this.mapToAssetType(typeName);
+
+    // Map status string to AssetStatus enum
+    const statusStr = assetData?.status || '';
+    const assetStatus = this.mapToAssetStatus(statusStr);
+
+    return {
+      id: assetData?.asset_id || '',
+      assetTag: assetData?.asset_id || '',
+      name: assetData?.asset_name || '',
+      type: assetType,
+      category: subCatInfo?.name || '',
+      subCategory: subCatInfo?.name || '',
+      status: assetStatus,
+      assignedTo: this.getNullableValue(assetData?.assigned_to),
+      assignedToName: this.getNullableValue(assetData?.assigned_to_name),
+      department: this.getNullableValue(assetData?.department),
+      team: this.getNullableValue(assetData?.team),
+      location: this.getNullableValue(assetData?.location) || '',
+      purchaseDate: assetData?.purchase_date || '',
+      warrantyExpiry: assetData?.warranty_expiry || '',
+      vendor: this.getNullableValue(assetData?.vendor) || '',
+      serialNumber: this.getNullableValue(assetData?.serial_number) || '',
+      specifications: this.getNullableValue(assetData?.specifications),
+      cost: parseFloat(assetData?.cost) || 0,
+      condition: this.mapToAssetCondition(this.getNullableValue(assetData?.condition) || 'Good'),
+      notes: this.getNullableValue(assetData?.notes)
+    };
+  }
+
+  /**
+   * Handles null/xsi:nil values from the SOAP response.
+   * Returns undefined if the value is null/nil/empty object.
+   */
+  private getNullableValue(value: any): string | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'object' && value !== null) {
+      // xsi:nil="true" values come as objects with null attribute
+      if (value['@nil'] === 'true' || value['@null'] === 'true') return undefined;
+      return undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') return undefined;
+    return String(value);
+  }
+
+  private mapToAssetType(typeName: string): AssetType {
+    const normalized = typeName.toLowerCase();
+    if (normalized.includes('hardware')) return AssetType.HARDWARE;
+    if (normalized.includes('software')) return AssetType.SOFTWARE;
+    if (normalized.includes('network')) return AssetType.NETWORK;
+    if (normalized.includes('peripheral')) return AssetType.PERIPHERAL;
+    if (normalized.includes('furniture')) return AssetType.FURNITURE;
+    return AssetType.HARDWARE; // default fallback
+  }
+
+  private mapToAssetStatus(status: string): AssetStatus {
+    const normalized = status.toLowerCase();
+    if (normalized.includes('available')) return AssetStatus.AVAILABLE;
+    if (normalized.includes('allocated')) return AssetStatus.ALLOCATED;
+    if (normalized.includes('repair')) return AssetStatus.IN_REPAIR;
+    if (normalized.includes('retired')) return AssetStatus.RETIRED;
+    if (normalized.includes('reserved')) return AssetStatus.RESERVED;
+    return AssetStatus.AVAILABLE; // default fallback
+  }
+
+  private mapToAssetCondition(condition: string): AssetCondition {
+    const normalized = condition.toLowerCase();
+    if (normalized.includes('new')) return AssetCondition.NEW;
+    if (normalized.includes('good')) return AssetCondition.GOOD;
+    if (normalized.includes('fair')) return AssetCondition.FAIR;
+    if (normalized.includes('poor')) return AssetCondition.POOR;
+    if (normalized.includes('damaged')) return AssetCondition.DAMAGED;
+    return AssetCondition.GOOD; // default fallback
+  }
+
   getAssets(): Asset[] {
     return [...this.assets];
+  }
+
+  isLoaded(): boolean {
+    return this.assetsLoaded;
   }
 
   getAssetById(id: string): Asset | undefined {

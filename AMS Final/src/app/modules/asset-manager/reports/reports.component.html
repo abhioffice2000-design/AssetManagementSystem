@@ -1,0 +1,245 @@
+<div class="reports-container">
+  <!-- Page Header -->
+  <div class="page-header animate-slide-up">
+    <div class="page-title">
+      <span class="material-icons-outlined title-icon">assessment</span>
+      <div>
+        <h2>Reports & Analytics</h2>
+        <p class="text-muted">Comprehensive asset and request analytics overview</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary KPI Cards -->
+  <div class="grid grid-4 gap-16 mb-24 animate-slide-up">
+    <div class="kpi-card">
+      <div class="kpi-icon bg-blue">
+        <span class="material-icons-outlined">inventory_2</span>
+      </div>
+      <div class="kpi-content">
+        <span class="kpi-value">{{ assetStats.total }}</span>
+        <span class="kpi-label">Total Assets</span>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon bg-green">
+        <span class="material-icons-outlined">currency_rupee</span>
+      </div>
+      <div class="kpi-content">
+        <span class="kpi-value">{{ formatCurrency(totalAssetValue) }}</span>
+        <span class="kpi-label">Total Value</span>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon bg-purple">
+        <span class="material-icons-outlined">analytics</span>
+      </div>
+      <div class="kpi-content">
+        <span class="kpi-value">{{ formatCurrency(avgAssetCost) }}</span>
+        <span class="kpi-label">Average Cost</span>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon bg-amber">
+        <span class="material-icons-outlined">warning</span>
+      </div>
+      <div class="kpi-content">
+        <span class="kpi-value">{{ warrantyAlerts.length }}</span>
+        <span class="kpi-label">Warranty Alerts</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Distribution Charts Row -->
+  <div class="grid grid-2 gap-24 mb-24">
+    <!-- Asset Type Distribution -->
+    <div class="card chart-card animate-slide-up">
+      <div class="card-header">
+        <h3>
+          <span class="material-icons-outlined">donut_large</span>
+          Asset Type Distribution
+        </h3>
+      </div>
+      <div class="card-body">
+        <div class="bar-chart">
+          <div class="bar-row" *ngFor="let item of typeDistribution">
+            <div class="bar-label">
+              <span class="material-icons-outlined bar-icon" [style.color]="getTypeColor(item.type)">
+                {{ getTypeIcon(item.type) }}
+              </span>
+              <span>{{ item.type }}</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" [style.width.%]="item.percentage"
+                [style.background]="getTypeColor(item.type)">
+              </div>
+            </div>
+            <div class="bar-value">
+              <span class="bar-count">{{ item.count }}</span>
+              <span class="bar-pct">({{ item.percentage }}%)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Asset Status Distribution -->
+    <div class="card chart-card animate-slide-up">
+      <div class="card-header">
+        <h3>
+          <span class="material-icons-outlined">pie_chart</span>
+          Asset Status Breakdown
+        </h3>
+      </div>
+      <div class="card-body">
+        <div class="status-grid">
+          <div class="status-item" *ngFor="let item of statusDistribution">
+            <div class="status-dot" [style.background]="item.color"></div>
+            <div class="status-info">
+              <span class="status-name">{{ item.status }}</span>
+              <span class="status-count">{{ item.count }} assets</span>
+            </div>
+            <div class="status-percentage">
+              <div class="progress-ring">
+                <svg viewBox="0 0 36 36">
+                  <path class="progress-bg"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path class="progress-fill" [style.stroke]="item.color"
+                    [attr.stroke-dasharray]="item.percentage + ', 100'"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+              </div>
+              <span class="pct-text">{{ item.percentage }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Assets & Request Summary -->
+  <div class="grid grid-2 gap-24 mb-24">
+    <!-- Top 5 Most Valuable Assets -->
+    <div class="card animate-slide-up">
+      <div class="card-header">
+        <h3>
+          <span class="material-icons-outlined">trending_up</span>
+          Top 5 Highest Value Assets
+        </h3>
+      </div>
+      <div class="card-body p-0">
+        <div class="top-asset-item" *ngFor="let asset of topAssets; let i = index">
+          <span class="rank-badge">#{{ i + 1 }}</span>
+          <div class="top-asset-info">
+            <span class="top-asset-name">{{ asset.name }}</span>
+            <span class="top-asset-meta">{{ asset.assetTag }} · {{ asset.vendor }}</span>
+          </div>
+          <span class="top-asset-cost">{{ formatCurrency(asset.cost) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Request Summary -->
+    <div class="card animate-slide-up">
+      <div class="card-header">
+        <h3>
+          <span class="material-icons-outlined">assignment</span>
+          Request Summary
+        </h3>
+      </div>
+      <div class="card-body">
+        <div class="request-stats-grid">
+          <div class="req-stat-item">
+            <span class="req-stat-value text-blue">{{ requestStats.total }}</span>
+            <span class="req-stat-label">Total</span>
+          </div>
+          <div class="req-stat-item">
+            <span class="req-stat-value text-amber">{{ requestStats.pending }}</span>
+            <span class="req-stat-label">Pending</span>
+          </div>
+          <div class="req-stat-item">
+            <span class="req-stat-value text-green">{{ requestStats.approved }}</span>
+            <span class="req-stat-label">Approved</span>
+          </div>
+          <div class="req-stat-item">
+            <span class="req-stat-value text-red">{{ requestStats.rejected }}</span>
+            <span class="req-stat-label">Rejected</span>
+          </div>
+          <div class="req-stat-item">
+            <span class="req-stat-value text-teal">{{ requestStats.completed }}</span>
+            <span class="req-stat-label">Completed</span>
+          </div>
+          <div class="req-stat-item">
+            <span class="req-stat-value text-purple">{{ requestStats.inProgress }}</span>
+            <span class="req-stat-label">In Progress</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Team Holdings & Warranty Alerts -->
+  <div class="grid grid-2 gap-24 mb-24">
+    <!-- Team-wise Holdings -->
+    <div class="card animate-slide-up">
+      <div class="card-header">
+        <h3>
+          <span class="material-icons-outlined">groups</span>
+          Team-wise Asset Holdings
+        </h3>
+      </div>
+      <div class="card-body p-0">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Department</th>
+              <th>Team</th>
+              <th>Assets</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let holding of teamHoldings">
+              <td>{{ holding.department }}</td>
+              <td>{{ holding.team }}</td>
+              <td><span class="count-badge">{{ holding.count }}</span></td>
+              <td class="value-cell">{{ formatCurrency(holding.value) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="empty-state" *ngIf="teamHoldings.length === 0">
+          <p class="text-muted">No team holdings data available</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Warranty Alerts -->
+    <div class="card animate-slide-up">
+      <div class="card-header">
+        <h3>
+          <span class="material-icons-outlined text-amber">security</span>
+          Upcoming Warranty Expirations
+        </h3>
+      </div>
+      <div class="card-body p-0">
+        <div class="warranty-item" *ngFor="let asset of warrantyAlerts" [ngClass]="getExpiryUrgency(asset.warrantyExpiry)">
+          <div class="warranty-info">
+            <span class="warranty-name">{{ asset.name }}</span>
+            <span class="warranty-tag">{{ asset.assetTag }}</span>
+          </div>
+          <div class="warranty-date">
+            <span class="material-icons-outlined">event</span>
+            <span>{{ asset.warrantyExpiry }}</span>
+          </div>
+          <span class="warranty-days">
+            {{ getDaysUntilExpiry(asset.warrantyExpiry) }} days left
+          </span>
+        </div>
+        <div class="empty-state" *ngIf="warrantyAlerts.length === 0">
+          <span class="material-icons-outlined" style="font-size: 40px; color: var(--text-muted);">verified</span>
+          <p class="text-muted">No upcoming warranty expirations</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
