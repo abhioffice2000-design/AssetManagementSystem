@@ -56,8 +56,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'User Management', icon: 'people', route: `${base}/users` },
-          { label: 'Master Data', icon: 'settings', route: `${base}/master-data` },
-          { label: 'Asset Configuration', icon: 'inventory_2', route: `${base}/asset-config` }
+          { label: 'Master Data', icon: 'settings', route: `${base}/master-data` }
         ];
         break;
       case UserRole.ASSET_MANAGER:
