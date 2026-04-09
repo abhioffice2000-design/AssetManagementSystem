@@ -82,8 +82,8 @@ export class AuthService {
       throw new Error('User record not found in database.');
     }
 
-    return {
-      id: userData.email,
+    const finalUser: User = {
+      id: userData.id || userData.user_id || userData.email,
       name: userData.name,
       email: userData.email,
       role: this.mapRoleIdToUserRole(userData.role_id),
@@ -93,6 +93,8 @@ export class AuthService {
       isActive: userData.status === 'Active',
       joinDate: userData.created_at || new Date().toISOString().split('T')[0]
     };
+
+    return finalUser;
   }
 
   private mapRoleIdToUserRole(roleId: string): UserRole {
@@ -103,6 +105,41 @@ export class AuthService {
       case 'rol_04': return UserRole.ASSET_MANAGER;
       case 'rol_05': return UserRole.ALLOCATION_TEAM;
       default: return UserRole.EMPLOYEE;
+    }
+  }
+
+  async getUserDetails(userId: string): Promise<User | null> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetM_usersObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <User_id>${userId}</User_id>
+    </GetM_usersObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(resp, 'm_users') || this.hs.xmltojson(resp, 'GetM_usersObject');
+      if (!data) return null;
+
+      const row = data.new ? data.new : (data.old ? data.old : data);
+      const item = row.m_users || row;
+
+      return {
+        id: item.id || item.user_id || item.email,
+        name: item.name,
+        email: item.email,
+        role: this.mapRoleIdToUserRole(item.role_id),
+        department: item.department || 'IT',
+        team: item.team || 'General',
+        designation: item.designation || 'Specialist',
+        isActive: item.status === 'Active',
+        joinDate: item.created_at || new Date().toISOString().split('T')[0]
+      };
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+      return null;
     }
   }
 

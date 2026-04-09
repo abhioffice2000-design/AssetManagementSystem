@@ -9,39 +9,96 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th>Asset Tag</th>
+          <!-- <th>Asset Tag</th> -->
           <th>Type</th>
           <th>Name</th>
-          <th>Category</th>
           <th>Assigned Date</th>
           <th>Warranty Expiry</th>
-          <th>Condition</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody>
         <tr *ngFor="let asset of myAssets">
-          <td class="text-bold text-primary">{{ asset.assetTag }}</td>
+          <!-- <td class="text-bold text-primary">{{ asset.assetTag }}</td> -->
           <td>{{ asset.type }}</td>
           <td>{{ asset.name }}</td>
-          <td>{{ asset.category }}</td>
           <td>{{ asset.purchaseDate | date }}</td>
           <td>
             <span [class.text-danger]="isExpiringSoon(asset.warrantyExpiry)">
               {{ asset.warrantyExpiry | date }}
             </span>
           </td>
-          <td><app-status-badge [status]="asset.condition"></app-status-badge></td>
           <td>
-            <button class="btn btn-outline btn-sm" title="Report Issue">
-              <span class="material-icons-outlined">report_problem</span>
-            </button>
+            <div class="action-buttons">
+              <button class="btn btn-sm btn-outline-danger" (click)="openReturnModal(asset)">
+                <span class="material-icons-outlined">assignment_return</span>
+                Return Asset
+              </button>
+              <button class="btn btn-sm btn-outline-primary" (click)="openWarrantyModal(asset)">
+                <span class="material-icons-outlined">security</span>
+                Extend Warranty
+              </button>
+            </div>
           </td>
         </tr>
         <tr *ngIf="myAssets.length === 0">
-          <td colspan="8" class="text-center text-muted p-24">No assets currently assigned to you.</td>
+          <td colspan="5" class="text-center text-muted p-24">No assets currently assigned to you.</td>
         </tr>
       </tbody>
     </table>
   </div>
 </div>
+
+<!-- Return Asset Modal -->
+<app-modal [isOpen]="isReturnModalOpen" [title]="'Return Asset'" (close)="closeModals()">
+  <form [formGroup]="actionForm" (ngSubmit)="submitRequest(RequestType.RETURN_ASSET)" *ngIf="selectedAsset">
+    <div class="asset-preview-card mb-24">
+      <div class="asset-info">
+        <div class="asset-tag">{{ selectedAsset.assetTag }}</div>
+        <div class="asset-name">{{ selectedAsset.name }}</div>
+        <div class="asset-meta">{{ selectedAsset.type }} &bull; {{ selectedAsset.category }}</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label required">Reason for Return</label>
+      <textarea class="form-control" formControlName="justification" rows="4" 
+                placeholder="Please provide a valid reason or justification for returning this asset..."></textarea>
+      <div class="error-msg" *ngIf="actionForm.get('justification')?.touched && actionForm.get('justification')?.invalid">
+        Justification is mandatory (min 5 characters).
+      </div>
+    </div>
+
+    <div class="modal-actions mt-24">
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="actionForm.invalid">Submit Return Request</button>
+    </div>
+  </form>
+</app-modal>
+
+<!-- Extend Warranty Modal -->
+<app-modal [isOpen]="isWarrantyModalOpen" [title]="'Extend Warranty Request'" (close)="closeModals()">
+  <form [formGroup]="actionForm" (ngSubmit)="submitRequest(RequestType.EXTEND_WARRANTY)" *ngIf="selectedAsset">
+    <div class="asset-preview-card mb-24">
+      <div class="asset-info">
+        <div class="asset-tag">{{ selectedAsset.assetTag }}</div>
+        <div class="asset-name">{{ selectedAsset.name }}</div>
+        <div class="asset-meta">Current Expiry: {{ selectedAsset.warrantyExpiry | date }}</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label required">Reason for Extension</label>
+      <textarea class="form-control" formControlName="justification" rows="4" 
+                placeholder="Please provide a reason or justification for extending the warranty..."></textarea>
+      <div class="error-msg" *ngIf="actionForm.get('justification')?.touched && actionForm.get('justification')?.invalid">
+        Justification is mandatory (min 5 characters).
+      </div>
+    </div>
+
+    <div class="modal-actions mt-24">
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="actionForm.invalid">Submit Extension Request</button>
+    </div>
+  </form>
+</app-modal>

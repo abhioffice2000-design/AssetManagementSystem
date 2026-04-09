@@ -10,14 +10,18 @@
           <label>Asset Type *</label>
           <select formControlName="assetType" class="form-control" (change)="onTypeChange()">
             <option value="" disabled>Select Type</option>
-            <option *ngFor="let type of assetTypes" [value]="type">{{ type }}</option>
+            <option *ngFor="let type of availableTypes" [value]="type.type_id">
+              {{ type.type_name }}
+            </option>
           </select>
         </div>
         <div>
           <label>Category *</label>
           <select formControlName="category" class="form-control" (change)="onCategoryChange()">
             <option value="" disabled>Select Category</option>
-            <option *ngFor="let cat of availableCategories" [value]="cat.name">{{ cat.name }}</option>
+            <option *ngFor="let cat of availableCategories" [value]="cat.asset_id">
+              {{ cat.asset_name }}
+            </option>
           </select>
         </div>
       </div>
@@ -27,13 +31,9 @@
           <label>Sub-Category</label>
           <select formControlName="subCategory" class="form-control">
             <option value="">Select Sub-Category</option>
-            <option *ngFor="let sub of availableSubCategories" [value]="sub">{{ sub }}</option>
-          </select>
-        </div>
-        <div>
-          <label>Urgency *</label>
-          <select formControlName="urgency" class="form-control">
-            <option *ngFor="let urg of urgencies" [value]="urg">{{ urg }}</option>
+            <option *ngFor="let sub of availableSubCategories" [value]="sub.sub_category_id">
+              {{ sub.name }}
+            </option>
           </select>
         </div>
       </div>

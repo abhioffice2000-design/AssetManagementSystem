@@ -6,13 +6,15 @@ import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { HeaderComponent } from './components/header/header.component';
 import { StatCardComponent } from './components/stat-card/stat-card.component';
 import { StatusBadgeComponent } from './components/status-badge/status-badge.component';
+import { ModalComponent } from './components/modal/modal.component';
 
 @NgModule({
   declarations: [
     SidebarComponent,
     HeaderComponent,
     StatCardComponent,
-    StatusBadgeComponent
+    StatusBadgeComponent,
+    ModalComponent
   ],
   imports: [
     CommonModule,
@@ -24,7 +26,8 @@ import { StatusBadgeComponent } from './components/status-badge/status-badge.com
     SidebarComponent,
     HeaderComponent,
     StatCardComponent,
-    StatusBadgeComponent
+    StatusBadgeComponent,
+    ModalComponent
   ]
 })
 export class SharedModule { }

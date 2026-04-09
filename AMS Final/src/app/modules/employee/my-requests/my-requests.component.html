@@ -1,0 +1,55 @@
+<div class="page-container">
+  <div class="page-header mb-24">
+    <div class="header-content">
+      <h1 class="page-title">My Requests</h1>
+      <p class="page-subtitle">Track the status of your asset allocations, returns, and warranty requests.</p>
+    </div>
+  </div>
+
+  <div class="card p-0 overflow-hidden">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Request ID</th>
+          <th>Type</th>
+          <th>Asset Detail</th>
+          <th>Date</th>
+          <th>Urgency</th>
+          <th>Status</th>
+          <th>Current Stage</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let req of requests">
+          <td class="text-bold text-primary">{{ req.requestNumber }}</td>
+          <td>
+            <span class="request-type-badge" [ngClass]="req.requestType.replace(' ', '-').toLowerCase()">
+              {{ req.requestType }}
+            </span>
+          </td>
+          <td>
+            <div class="asset-cell">
+              <span class="asset-cat">{{ req.category }}</span>
+              <span class="asset-sub">{{ req.subCategory || 'N/A' }}</span>
+            </div>
+          </td>
+          <td>{{ req.requestDate | date:'mediumDate' }}</td>
+          <td>
+            <span class="urgency-label" [ngClass]="'urgency-' + req.urgency.toLowerCase()">
+              {{ req.urgency }}
+            </span>
+          </td>
+          <td>
+            <span class="status-chip" [ngClass]="getStatusClass(req.status)">
+              {{ req.status }}
+            </span>
+          </td>
+          <td>{{ req.currentStage }}</td>
+        </tr>
+        <tr *ngIf="requests.length === 0 && !loading">
+          <td colspan="7" class="text-center text-muted p-24">No requests found.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

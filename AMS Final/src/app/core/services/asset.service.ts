@@ -2,13 +2,125 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
 import { Asset, AssetType, AssetStatus, AssetCondition, AssetCategory } from '../models/asset.model';
 import { HeroService } from './hero.service';
-
 declare var $: any;
-
 @Injectable({ providedIn: 'root' })
 export class AssetService {
-  private assets: Asset[] = [];
+  constructor(private hs: HeroService) { }
   private assetsLoaded = false;
+  private assets: Asset[] = [
+    {
+      id: 'AST001', assetTag: 'HW-LAP-001', name: 'Dell Latitude 5540', type: AssetType.HARDWARE,
+      category: 'Laptop', subCategory: 'Business', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
+      location: 'Hyderabad - Floor 3', purchaseDate: '2024-03-15', warrantyExpiry: '2027-03-15',
+      vendor: 'Dell Technologies', serialNumber: 'DL5540-HYD-001', cost: 85000,
+      condition: AssetCondition.GOOD, specifications: 'i7-1365U, 16GB RAM, 512GB SSD'
+    },
+    {
+      id: 'AST002', assetTag: 'HW-LAP-002', name: 'MacBook Pro 14"', type: AssetType.HARDWARE,
+      category: 'Laptop', subCategory: 'Premium', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR004', assignedToName: 'Suresh Patel', department: 'Engineering', team: 'Frontend',
+      location: 'Hyderabad - Floor 3', purchaseDate: '2024-01-10', warrantyExpiry: '2027-01-10',
+      vendor: 'Apple Inc.', serialNumber: 'MBP14-HYD-002', cost: 195000,
+      condition: AssetCondition.GOOD, specifications: 'M3 Pro, 18GB RAM, 512GB SSD'
+    },
+    {
+      id: 'AST003', assetTag: 'HW-MON-001', name: 'Dell UltraSharp U2723QE', type: AssetType.HARDWARE,
+      category: 'Monitor', subCategory: '4K', status: AssetStatus.AVAILABLE,
+      location: 'Hyderabad - Store', purchaseDate: '2024-06-20', warrantyExpiry: '2027-06-20',
+      vendor: 'Dell Technologies', serialNumber: 'DU27-HYD-001', cost: 45000,
+      condition: AssetCondition.NEW
+    },
+    {
+      id: 'AST004', assetTag: 'SW-LIC-001', name: 'Microsoft 365 Business', type: AssetType.SOFTWARE,
+      category: 'Productivity Suite', subCategory: 'License', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
+      location: 'Cloud', purchaseDate: '2024-01-01', warrantyExpiry: '2025-12-31',
+      vendor: 'Microsoft', serialNumber: 'MS365-BUS-001', cost: 12000,
+      condition: AssetCondition.GOOD
+    },
+    {
+      id: 'AST005', assetTag: 'HW-LAP-003', name: 'HP EliteBook 840', type: AssetType.HARDWARE,
+      category: 'Laptop', subCategory: 'Business', status: AssetStatus.AVAILABLE,
+      location: 'Bangalore - Store', purchaseDate: '2024-08-10', warrantyExpiry: '2027-08-10',
+      vendor: 'HP Inc.', serialNumber: 'HPE840-BLR-001', cost: 78000,
+      condition: AssetCondition.NEW, specifications: 'i5-1345U, 16GB RAM, 256GB SSD'
+    },
+    {
+      id: 'AST006', assetTag: 'NW-RTR-001', name: 'Cisco Catalyst 9200', type: AssetType.NETWORK,
+      category: 'Router', subCategory: 'Enterprise', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR003', assignedToName: 'IT Infrastructure', department: 'IT', team: 'Network',
+      location: 'Hyderabad - Server Room', purchaseDate: '2023-11-01', warrantyExpiry: '2026-11-01',
+      vendor: 'Cisco Systems', serialNumber: 'CC9200-HYD-001', cost: 320000,
+      condition: AssetCondition.GOOD
+    },
+    {
+      id: 'AST007', assetTag: 'HW-LAP-004', name: 'Lenovo ThinkPad X1 Carbon', type: AssetType.HARDWARE,
+      category: 'Laptop', subCategory: 'Ultra-Premium', status: AssetStatus.IN_REPAIR,
+      location: 'Hyderabad - Service Center', purchaseDate: '2023-06-15', warrantyExpiry: '2026-06-15',
+      vendor: 'Lenovo', serialNumber: 'LTP-X1C-HYD-001', cost: 165000,
+      condition: AssetCondition.FAIR, specifications: 'i7-1365U, 32GB RAM, 1TB SSD'
+    },
+    {
+      id: 'AST008', assetTag: 'PR-KBD-001', name: 'Logitech MX Keys', type: AssetType.PERIPHERAL,
+      category: 'Keyboard', subCategory: 'Wireless', status: AssetStatus.AVAILABLE,
+      location: 'Hyderabad - Store', purchaseDate: '2024-09-01', warrantyExpiry: '2026-09-01',
+      vendor: 'Logitech', serialNumber: 'LMX-KBD-001', cost: 8500,
+      condition: AssetCondition.NEW
+    },
+    {
+      id: 'AST009', assetTag: 'SW-LIC-002', name: 'JetBrains IntelliJ IDEA', type: AssetType.SOFTWARE,
+      category: 'Development Tools', subCategory: 'IDE License', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR004', assignedToName: 'Suresh Patel', department: 'Engineering', team: 'Frontend',
+      location: 'Cloud', purchaseDate: '2024-04-01', warrantyExpiry: '2025-03-31',
+      vendor: 'JetBrains', serialNumber: 'JB-IDEA-001', cost: 15000,
+      condition: AssetCondition.GOOD
+    },
+    {
+      id: 'AST010', assetTag: 'HW-MON-002', name: 'LG 27UK850-W', type: AssetType.HARDWARE,
+      category: 'Monitor', subCategory: '4K', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
+      location: 'Hyderabad - Floor 3', purchaseDate: '2024-05-10', warrantyExpiry: '2027-05-10',
+      vendor: 'LG Electronics', serialNumber: 'LG27-HYD-002', cost: 38000,
+      condition: AssetCondition.GOOD
+    },
+    {
+      id: 'AST011', assetTag: 'HW-LAP-005', name: 'Dell Inspiron 15', type: AssetType.HARDWARE,
+      category: 'Laptop', subCategory: 'Standard', status: AssetStatus.AVAILABLE,
+      location: 'Chennai - Store', purchaseDate: '2024-10-01', warrantyExpiry: '2027-10-01',
+      vendor: 'Dell Technologies', serialNumber: 'DI15-CHN-001', cost: 55000,
+      condition: AssetCondition.NEW, specifications: 'i5-1235U, 8GB RAM, 256GB SSD'
+    },
+    {
+      id: 'AST012', assetTag: 'FR-DSK-001', name: 'Standing Desk Motorized', type: AssetType.FURNITURE,
+      category: 'Desk', subCategory: 'Motorized', status: AssetStatus.AVAILABLE,
+      location: 'Hyderabad - Store', purchaseDate: '2024-07-15', warrantyExpiry: '2029-07-15',
+      vendor: 'Featherlite', serialNumber: 'FL-DSK-HYD-001', cost: 28000,
+      condition: AssetCondition.NEW
+    },
+    {
+      id: 'AST013', assetTag: 'PR-MSE-001', name: 'Logitech MX Master 3S', type: AssetType.PERIPHERAL,
+      category: 'Mouse', subCategory: 'Wireless', status: AssetStatus.ALLOCATED,
+      assignedTo: 'USR005', assignedToName: 'Ananya Desai', department: 'Engineering', team: 'Frontend',
+      location: 'Hyderabad - Floor 3', purchaseDate: '2024-03-15', warrantyExpiry: '2026-03-15',
+      vendor: 'Logitech', serialNumber: 'LMX-MSE-001', cost: 7500,
+      condition: AssetCondition.GOOD
+    },
+    {
+      id: 'AST014', assetTag: 'SW-LIC-003', name: 'Adobe Creative Cloud', type: AssetType.SOFTWARE,
+      category: 'Design Tools', subCategory: 'License', status: AssetStatus.AVAILABLE,
+      location: 'Cloud', purchaseDate: '2024-01-01', warrantyExpiry: '2025-12-31',
+      vendor: 'Adobe', serialNumber: 'ACC-LIC-003', cost: 35000,
+      condition: AssetCondition.GOOD
+    },
+    {
+      id: 'AST015', assetTag: 'HW-LAP-006', name: 'MacBook Air M2', type: AssetType.HARDWARE,
+      category: 'Laptop', subCategory: 'Standard', status: AssetStatus.RETIRED,
+      location: 'Hyderabad - Store', purchaseDate: '2022-01-10', warrantyExpiry: '2025-01-10',
+      vendor: 'Apple Inc.', serialNumber: 'MBA-M2-HYD-001', cost: 125000,
+      condition: AssetCondition.POOR
+    }
+  ];
 
   private categories: AssetCategory[] = [
     { id: 'CAT001', name: 'Laptop', type: AssetType.HARDWARE, subCategories: ['Standard', 'Business', 'Premium', 'Ultra-Premium'], icon: 'laptop_mac' },
@@ -25,7 +137,7 @@ export class AssetService {
     { id: 'CAT012', name: 'Chair', type: AssetType.FURNITURE, subCategories: ['Standard', 'Ergonomic', 'Executive'], icon: 'chair' }
   ];
 
-  constructor(private hs: HeroService) {}
+  // constructor(private hs: HeroService) {}
 
   // Stores raw asset detail records from Getassetdetails (for "Provide Asset" dropdown)
   private assetDetailRecords: any[] = [];
@@ -313,6 +425,241 @@ export class AssetService {
 
   getAssetsByUser(userId: string): Asset[] {
     return this.assets.filter(a => a.assignedTo === userId);
+  }
+
+  async getAssetsByUserIdFromCordys(userId: string): Promise<Asset[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllocationBasedOnUser xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetAllocationBasedOnUser>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+
+      // We look for multiple possible tags based on common Cordys patterns
+      let data = this.hs.xmltojson(resp, 'ts_asset_allocation') ||
+        this.hs.xmltojson(resp, 'GetAllocationBasedOnUser') ||
+        this.hs.xmltojson(resp, 'tuple') ||
+        this.hs.xmltojson(resp, 'm_assets') ||
+        this.hs.xmltojson(resp, 'objects');
+
+      if (!data) return [];
+
+      if (!Array.isArray(data)) data = [data];
+
+      const assetPromises = data.map(async (item: any) => {
+        // Deep extract if nested in tuple/new/old (Cordys DB metadata pattern)
+        const row = item.new ? item.new : (item.old ? item.old : item);
+        const actualItem = row.ts_asset_allocation || row.t_asset_allocations || row.GetAllocationBasedOnUser || row;
+
+        // Try all common variations of ID
+        const assetId = actualItem.Asset_id || actualItem.asset_id || actualItem.id || actualItem.AssetId;
+
+        // Extract the allocation date from the allocation table (ts_asset_allocations)
+        const allocationDate = actualItem.assigned_date || actualItem.Assigned_date || actualItem.Assign_date || actualItem.assign_date;
+
+        console.log('[AssetService Debug] Processing allocation item:', actualItem);
+
+        // If the allocation entry is missing basic details, fetch the full asset object from m_assets
+        if ((!actualItem.Asset_name && !actualItem.asset_name && !actualItem.name) && assetId) {
+          console.log(`[AssetService Debug] Fetching details for Asset ID: ${assetId}`);
+          const detailedAsset = await this.getAssetDetails(assetId);
+          if (detailedAsset) {
+            console.log('[AssetService Debug] Detailed asset fetched:', detailedAsset);
+            // Merge allocation info with asset details, ensuring allocation date wins
+            return {
+              ...detailedAsset,
+              assignedTo: actualItem.User_id || actualItem.user_id || actualItem.assignedTo || userId,
+              purchaseDate: allocationDate || detailedAsset.purchaseDate
+            };
+          }
+        }
+
+        return {
+          id: assetId || `AST-${Math.random().toString(36).substring(2, 11)}`,
+          assetTag: actualItem.Asset_tag || actualItem.asset_tag || actualItem.assetTag || 'N/A',
+          name: actualItem.Asset_name || actualItem.asset_name || actualItem.name || 'Unknown Asset',
+          type: (actualItem.Asset_type || actualItem.asset_type || actualItem.type) as AssetType || AssetType.HARDWARE,
+          category: actualItem.Category || actualItem.category || 'N/A',
+          subCategory: actualItem.Sub_category || actualItem.sub_category || actualItem.subCategory || 'N/A',
+          status: AssetStatus.ALLOCATED,
+          assignedTo: actualItem.User_id || actualItem.user_id || actualItem.assignedTo || userId,
+          assignedToName: actualItem.User_name || actualItem.user_name || actualItem.assignedToName || '',
+          location: actualItem.Location || actualItem.location || 'N/A',
+          purchaseDate: allocationDate || actualItem.Purchase_date || actualItem.purchase_date || actualItem.purchaseDate || '',
+          warrantyExpiry: actualItem.Warranty_expiry || actualItem.warranty_expiry || actualItem.warrantyExpiry || '',
+          vendor: actualItem.Vendor || actualItem.vendor || actualItem.vendor || 'N/A',
+          serialNumber: actualItem.Serial_number || actualItem.serial_number || actualItem.serialNumber || 'N/A',
+          cost: Number(actualItem.Cost || actualItem.cost || 0),
+          condition: (actualItem.Condition || actualItem.condition) as AssetCondition || AssetCondition.GOOD,
+          specifications: actualItem.Specifications || actualItem.specifications || ''
+        };
+      });
+
+      return Promise.all(assetPromises);
+    } catch (error) {
+      console.error('Error fetching assets from Cordys:', error);
+      return [];
+    }
+  }
+
+  async getAssetDetails(assetId: string): Promise<Asset | null> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetM_assetsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Asset_id>${assetId}</Asset_id>
+    </GetM_assetsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(resp, 'm_assets') || this.hs.xmltojson(resp, 'GetM_assetsObject');
+      if (!data) return null;
+
+      const row = data.new ? data.new : (data.old ? data.old : data);
+      const item = row.m_assets || row;
+
+      let typeName = item.Asset_type || item.asset_type || item.type || 'Hardware';
+
+      return {
+        id: item.Asset_id || item.asset_id || item.id,
+        assetTag: item.Asset_tag || item.asset_tag || item.assetTag || 'N/A',
+        name: item.Asset_name || item.asset_name || item.name || 'Unknown Asset',
+        type: typeName as AssetType,
+        category: item.Category || item.category || 'N/A',
+        subCategory: item.Sub_category || item.sub_category || item.subCategory || 'N/A',
+        status: (item.Status || item.status) as AssetStatus || AssetStatus.ALLOCATED,
+        location: item.Location || item.location || 'N/A',
+        purchaseDate: item.Purchase_date || item.purchase_date || item.purchaseDate || '',
+        warrantyExpiry: item.Warranty_expiry || item.warranty_expiry || item.warrantyExpiry || '',
+        vendor: item.Vendor || item.vendor || 'N/A',
+        serialNumber: item.Serial_number || item.serial_number || item.serialNumber || 'N/A',
+        cost: Number(item.Cost || item.cost || 0),
+        condition: (item.Condition || item.condition) as AssetCondition || AssetCondition.GOOD,
+        specifications: item.Specifications || item.specifications || ''
+      };
+    } catch (error) {
+      console.error('Error fetching asset details:', error);
+      return null;
+    }
+  }
+
+  async getAssetTypeDetails(typeId: string): Promise<string> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetM_asset_typesObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Type_id>${typeId}</Type_id>
+    </GetM_asset_typesObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(resp, 'm_asset_types') || this.hs.xmltojson(resp, 'GetM_asset_typesObject');
+      if (!data) return typeId;
+
+      const row = data.new ? data.new : (data.old ? data.old : data);
+      const item = row.m_asset_types || row;
+      return item.type_name || item.name || typeId;
+    } catch (error) {
+      console.error('Error fetching asset type details:', error);
+      return typeId;
+    }
+  }
+
+  async getAllAssetTypesCordys(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllAssetTypes xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      console.log('[AssetService Debug] Raw Types response:', resp);
+      let data = this.hs.xmltojson(resp, 'm_asset_types') ||
+        this.hs.xmltojson(resp, 'GetAllAssetTypes') ||
+        this.hs.xmltojson(resp, 'tuple') ||
+        this.hs.xmltojson(resp, 'Type') ||
+        this.hs.xmltojson(resp, 'm_asset_type');
+      if (!data) return [];
+      if (!Array.isArray(data)) data = [data];
+      return data.map((item: any) => {
+        const row = item.new ? item.new : (item.old ? item.old : item);
+        // Extract inner table object if present
+        const tableObj = row.m_asset_types || row.m_asset_type || row.Type || row;
+        return tableObj;
+      });
+    } catch (error) {
+      console.error('Error fetching asset types from Cordys:', error);
+      return [];
+    }
+  }
+
+  async getAllCategoriesCordys(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllAssets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      console.log('[AssetService Debug] Raw Categories/Assets response:', resp);
+      let data = this.hs.xmltojson(resp, 'm_assets') ||
+        this.hs.xmltojson(resp, 'GetAllAssets') ||
+        this.hs.xmltojson(resp, 'tuple') ||
+        this.hs.xmltojson(resp, 'Asset') ||
+        this.hs.xmltojson(resp, 'm_asset');
+      if (!data) return [];
+      if (!Array.isArray(data)) data = [data];
+      return data.map((item: any) => {
+        const row = item.new ? item.new : (item.old ? item.old : item);
+        const tableObj = row.m_assets || row.m_asset || row.Asset || row;
+        return tableObj;
+      });
+    } catch (error) {
+      console.error('Error fetching categories from Cordys:', error);
+      return [];
+    }
+  }
+
+  async getAllSubcategoriesCordys(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllAssetSubcategories xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      console.log('[AssetService Debug] Raw Subcategories response:', resp);
+      let data = this.hs.xmltojson(resp, 'm_asset_subcategories') ||
+        this.hs.xmltojson(resp, 'm_asset_subcategory') ||
+        this.hs.xmltojson(resp, 'GetAllAssetSubcategories') ||
+        this.hs.xmltojson(resp, 'tuple') ||
+        this.hs.xmltojson(resp, 'Subcategory');
+      if (!data) return [];
+      if (!Array.isArray(data)) data = [data];
+      return data.map((item: any) => {
+        const row = item.new ? item.new : (item.old ? item.old : item);
+        const tableObj = row.m_asset_subcategories || row.m_asset_subcategory || row.Subcategory || row.Sub_category || row;
+        return tableObj;
+      });
+    } catch (error) {
+      console.error('Error fetching sub-categories from Cordys:', error);
+      return [];
+    }
   }
 
   getAssetsByType(type: AssetType): Asset[] {
