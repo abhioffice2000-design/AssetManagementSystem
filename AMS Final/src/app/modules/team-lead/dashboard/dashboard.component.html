@@ -1,13 +1,25 @@
 <div class="dashboard-container">
-  <div class="grid grid-3 gap-8 mb-16">
-    <app-stat-card label="Team Size" [value]="teamSize" icon="groups" color="blue"></app-stat-card>
-    <app-stat-card label="Team Assets" [value]="teamAssets" icon="devices" color="green"></app-stat-card>
-    <app-stat-card label="Pending Approvals" [value]="pendingApprovalsCount" icon="fact_check" color="amber"></app-stat-card>
+  <!-- Loading State -->
+  <div class="card animate-slide-up" *ngIf="isLoading"
+    style="padding: 60px 0; border: none; background: transparent; box-shadow: none;">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <h4>Loading dashboard data...</h4>
+      <p class="text-muted">Fetching requests from the server</p>
+    </div>
   </div>
 
-  <div class="card animate-slide-up">
-    <div class="card-header border-0" style="display: flex; justify-content: space-between; align-items: center;">
-      <h3 style="margin: 0;">Team Requests ({{teamRequests.length}})</h3>
+  <ng-container *ngIf="!isLoading">
+    <div class="grid grid-3 gap-8 mb-16">
+      <app-stat-card label="Team Size" [value]="teamSize" icon="groups" color="blue"></app-stat-card>
+      <app-stat-card label="Team Assets" [value]="teamAssets" icon="devices" color="green"></app-stat-card>
+      <app-stat-card label="Pending Approvals" [value]="pendingApprovalsCount" icon="fact_check"
+        color="amber"></app-stat-card>
+    </div>
+
+    <div class="card animate-slide-up">
+      <div class="card-header border-0" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;">Team Requests ({{teamRequests.length}})</h3>
       <div class="search-box">
         <input type="text" placeholder="Search requests..." (input)="onSearch($event)" 
                style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; min-width: 250px;">
@@ -21,102 +33,103 @@
               <th>Request No</th>
               <th>Requester Name</th>
               <th>Category</th>
-              <th>Asset Type</th>
+              <th>Asset Name</th>
               <th>Urgency</th>
               <th>Status</th>
               <th>Date</th>
-              <th class="text-center">Action</th>
             </tr>
           </thead>
-          <tbody>
-            <tr *ngFor="let req of paginatedRequests">
-              <td><strong>{{req.requestNumber}}</strong></td>
-              <td>{{req.requesterName}}</td>
-              <td>{{req.category}}</td>
-              <td>
-                <span class="badge" [ngClass]="{'badge-primary': req.assetType === 'Hardware', 'badge-info': req.assetType === 'Software'}">
-                  {{req.assetType}}
-                </span>
-              </td>
-              <td>
-                <span class="badge" 
-                      [ngClass]="{
+            <tbody>
+              <tr *ngFor="let req of paginatedRequests">
+                <td><strong>{{req.requestNumber}}</strong></td>
+                <td>{{req.requesterName}}</td>
+                <td>{{req.category}}</td>
+                <td>
+                  <span class="badge badge-info">
+                    {{req.assetType}}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="{
                         'badge-danger': req.urgency === 'High', 
                         'badge-warning': req.urgency === 'Medium',
                         'badge-success': req.urgency === 'Low'
                       }">
-                  {{req.urgency}}
-                </span>
-              </td>
-              <td>
-                <span class="badge" 
-                      [ngClass]="{
+                    {{req.urgency}}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="{
                         'badge-warning': req.status === 'Pending' || req.status === 'In Progress', 
                         'badge-success': req.status === 'Approved' || req.status === 'Completed',
                         'badge-danger': req.status === 'Rejected' || req.status === 'Cancelled'
                       }">
-                  {{req.status}}
-                </span>
-              </td>
-              <td>{{req.requestDate | date:'mediumDate'}}</td>
-              <td class="text-center">
-                <button *ngIf="req.status === 'Pending'" 
-                        (click)="selectRequest(req)" 
-                        class="btn btn-icon btn-primary"
-                        title="Process Request">
-                  <span class="material-icons-outlined" style="font-size: 18px;">edit</span>
-                </button>
-              </td>
-            </tr>
-            <tr *ngIf="teamRequests.length === 0">
-              <td colspan="7" class="text-center text-muted m-24 p-24">
-                No team requests found.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="pagination-controls" *ngIf="totalPages > 1">
-        <button [disabled]="currentPage === 1" (click)="changePage(currentPage - 1)">Previous</button>
-        <span>Page {{currentPage}} of {{totalPages}}</span>
-        <button [disabled]="currentPage === totalPages" (click)="changePage(currentPage + 1)">Next</button>
+                    {{req.status}}
+                  </span>
+                </td>
+                <td>{{req.requestDate | date:'mediumDate'}}</td>
+              </tr>
+              <tr *ngIf="teamRequests.length === 0">
+                <td colspan="7" class="text-center text-muted m-24 p-24">
+                  No team requests found.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-controls" *ngIf="totalPages > 1">
+          <button [disabled]="currentPage === 1" (click)="changePage(currentPage - 1)">Previous</button>
+          <span>Page {{currentPage}} of {{totalPages}}</span>
+          <button [disabled]="currentPage === totalPages" (click)="changePage(currentPage + 1)">Next</button>
+        </div>
       </div>
     </div>
+  </ng-container>
+
+  <!-- Copyright Footer - Moving inside container for consistency -->
+  <div class="grid grid-3 gap-8 mb-16 text-center" style="padding: 20px; color: var(--text-muted); font-size: 0.9rem;">
+    &copy; 2024 Adnate Asset Management System. All rights reserved.
   </div>
 </div>
 
 <!-- Modal Popup -->
 <div class="modal-overlay" *ngIf="selectedRequest" (click)="cancelSelection()">
   <div class="modal-content" (click)="$event.stopPropagation()">
-    <h4 style="margin-top: 0; margin-bottom: 20px; font-size: 18px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 12px;">Request Details - {{selectedRequest.requestNumber}}</h4>
-    
+    <h4
+      style="margin-top: 0; margin-bottom: 20px; font-size: 18px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 12px;">
+      Request Details - {{selectedRequest.requestNumber}}</h4>
+
     <div class="grid grid-2 gap-16" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <label style="font-size: 13px; font-weight: 500; color: #666;">Requester Name</label>
-        <input type="text" [value]="selectedRequest.requesterName" readonly 
-               style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
+        <input type="text" [value]="selectedRequest.requesterName" readonly
+          style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <label style="font-size: 13px; font-weight: 500; color: #666;">Asset Type</label>
-        <input type="text" [value]="selectedRequest.assetType" readonly 
-               style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Asset Name</label>
+        <input type="text" [value]="selectedRequest.assetType" readonly
+          style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <label style="font-size: 13px; font-weight: 500; color: #666;">Category</label>
-        <input type="text" [value]="selectedRequest.category" readonly 
-               style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
+        <input type="text" [value]="selectedRequest.category" readonly
+          style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <label style="font-size: 13px; font-weight: 500; color: #666;">Urgency</label>
-        <input type="text" [value]="selectedRequest.urgency" readonly 
-               style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
+        <input type="text" [value]="selectedRequest.urgency" readonly
+          style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
     </div>
 
-    <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee;">
-      <button (click)="cancelSelection()" style="padding: 10px 18px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; color: #444; font-weight: 500;">Cancel</button>
-      <button (click)="markAsReject()" style="padding: 10px 18px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Reject</button>
-      <button (click)="markAsAccept()" style="padding: 10px 18px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Accept</button>
+    <div
+      style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee;">
+      <button (click)="cancelSelection()"
+        style="padding: 10px 18px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; color: #444; font-weight: 500;">Cancel</button>
+      <button (click)="markAsReject()"
+        style="padding: 10px 18px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Reject</button>
+      <button (click)="markAsAccept()"
+        style="padding: 10px 18px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Accept</button>
     </div>
   </div>
 </div>

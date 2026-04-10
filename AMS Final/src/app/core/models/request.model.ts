@@ -1,4 +1,5 @@
 export interface AssetRequest {
+  approvalId?: string; // ID for the specific approval record
   id: string;
   requestNumber: string;
   requesterId: string;
