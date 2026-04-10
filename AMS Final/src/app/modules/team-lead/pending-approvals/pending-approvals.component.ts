@@ -1,7 +1,6 @@
 import { Component, OnInit } from '@angular/core';
-import { RequestService } from '../../../core/services/request.service';
-import { AuthService } from '../../../core/services/auth.service';
 import { AssetRequest, ApprovalStage } from '../../../core/models/request.model';
+import { HeroService } from '../../../core/services/hero.service';
 
 @Component({
   selector: 'app-pending-approvals',
@@ -11,29 +10,90 @@ import { AssetRequest, ApprovalStage } from '../../../core/models/request.model'
 export class PendingApprovalsComponent implements OnInit {
   pendingRequests: AssetRequest[] = [];
   selectedRequest: AssetRequest | null = null;
+  user: any;
+  userDetails: any;
+  isLoading = false;
 
   // Pagination & Filtering
   currentPage = 1;
   pageSize = 5;
   searchTerm = '';
+  tl_remarks = '';
 
   constructor(
-    private authService: AuthService,
-    private requestService: RequestService
+    private hs: HeroService
   ) {}
 
   ngOnInit(): void {
-    this.refreshApprovals();
+    this.getuser();
   }
 
-  refreshApprovals() {
-    const user = this.authService.getCurrentUser();
-    if (user) {
-      this.pendingRequests = this.requestService.getPendingApprovals(user.id, ApprovalStage.TEAM_LEAD);
-    } else {
-      this.pendingRequests = [];
-    }
+  getuser() {
+    this.isLoading = true;
+    this.hs.ajax('GetUserDetails', 'http://schemas.cordys.com/UserManagement/1.0/User', {}
+    ).then((resp: any) => {
+      this.user = this.hs.xmltojson(resp, "User");
+      this.getuserdetails();
+    }).catch(err => {
+      console.error("Error fetching user details in getuser:", err);
+      this.isLoading = false;
+    });
   }
+
+  getuserdetails() {
+    const targetUsername = this.user?.UserName || this.user?.username || '';
+    
+    this.hs.ajax('Getuserbyusername', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { username: targetUsername }
+    ).then((resp: any) => {
+      this.userDetails = this.hs.xmltojson(resp, "m_users");
+      this.getallrequests();
+    }).catch(err => {
+      console.error("Error fetching detailed user info in getuserdetails:", err);
+      this.isLoading = false;
+    });
+  }
+
+  getallrequests() {
+    this.hs.ajax('GetPendingRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      {}
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, "t_request_approvals");
+      const rawData = Array.isArray(result) ? result : [result];
+
+      // Map database fields to the AssetRequest interface
+      this.pendingRequests = rawData
+        .map((item: any) => {
+          // Based on API response: t_request_approvals contains joined objects
+          const reqItem = item.t_asset_requests || {}; 
+          const userInfo = item.m_users || {};
+          const subCategory = item.m_asset_subcategories || {};
+
+          return {
+            approvalId: item.approval_id || '',
+            id: reqItem.request_id || item.request_id,
+            requestNumber: reqItem.request_id || item.request_id,
+            requesterId: reqItem.user_id,
+            requesterName: userInfo.name || 'Unknown',
+            requesterTeam: userInfo.team || 'General',
+            category: reqItem.asset_type || 'General',
+            assetType: subCategory.name || reqItem.asset_name || '', 
+            description: reqItem.purpose || '',
+            urgency: reqItem.urgency || 'Medium',
+            status: subCategory.status || 'Pending', // Restored from reqItem
+            requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
+            currentStage: ApprovalStage.TEAM_LEAD
+          } as unknown as AssetRequest;
+        }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
+
+      this.isLoading = false;
+    }).catch(err => {
+      console.error("Error fetching requests:", err);
+      this.isLoading = false;
+    });
+  }
+
+
 
   get filteredRequests(): AssetRequest[] {
     if (!this.searchTerm.trim()) return this.pendingRequests;
@@ -73,32 +133,95 @@ export class PendingApprovalsComponent implements OnInit {
 
   markAsAccept(): void {
     if (this.selectedRequest) {
-      const user = this.authService.getCurrentUser();
-      if (user) {
-        // Actually accept the request using the RequestService
-        this.requestService.approveRequest(this.selectedRequest.id, user.id, user.name, "Approved by Team Lead", ApprovalStage.TEAM_LEAD);
-      }
-      
-      this.selectedRequest = null;
-      this.refreshApprovals(); // Refresh table to remove the accepted item
+      this.handleApprove();
     }
   }
 
   markAsReject(): void {
     if (this.selectedRequest) {
-      const user = this.authService.getCurrentUser();
-      if (user) {
-        // Actually reject the request using the RequestService
-        this.requestService.rejectRequest(this.selectedRequest.id, user.id, user.name, "Rejected by Team Lead", ApprovalStage.TEAM_LEAD);
-      }
-      
-      this.selectedRequest = null;
-      this.refreshApprovals(); // Refresh table to remove the rejected item
+      this.handleReject();
     }
+  }
+
+  handleApprove() {
+    if (!this.selectedRequest?.approvalId) {
+      alert("No approval record found for this request");
+      return;
+    }
+
+    if (!this.tl_remarks || !this.tl_remarks.trim()) {
+      alert("Please enter remarks before approving.");
+      return;
+    }
+
+    this.isLoading = true;
+    this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
+      tuple: {
+        old: {
+          "t_request_approvals": {
+            approval_id: this.selectedRequest.approvalId
+          }
+        },
+        new: {
+          "t_request_approvals": {
+            status: "Approved",
+            remarks: this.tl_remarks || 'Approved by Team Lead'
+          }
+        }
+      }
+    }).then(() => {
+      alert('Request Approved successfully');
+      this.selectedRequest = null;
+      this.tl_remarks = '';
+      this.getallrequests();
+    }).catch(err => {
+      console.error("Approval error:", err);
+      alert("Failed to approve request. Please try again.");
+      this.isLoading = false;
+    });
+  }
+
+  handleReject() {
+    if (!this.selectedRequest?.approvalId) {
+      alert("No approval record found for this request");
+      return;
+    }
+
+    if (!this.tl_remarks || !this.tl_remarks.trim()) {
+      alert("Please enter remarks before rejecting.");
+      return;
+    }
+
+    this.isLoading = true;
+    this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
+      tuple: {
+        old: {
+          "t_request_approvals": {
+            approval_id: this.selectedRequest.approvalId
+          }
+        },
+        new: {
+          "t_request_approvals": {
+            status: "Rejected",
+            remarks: this.tl_remarks || 'Rejected by Team Lead'
+          }
+        }
+      }
+    }).then(() => {
+      alert('Request Rejected successfully');
+      this.selectedRequest = null;
+      this.tl_remarks = '';
+      this.getallrequests();
+    }).catch(err => {
+      console.error("Rejection error:", err);
+      alert("Failed to reject request. Please try again.");
+      this.isLoading = false;
+    });
   }
 
   onSearch(event: Event) {
     this.searchTerm = (event.target as HTMLInputElement).value;
     this.currentPage = 1;
   }
+
 }

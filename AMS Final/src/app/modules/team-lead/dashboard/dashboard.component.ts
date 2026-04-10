@@ -26,6 +26,7 @@ export class LeadDashboardComponent implements OnInit {
   data: any = { table: [] };
   user: any;
   userDetails: any;
+  isLoading = false;
 
   constructor(
     private authService: AuthService,
@@ -40,8 +41,7 @@ export class LeadDashboardComponent implements OnInit {
     
     const activeTeam = user.team || 'General';
     
-    // Maintain existing logic for team size and assets as requested
-    this.teamSize = this.userService.getUsersByTeam(activeTeam).length;
+    // Maintain existing logic for assets as requested (Assets are still local for now)
     this.teamAssets = this.assetService.getAssetsByTeam(activeTeam).length;
     
     this.getuser();
@@ -69,6 +69,7 @@ export class LeadDashboardComponent implements OnInit {
   }
 
   getuser() {
+    this.isLoading = true;
     this.hs.ajax('GetUserDetails', 'http://schemas.cordys.com/UserManagement/1.0/User', {}
     ).then((resp: any) => {
       this.user = this.hs.xmltojson(resp, "User");
@@ -85,6 +86,8 @@ export class LeadDashboardComponent implements OnInit {
       { username: targetUsername } // Capitalized 'Username' is the standard for Cordys DB operations
     ).then((resp: any) => {
       this.userDetails = this.hs.xmltojson(resp, "m_users");
+      this.getusercount(); // Fetch live team size once project ID is known
+      this.getpendingcount(); // Fetch accurate pending approvals count
       this.getallrequests();
     }).catch(err => {
       console.error("Error fetching detailed user info in getuserdetails:", err);
@@ -127,37 +130,70 @@ export class LeadDashboardComponent implements OnInit {
     this.currentPage = 1;
   }
   getallrequests() {
-    this.hs.ajax('GetAllProjectRequests', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { project_id: this.userDetails.project_id }
+    this.hs.ajax('GetRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      {}
     ).then((resp: any) => {
-      const result = this.hs.xmltojson(resp, "t_asset_requests");
+      const result = this.hs.xmltojson(resp, "t_request_approvals");
       const rawData = Array.isArray(result) ? result : [result];
 
       // Map database fields to the AssetRequest interface fields used in the template
       this.teamRequests = rawData.map((item: any) => {
+        const reqItem = item.t_asset_requests || {};
         const userInfo = item.m_users || {};
+        const subCategory = item.m_asset_subcategories || {};
+
         return {
-          id: item.request_id || '',
-          requestNumber: item.request_id || '', // Using request_id as requestNumber
+          id: reqItem.request_id || '',
+          requestNumber: reqItem.request_id || '', 
           requesterName: userInfo.name || 'User',
           requesterTeam: userInfo.team || '',
-          category: item.asset_type || '',
-          assetType: item.asset_type || '',
-          urgency: item.urgency || 'Medium',
+          category: reqItem.asset_type || '',
+          assetType: subCategory.name || '', 
+          urgency: reqItem.urgency || 'Medium',
           status: item.status || 'Pending',
-          requestDate: item.created_at || '',
+          requestDate: reqItem.created_at || '',
           currentStage: 'Pending' // Initial default
         } as any;
-      });
+      }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
 
       this.data.table = rawData;
       
-      // Calculate live pending count from the API data
-      this.pendingApprovalsCount = this.teamRequests.filter(r => r.status === 'Pending').length;
+      // We now fetch pendingApprovalsCount via getpendingcount() for better accuracy
+      // this.pendingApprovalsCount = this.teamRequests.filter(r => r.status === 'Pending').length;
       
       console.log("Mapped team requests:", this.teamRequests);
+      this.isLoading = false;
     }).catch(err => {
       console.error("Error fetching requests:", err);
+      this.isLoading = false;
     });
   }
+  getusercount() {
+    this.hs.ajax('GetUserCountByProject', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { project_id: this.userDetails.project_id }
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, "m_users");
+      // If result is a list of users, use the length; if it's a specific count object, use the value
+      this.teamSize = Array.isArray(result) ? result.length : (parseInt(result?.count) || parseInt(result) || 0);
+      console.log("Team Size updated from API:", this.teamSize);
+    }).catch(err => {
+      console.error("Error fetching user count in getusercount:", err);
+    });
+  }
+
+  getpendingcount() {
+    this.hs.ajax('GetPendingRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      {}
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, "t_request_approvals");
+      const rawData = Array.isArray(result) ? result : [result];
+      this.pendingApprovalsCount = rawData.length;
+      console.log("Pending Approvals count updated from API:", this.pendingApprovalsCount);
+    }).catch(err => {
+      console.error("Error fetching pending count in getpendingcount:", err);
+    });
+  }
+
 }
+
+

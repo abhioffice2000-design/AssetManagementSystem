@@ -1,67 +1,83 @@
-<div class="card animate-slide-up m-24">
-  <div class="card-header border-0" style="display: flex; justify-content: space-between; align-items: center;">
-    <h3 style="margin: 0;">Pending Approvals ({{pendingRequests.length}})</h3>
-    <div class="search-box">
-      <input type="text" placeholder="Search approvals..." (input)="onSearch($event)" 
-             style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; min-width: 250px;">
+<div class="card animate-slide-up m-24" style="min-height: 400px; position: relative;">
+  <!-- Loading State -->
+  <div class="loading-overlay-container" *ngIf="isLoading">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <h4>Loading pending approvals...</h4>
+      <p class="text-muted">Fetching latest requests for your project</p>
     </div>
   </div>
-  <div class="card-body p-0">
-    <div class="table-container">
-      <table class="table table-custom-bordered">
-        <thead>
-          <tr>
-            <th>Request No</th>
-            <th>Requester Name</th>
-            <th>Category</th>
-            <th>Asset Type</th>
-            <th>Urgency</th>
-            <th>Status</th>
-            <th>Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let req of paginatedRequests" 
-              (click)="selectRequest(req)" 
-              class="clickable-row"
-              [class.selected]="selectedRequest?.id === req.id">
-            <td><strong>{{req.requestNumber}}</strong></td>
-            <td>{{req.requesterName}}</td>
-            <td>{{req.category}}</td>
-            <td>
-              <span class="badge" [ngClass]="{'badge-primary': req.assetType === 'Hardware', 'badge-info': req.assetType === 'Software'}">
-                {{req.assetType}}
-              </span>
-            </td>
-            <td>
-              <span class="badge" 
-                    [ngClass]="{
-                      'badge-danger': req.urgency === 'High', 
-                      'badge-warning': req.urgency === 'Medium',
-                      'badge-success': req.urgency === 'Low'
-                    }">
-                {{req.urgency}}
-              </span>
-            </td>
-            <td>
-              <span class="badge badge-warning">{{req.status}}</span>
-            </td>
-            <td>{{req.requestDate | date}}</td>
-          </tr>
-          <tr *ngIf="pendingRequests.length === 0">
-            <td colspan="7" class="text-center text-muted m-24 p-24">
-              Awesome, no pending requests!
-            </td>
-          </tr>
-        </tbody>
-      </table>
+
+  <ng-container *ngIf="!isLoading">
+    <div class="card-header border-0" style="display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0;">Pending Approvals ({{pendingRequests.length}})</h3>
+      <div class="search-box">
+        <input type="text" placeholder="Search approvals..." (input)="onSearch($event)" 
+               style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; min-width: 250px;">
+      </div>
     </div>
-    <div class="pagination-controls" *ngIf="totalPages > 1">
-      <button [disabled]="currentPage === 1" (click)="changePage(currentPage - 1)">Previous</button>
-      <span>Page {{currentPage}} of {{totalPages}}</span>
-      <button [disabled]="currentPage === totalPages" (click)="changePage(currentPage + 1)">Next</button>
+    <div class="card-body p-0">
+      <div class="table-container">
+        <table class="table table-custom-bordered">
+          <thead>
+            <tr>
+              <th>Request No</th>
+              <th>Requester Name</th>
+              <th>Category</th>
+              <th>Asset Name</th>
+              <th>Urgency</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th class="text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let req of paginatedRequests" 
+                class="clickable-row"
+                [class.selected]="selectedRequest?.id === req.id">
+              <td><strong>{{req.requestNumber}}</strong></td>
+              <td>{{req.requesterName}}</td>
+              <td>{{req.category}}</td>
+              <td>
+                <span class="badge badge-info">
+                  {{req.assetType}}
+                </span>
+              </td>
+              <td>
+                <span class="badge" 
+                      [ngClass]="{
+                        'badge-danger': req.urgency === 'High', 
+                        'badge-warning': req.urgency === 'Medium',
+                        'badge-success': req.urgency === 'Low'
+                      }">
+                  {{req.urgency}}
+                </span>
+              </td>
+              <td>
+                <span class="badge badge-warning">{{req.status}}</span>
+              </td>
+              <td>{{req.requestDate | date}}</td>
+              <td class="text-center">
+                <button (click)="selectRequest(req)" class="btn btn-icon btn-primary" title="Process Request">
+                  <span class="material-icons-outlined" style="font-size: 18px;">edit</span>
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="pendingRequests.length === 0">
+              <td colspan="7" class="text-center text-muted m-24 p-24">
+                Awesome, no pending requests!
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination-controls" *ngIf="totalPages > 1">
+        <button [disabled]="currentPage === 1" (click)="changePage(currentPage - 1)">Previous</button>
+        <span>Page {{currentPage}} of {{totalPages}}</span>
+        <button [disabled]="currentPage === totalPages" (click)="changePage(currentPage + 1)">Next</button>
+      </div>
     </div>
-  </div>
+  </ng-container>
 </div>
 
 <!-- Modal Popup for Approval Detail -->
@@ -91,17 +107,22 @@
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
       
-      <!-- Show justification if available -->
-      <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;" *ngIf="selectedRequest.justification">
-        <label style="font-size: 13px; font-weight: 500; color: #666;">Justification</label>
-        <textarea readonly style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box; resize: none;" rows="3">{{selectedRequest.justification}}</textarea>
+      <!-- Remarks section -->
+      <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;">
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Approver Remarks</label>
+        <textarea [(ngModel)]="tl_remarks" placeholder="Enter any remarks or comments here..." 
+                  style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: white; width: 100%; box-sizing: border-box; resize: vertical;" 
+                  rows="3"></textarea>
       </div>
     </div>
 
     <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee;">
-      <button (click)="cancelSelection()" style="padding: 10px 18px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; color: #444; font-weight: 500;">Cancel</button>
-      <button (click)="markAsReject()" style="padding: 10px 18px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Reject</button>
-      <button (click)="markAsAccept()" style="padding: 10px 18px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Accept</button>
+      <button (click)="markAsReject()" [disabled]="!tl_remarks.trim()" 
+              [style.opacity]="tl_remarks.trim() ? '1' : '0.6'"
+              style="padding: 10px 18px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Reject</button>
+      <button (click)="markAsAccept()" [disabled]="!tl_remarks.trim()" 
+              [style.opacity]="tl_remarks.trim() ? '1' : '0.6'"
+              style="padding: 10px 18px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Accept</button>
     </div>
   </div>
 </div>
