@@ -287,6 +287,85 @@ export class AssetService {
   }
 
   /**
+   * Fetches dashboard data from the Cordys SOAP service (GetDashboardData).
+   * Returns sub-category counts: [{ name, asset_count }]
+   * The caller can aggregate by type on the frontend.
+   */
+  async fetchDashboardData(): Promise<{ name: string; asset_count: number }[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetDashboardData xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetDashboardData response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      const result = tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.m_asset_subcategories || tuple?.m_asset_subcategories || tuple;
+        return {
+          name: data?.name || '',
+          asset_count: parseInt(data?.asset_count, 10) || 0
+        };
+      });
+
+      console.log(`Fetched ${result.length} subcategory counts from GetDashboardData`, result);
+      return result;
+    } catch (err) {
+      console.error('Failed to fetch dashboard data from GetDashboardData:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Fetches software subcategory counts from the Cordys SOAP service (GetSoftwareTypeData).
+   * Returns: [{ name, asset_count }]
+   */
+  async fetchSoftwareTypeData(): Promise<{ name: string; asset_count: number }[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetSoftwareTypeData xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetSoftwareTypeData response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      const result = tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.m_asset_subcategories || tuple?.m_asset_subcategories || tuple;
+        return {
+          name: data?.name || '',
+          asset_count: parseInt(data?.asset_count, 10) || 0
+        };
+      });
+
+      console.log(`Fetched ${result.length} software subcategory counts from GetSoftwareTypeData`, result);
+      return result;
+    } catch (err) {
+      console.error('Failed to fetch software type data from GetSoftwareTypeData:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Fetches all asset details from the Cordys SOAP service (Getallassetdetails).
    * Parses the XML/JSON response and maps each tuple into the Asset model.
    */

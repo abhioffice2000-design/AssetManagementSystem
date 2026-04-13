@@ -131,7 +131,7 @@
               </span>
               <span class="meta-item">
                 <span class="material-icons-outlined">schedule</span>
-                {{ getTimeSince(req.requestDate) }}
+                {{ req.requestDate | date: 'dd MMM yyyy, hh:mm a' }}
               </span>
             </div>
           </div>
@@ -231,6 +231,37 @@
         </button>
       </div>
       <div class="modal-body" *ngIf="detailRequest">
+        <!-- Approval Chain (Horizontal) -->
+        <div class="detail-section approval-chain-top">
+          <h4 class="detail-section-title">
+            <span class="material-icons-outlined">account_tree</span>
+            Approval Chain
+          </h4>
+          <div class="horizontal-timeline">
+            <div class="hz-timeline-item" *ngFor="let entry of detailRequest.approvalChain; let last = last"
+              [ngClass]="getApprovalStageClass(entry.action)">
+              
+              <div class="hz-timeline-marker">
+                <div class="hz-timeline-dot">
+                  <span class="material-icons-outlined">{{ getApprovalIcon(entry.action) }}</span>
+                </div>
+                <div class="hz-timeline-connector" *ngIf="!last"></div>
+              </div>
+
+              <div class="hz-timeline-content">
+                <span class="hz-timeline-stage">{{ entry.stage }}</span>
+                <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action }}</span>
+                <div class="hz-timeline-meta" *ngIf="entry.approverName">
+                  <span class="material-icons-outlined">person</span> {{ entry.approverName }}
+                </div>
+                <div class="hz-timeline-meta" *ngIf="entry.timestamp">
+                  <span class="material-icons-outlined">schedule</span> {{ entry.timestamp | date: 'dd MMM, hh:mm a' }}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
 
         <!-- Request Info Grid -->
         <div class="detail-section">
@@ -268,13 +299,31 @@
               <span>{{ detailRequest.requesterRole || '—' }}</span>
             </div>
             <div class="detail-item full-col">
+              <label>Document</label>
+              <div *ngIf="detailRequest.document" class="doc-actions-wrapper">
+                <span class="email-doc">
+                  <span class="material-icons-outlined">attachment</span>
+                  <span>{{ detailRequest.document }}</span>
+                </span>
+                <div class="doc-actions">
+                  <button class="btn-small-outline doc-btn" (click)="viewDocument(detailRequest.document)">
+                    <span class="material-icons-outlined">visibility</span> View
+                  </button>
+                  <button class="btn-small-outline doc-btn" (click)="downloadDocument(detailRequest.document)">
+                    <span class="material-icons-outlined">download</span> Download
+                  </button>
+                </div>
+              </div>
+              <span *ngIf="!detailRequest.document">—</span>
+            </div>
+            <div class="detail-item full-col">
 
               <label>Reason</label>
               <span>{{ detailRequest.justification }}</span>
             </div>
             <div class="detail-item">
               <label>Date</label>
-              <span>{{ detailRequest.requestDate }}</span>
+              <span>{{ detailRequest.requestDate | date: 'dd MMM yyyy, hh:mm a' }}</span>
             </div>
           </div>
 
@@ -329,42 +378,6 @@
 
           </div>
 
-        </div>
-        <!-- Approval Chain -->
-
-        <div class="detail-section">
-          <h4 class="detail-section-title">
-            <span class="material-icons-outlined">account_tree</span>
-            Approval Chain
-          </h4>
-          <div class="approval-timeline">
-            <div class="timeline-item" *ngFor="let entry of detailRequest.approvalChain; let last = last"
-              [ngClass]="getApprovalStageClass(entry.action)">
-              <div class="timeline-connector" *ngIf="!last"></div>
-              <div class="timeline-dot">
-                <span class="material-icons-outlined">{{ getApprovalIcon(entry.action) }}</span>
-              </div>
-              <div class="timeline-content">
-                <div class="timeline-header">
-                  <span class="timeline-stage">{{ entry.stage }}</span>
-                  <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action
-                    }}</span>
-                </div>
-                <div class="timeline-meta" *ngIf="entry.approverName">
-                  <span class="material-icons-outlined">person</span>
-                  {{ entry.approverName }}
-                </div>
-                <div class="timeline-meta" *ngIf="entry.timestamp">
-                  <span class="material-icons-outlined">schedule</span>
-                  {{ entry.timestamp | date: 'dd MMM yyyy, hh:mm a' }}
-                </div>
-                <div class="timeline-comment" *ngIf="entry.comments">
-                  <span class="material-icons-outlined">chat</span>
-                  {{ entry.comments }}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- Comments -->

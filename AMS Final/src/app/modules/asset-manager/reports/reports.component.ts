@@ -14,7 +14,6 @@ export class ReportsComponent implements OnInit {
   assets: Asset[] = [];
   teamHoldings: any[] = [];
 
-  typeDistribution: { type: string; count: number; value: number; percentage: number }[] = [];
   statusDistribution: { status: string; count: number; percentage: number; color: string }[] = [];
   warrantyAlerts: Asset[] = [];
 
@@ -35,6 +34,41 @@ export class ReportsComponent implements OnInit {
   // Team-wise Asset Holding
   teamAssetHoldings: TeamAssetHolding[] = [];
   teamHoldingTotal = { assets: 0, value: 0 };
+
+  // ===== Pie Chart: Asset Type Distribution (from service) =====
+  typeBreakdown: TypeBreakdownItem[] = [];
+  grandTotal = 0;
+  isLoadingPieChart = true;
+
+  // Icon & color mapping for known types
+  private typeStyleMap: Record<string, { icon: string; color: string; bgColor: string }> = {
+    'hardware':   { icon: 'computer',   color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)' },
+    'software':   { icon: 'code',       color: '#8b5cf6', bgColor: 'rgba(139, 92, 246, 0.1)' },
+    'network':    { icon: 'router',     color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)' },
+    'peripheral': { icon: 'mouse',      color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.1)' },
+    'furniture':  { icon: 'chair',      color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.1)' }
+  };
+
+  private fallbackColors = [
+    { icon: 'category', color: '#6366f1', bgColor: 'rgba(99, 102, 241, 0.1)' },
+    { icon: 'widgets',  color: '#14b8a6', bgColor: 'rgba(20, 184, 166, 0.1)' },
+    { icon: 'inventory_2', color: '#f97316', bgColor: 'rgba(249, 115, 22, 0.1)' }
+  ];
+
+  // Subcategory → type mapping
+  private subCategoryTypeMapping: Record<string, string> = {
+    'laptop': 'hardware', 'monitor': 'hardware', 'desktop': 'hardware',
+    'server': 'hardware', 'workstation': 'hardware', 'tablet': 'hardware',
+    'productivity suite': 'software', 'development tools': 'software',
+    'design tools': 'software', 'software license': 'software',
+    'ide license': 'software', 'license': 'software',
+    'antivirus': 'software', 'ms office': 'software',
+    'router': 'network', 'switch': 'network', 'access point': 'network',
+    'firewall': 'network',
+    'keyboard': 'peripheral', 'mouse': 'peripheral', 'headphones': 'peripheral',
+    'webcam': 'peripheral', 'printer': 'peripheral',
+    'desk': 'furniture', 'chair': 'furniture', 'cabinet': 'furniture'
+  };
 
   constructor(
     private assetService: AssetService,
@@ -73,28 +107,109 @@ export class ReportsComponent implements OnInit {
     this.buildReportData();
     this.loadMonthlyYearlyData();
     this.loadTeamAssetHoldings();
+    this.loadPieChartData();
+  }
+
+  // ===== Load Pie Chart data from SOAP service =====
+  async loadPieChartData(): Promise<void> {
+    this.isLoadingPieChart = true;
+    try {
+      // Fetch type-wise counts AND subcategory counts in parallel
+      const [typeCounts, subCategoryCounts, softwareSubCategoryCounts] = await Promise.all([
+        this.assetService.fetchAssetTypeWiseCount(),
+        this.assetService.fetchDashboardData(),
+        this.assetService.fetchSoftwareTypeData()
+      ]);
+
+      const allSubcategoryCounts = [...subCategoryCounts, ...softwareSubCategoryCounts];
+
+      // Build type → subcategory map from GetDashboardData and GetSoftwareTypeData
+      const typeSubCatMap: Record<string, { name: string; count: number }[]> = {};
+      for (const sub of allSubcategoryCounts) {
+        const subNameLower = (sub.name || '').toLowerCase();
+        const typeKey = this.subCategoryTypeMapping[subNameLower] || 'hardware';
+        if (!typeSubCatMap[typeKey]) {
+          typeSubCatMap[typeKey] = [];
+        }
+
+        // Merge identical subcategory names (in case both queries return them)
+        const existingSub = typeSubCatMap[typeKey].find(s => s.name.toLowerCase() === sub.name.toLowerCase());
+        if (existingSub) {
+          existingSub.count += sub.asset_count;
+        } else {
+          typeSubCatMap[typeKey].push({ name: sub.name, count: sub.asset_count });
+        }
+      }
+
+      let fallbackIndex = 0;
+      this.typeBreakdown = typeCounts.map(item => {
+        const key = (item.type_name || '').toLowerCase();
+        const style = this.typeStyleMap[key] || this.fallbackColors[fallbackIndex++ % this.fallbackColors.length];
+        return {
+          type: item.type_name,
+          icon: style.icon,
+          color: style.color,
+          bgColor: style.bgColor,
+          count: item.asset_count,
+          subCategories: typeSubCatMap[key] || []
+        };
+      }).filter(t => t.count > 0);
+
+      this.typeBreakdown.sort((a, b) => b.count - a.count);
+      this.grandTotal = this.typeBreakdown.reduce((sum, t) => sum + t.count, 0);
+
+      // Update KPI totals
+      this.assetStats.total = this.grandTotal;
+    } catch (err) {
+      console.error('Failed to load pie chart data:', err);
+    } finally {
+      this.isLoadingPieChart = false;
+    }
+  }
+
+  getPieChartGradient(): string {
+    if (this.grandTotal === 0 || this.typeBreakdown.length === 0) {
+      return 'conic-gradient(var(--border-color) 0% 100%)';
+    }
+
+    const gradientParts: string[] = [];
+    let cumulativePercent = 0;
+
+    for (let i = 0; i < this.typeBreakdown.length; i++) {
+      const item = this.typeBreakdown[i];
+      const start = cumulativePercent;
+      let pct = (item.count / this.grandTotal) * 100;
+      let end = cumulativePercent + pct;
+
+      if (i === this.typeBreakdown.length - 1) {
+        end = 100;
+      }
+
+      gradientParts.push(`${item.color} ${start}% ${end}%`);
+      cumulativePercent += pct;
+    }
+    return `conic-gradient(${gradientParts.join(', ')})`;
+  }
+
+  getPiePercentage(count: number): number {
+    if (this.grandTotal === 0) return 0;
+    return Math.round((count / this.grandTotal) * 100);
+  }
+
+  getSubCatPercentage(subCount: number, typeCount: number): number {
+    if (typeCount === 0) return 0;
+    return Math.round((subCount / typeCount) * 100);
   }
 
   buildReportData(): void {
     this.totalAssetValue = this.assets.reduce((sum, a) => sum + a.cost, 0);
     this.avgAssetCost = this.assets.length > 0 ? Math.round(this.totalAssetValue / this.assets.length) : 0;
 
-    const types = Object.values(AssetType);
-    const totalCount = this.assets.length || 1;
-    this.typeDistribution = types.map(type => {
-      const items = this.assets.filter(a => a.type === type);
-      return {
-        type,
-        count: items.length,
-        value: items.reduce((s, a) => s + a.cost, 0),
-        percentage: Math.round((items.length / totalCount) * 100)
-      };
-    }).filter(t => t.count > 0).sort((a, b) => b.count - a.count);
-
     const statusColors: Record<string, string> = {
       'Available': '#10b981', 'Allocated': '#3b82f6', 'In Repair': '#f59e0b',
       'Retired': '#6b7280', 'Reserved': '#8b5cf6'
     };
+    const totalCount = this.assets.length || 1;
     const statuses = Object.values(AssetStatus);
     this.statusDistribution = statuses.map(status => {
       const count = this.assets.filter(a => a.status === status).length;
@@ -300,4 +415,13 @@ interface TeamAssetHolding {
   peripheral: number;
   totalValue: number;
   members: number;
+}
+
+interface TypeBreakdownItem {
+  type: string;
+  icon: string;
+  color: string;
+  bgColor: string;
+  count: number;
+  subCategories: { name: string; count: number }[];
 }

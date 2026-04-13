@@ -801,9 +801,31 @@
   align-items: center;
   gap: 4px;
   color: var(--primary) !important;
+  font-weight: 500;
 
   .material-icons-outlined {
     font-size: 16px;
+  }
+}
+
+.doc-actions-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.doc-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.doc-btn {
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  
+  .material-icons-outlined {
+    font-size: 14px;
   }
 }
 
@@ -896,7 +918,7 @@
   &:hover { background: rgba(37, 99, 235, 0.05); }
 }
 
-/* ── Approval Timeline ── */
+/* ── Approval Timeline (Vertical Fallback) ── */
 .approval-timeline {
   display: flex;
   flex-direction: column;
@@ -921,6 +943,127 @@
   bottom: 0;
   width: 2px;
   background: var(--border-color);
+}
+
+/* ── Horizontal Approval Chain ── */
+.approval-chain-top {
+  background: var(--bg-main);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 24px;
+}
+
+.horizontal-timeline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 20px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+}
+
+.hz-timeline-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 150px;
+
+  /* Add padding to prevent the last item from stretching too far if few items */
+  padding-right: 16px;
+  &:last-child {
+    padding-right: 0;
+    flex: 0 1 auto;
+  }
+}
+
+.hz-timeline-marker {
+  display: flex;
+  align-items: center;
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.hz-timeline-connector {
+  position: absolute;
+  left: 32px; /* starts after the dot */
+  right: -16px; /* extends into the padding of the next item */
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  background: var(--border-color);
+  z-index: 0;
+}
+
+.hz-timeline-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  transition: all 0.2s;
+
+  .material-icons-outlined {
+    font-size: 16px;
+    color: var(--text-muted);
+  }
+
+  /* Status Colors */
+  .stage-approved & {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: #10b981;
+    .material-icons-outlined { color: #059669; }
+  }
+
+  .stage-rejected & {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    .material-icons-outlined { color: #dc2626; }
+  }
+
+  .stage-pending & {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: #f59e0b;
+    .material-icons-outlined { color: #d97706; }
+  }
+
+  .stage-skipped & {
+    background: rgba(107, 114, 128, 0.08);
+    border-color: #9ca3af;
+    .material-icons-outlined { color: #9ca3af; }
+  }
+}
+
+.hz-timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hz-timeline-stage {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.hz-timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+
+  .material-icons-outlined {
+    font-size: 14px;
+  }
 }
 
 .timeline-dot {
