@@ -140,18 +140,8 @@
             <div class="action-buttons">
               <button class="btn-detail" (click)="openDetailModal(req)">
                 <span class="material-icons-outlined">info</span>
-                Detail
+                Details
               </button>
-              <ng-container *ngIf="activeTab === 'pending'">
-                <button class="btn-approve" (click)="openActionModal(req, 'approve')">
-                  <span class="material-icons-outlined">check</span>
-                  Approve
-                </button>
-                <button class="btn-reject" (click)="openActionModal(req, 'reject')">
-                  <span class="material-icons-outlined">close</span>
-                  Reject
-                </button>
-              </ng-container>
             </div>
           </div>
         </div>
@@ -170,53 +160,7 @@
     </div>
   </ng-container>
 
-  <!-- Action Modal -->
-  <div class="modal-overlay" *ngIf="showActionModal" (click)="closeActionModal()">
-    <div class="modal-content" (click)="$event.stopPropagation()">
-      <div class="modal-header" [class.modal-approve]="actionType === 'approve'"
-        [class.modal-reject]="actionType === 'reject'">
-        <h3>
-          <span class="material-icons-outlined">{{ actionType === 'approve' ? 'check_circle' : 'cancel' }}</span>
-          {{ actionType === 'approve' ? 'Approve' : 'Reject' }} Request
-        </h3>
-        <button class="btn-icon-close" (click)="closeActionModal()">
-          <span class="material-icons-outlined">close</span>
-        </button>
-      </div>
-      <div class="modal-body" *ngIf="selectedRequest">
-        <div class="modal-request-summary">
-          <div class="summary-row">
-            <label>Request</label>
-            <span>{{ selectedRequest.requestNumber }}</span>
-          </div>
-          <div class="summary-row">
-            <label>Requester</label>
-            <span>{{ selectedRequest.requesterName }} ({{ selectedRequest.requesterDepartment }})</span>
-          </div>
-          <div class="summary-row">
-            <label>Asset</label>
-            <span>{{ selectedRequest.category }} — {{ selectedRequest.subCategory }}</span>
-          </div>
-          <div class="summary-row">
-            <label>Justification</label>
-            <span>{{ selectedRequest.justification }}</span>
-          </div>
-        </div>
-        <div class="comments-section">
-          <label>Comments <span class="text-muted">(optional)</span></label>
-          <textarea [(ngModel)]="actionComments" rows="3" placeholder="Add your comments here..."></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-cancel" (click)="closeActionModal()">Cancel</button>
-        <button class="btn-confirm" [class.btn-confirm-approve]="actionType === 'approve'"
-          [class.btn-confirm-reject]="actionType === 'reject'" (click)="confirmAction()">
-          <span class="material-icons-outlined">{{ actionType === 'approve' ? 'check' : 'close' }}</span>
-          {{ actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection' }}
-        </button>
-      </div>
-    </div>
-  </div>
+
 
   <!-- Detail Modal -->
   <div class="modal-overlay" *ngIf="showDetailModal" (click)="closeDetailModal()">
@@ -345,6 +289,18 @@
                 </option>
               </select>
             </div>
+            <div class="detail-item full-col">
+              <label>Assign Allocation Team Member</label>
+              <select class="asset-select" name="allocationMember"
+                [(ngModel)]="selectedAllocationMemberId"
+                (ngModelChange)="onMemberSelect($event)">
+                <option value="">-- Select Team Member --</option>
+                <option *ngFor="let member of allocationTeamMemberList"
+                  [value]="member?.old?.m_users?.user_id || member?.m_users?.user_id || member?.user_id">
+                  {{ (member?.old?.m_users?.name || member?.m_users?.name || member?.name) + ' — ' + (member?.old?.m_users?.email || member?.m_users?.email || member?.email || '') }}
+                </option>
+              </select>
+            </div>
             <div class="detail-item">
               <label>Asset ID</label>
               <span class="mono-text">{{ detailRequest.assignedAssetId || '—' }}</span>
@@ -405,11 +361,11 @@
         <button class="btn-cancel" (click)="closeDetailModal()">Close</button>
         <ng-container
           *ngIf="detailRequest && detailRequest.currentStage === 'Asset Manager Approval' && detailRequest.status === 'Pending'">
-          <button class="btn-approve" (click)="closeDetailModal(); openActionModal(detailRequest, 'approve')">
+          <button class="btn-approve" (click)="directConfirmAction(detailRequest, 'approve')">
             <span class="material-icons-outlined">check</span>
             Approve
           </button>
-          <button class="btn-reject" (click)="closeDetailModal(); openActionModal(detailRequest, 'reject')">
+          <button class="btn-reject" (click)="directConfirmAction(detailRequest, 'reject')">
             <span class="material-icons-outlined">close</span>
             Reject
           </button>

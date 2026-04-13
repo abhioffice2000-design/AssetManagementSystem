@@ -60,7 +60,7 @@
 
       <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
         <button type="button" class="btn btn-outline" routerLink="/employee/dashboard">Cancel</button>
-        <button type="submit" class="btn btn-primary" [disabled]="requestForm.invalid">Submit Request</button>
+        <button type="button" class="btn btn-primary" (click)="onSubmit()">Submit Request</button>
       </div>
     </form>
   </div>

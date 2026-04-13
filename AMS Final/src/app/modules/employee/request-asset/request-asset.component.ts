@@ -15,7 +15,7 @@ import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../..
 })
 export class RequestAssetComponent implements OnInit {
   requestForm!: FormGroup;
-  
+
   // Master data from Cordys
   masterAssetTypes: any[] = [];
   masterCategories: any[] = [];
@@ -34,14 +34,14 @@ export class RequestAssetComponent implements OnInit {
     private authService: AuthService,
     private notificationService: NotificationService,
     private router: Router
-  ) {}
+  ) { }
 
   async ngOnInit(): Promise<void> {
     this.requestForm = this.fb.group({
       assetType: ['', Validators.required],
       category: ['', Validators.required],
       subCategory: [''],
-      justification: ['', [Validators.required, Validators.minLength(10)]],
+      justification: ['', [Validators.required, Validators.minLength(5)]],
       hasEmailApproval: [false]
     });
 
@@ -85,7 +85,7 @@ export class RequestAssetComponent implements OnInit {
       }
 
       this.availableTypes = this.masterAssetTypes;
-      
+
       console.log('[RequestAsset Debug] Load complete:', {
         types: this.masterAssetTypes,
         categories: this.masterCategories,
@@ -104,7 +104,7 @@ export class RequestAssetComponent implements OnInit {
   onTypeChange(): void {
     const selectedType = this.requestForm.get('assetType')?.value;
     console.log('[RequestAsset Debug] Type changed to (Selected ID):', selectedType);
-    
+
     // Reset following dropdowns
     this.requestForm.patchValue({ category: '', subCategory: '' });
     this.availableSubCategories = [];
@@ -122,7 +122,7 @@ export class RequestAssetComponent implements OnInit {
       console.warn('[RequestAsset Debug] No specific categories for type, using fallback');
       this.availableCategories = this.masterCategories;
     }
-    
+
     // Deduplicate categories if necessary
     const uniqueCats = new Map();
     this.availableCategories.forEach(c => {
@@ -139,10 +139,10 @@ export class RequestAssetComponent implements OnInit {
   onCategoryChange(): void {
     const selectedCatId = this.requestForm.get('category')?.value;
     // We need to find the category object to get its sub_category_id
-    const selectedCatObj = this.availableCategories.find(c => 
+    const selectedCatObj = this.availableCategories.find(c =>
       (c.asset_id || c.id) === selectedCatId || (c.asset_name || c.name) === selectedCatId
     );
-    
+
     console.log('[RequestAsset Debug] Category changed to:', selectedCatId, 'Object:', selectedCatObj);
     this.requestForm.patchValue({ subCategory: '' });
 
@@ -150,7 +150,7 @@ export class RequestAssetComponent implements OnInit {
     // The diagnostic showed Subcategory contains 'sub_category_id' and 'type_id'
     if (selectedCatObj) {
       const targetSubId = selectedCatObj.sub_category_id;
-      this.availableSubCategories = this.masterSubCategories.filter(sub => 
+      this.availableSubCategories = this.masterSubCategories.filter(sub =>
         String(sub.sub_category_id) === String(targetSubId)
       );
     } else {
@@ -164,8 +164,18 @@ export class RequestAssetComponent implements OnInit {
     console.log('[RequestAsset Debug] Filtered Sub-categories:', this.availableSubCategories);
   }
 
-  onSubmit(): void {
-    if (this.requestForm.invalid) return;
+  async onSubmit(): Promise<void> {
+    console.log('[onSubmit] Called. Form valid:', this.requestForm.valid);
+    console.log('[onSubmit] Form values:', this.requestForm.value);
+    console.log('[onSubmit] Form errors:', {
+      assetType: this.requestForm.get('assetType')?.errors,
+      category: this.requestForm.get('category')?.errors,
+      justification: this.requestForm.get('justification')?.errors,
+    });
+    if (this.requestForm.invalid) {
+      console.warn('[onSubmit] Form is invalid — submission blocked.');
+      return;
+    }
 
     const user = this.authService.getCurrentUser();
     if (!user) {
@@ -202,11 +212,68 @@ export class RequestAssetComponent implements OnInit {
       ],
       comments: []
     };
+    var request1 = {
+      tuple: {
 
-    this.requestService.addRequest(newReq as any);
+        new: {
+          t_asset_requests: {
+            user_id: user.id,
+            asset_type: 'Software',
+            reason: 'Need',
+            urgency: 'High',
+            email_approval: 'false',
+            status: 'Pending',
+            temp1: formVal.subCategory
+          }
+        }
+      }
+    }
+
+
+
+    var reqApproval = {
+      id: `REQ${Date.now()}`,
+      requestId: newReq.id,
+      stage: skipTeamLead ? ApprovalStage.ASSET_MANAGER : ApprovalStage.TEAM_LEAD,
+      action: skipTeamLead ? 'Skipped' as any : 'Pending',
+      comments: []
+    }
+    // this.requestService.addRequest(newReq as any);
+    var res = await this.requestService.submitNewRequestForm(request1 as any);
+    console.log("res", res)
+    let newrequestid = res.new.t_asset_requests.request_id;
+    console.log("newrequestid", newrequestid)
+    var request2 = {
+      tuple: {
+
+        new: {
+          t_request_approvals: {
+            request_id: `${newrequestid}`,
+            approver_id: 'usr_003',
+            role: 'Team Lead',
+            status: 'Pending'
+          }
+        }
+      }
+    }
+    var res2 = await this.requestService.createEntryForTeamLead(request2 as any);
+    console.log("res2", res2)
+    let newapprovalid = res2.new.t_request_approvals.approval_id;
+    console.log("newapprovalid", newapprovalid)
+    let request3 = {
+
+
+      InputDoc: "false",
+      Inputusrid: user.id,
+      Inputrequestapprovalid: `${newapprovalid}`,
+      Inputrequestid: `${newrequestid}`
+
+
+    }
+    this.requestService.callBPMForRequest(request3 as any)
     this.notificationService.showToast('Asset request submitted successfully!', 'success');
     this.notificationService.addNotification('Request Submitted', `Your request ${newReq.requestNumber} has been submitted.`, 'info');
-    
+
     this.router.navigate(['/employee/dashboard']);
   }
 }

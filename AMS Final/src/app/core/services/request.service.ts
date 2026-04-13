@@ -269,6 +269,8 @@ export class RequestService {
     const requestDate = createdAt;
 
     return {
+      taskid: tuple?.old?.t_asset_requests?.t_request_approvals?.temp2 || '',
+      approvalId: tuple?.old?.t_asset_requests?.t_request_approvals?.approval_id || '',
       id: reqData?.request_id || '',
       requestNumber: reqData?.request_id || '',
       requesterId: reqData?.user_id || userInfo?.user_id || '',
@@ -455,5 +457,138 @@ export class RequestService {
     const year = new Date().getFullYear();
     const count = this.requests.filter(r => r.requestType === type).length + 1;
     return `${prefix}-${year}-${String(count).padStart(3, '0')}`;
+  }
+
+  submitNewRequestForm(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_requests',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+
+  createEntryForTeamLead(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  updateEntryForTeamLead(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+
+  callBPMForRequest(request: any) {
+    this.hs.ajax(
+      'AMS_Approval',
+      'http://schemas.cordys.com/default',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  completeUserTask(request: any) {
+    return this.hs.ajax(
+      'PerformTaskAction',
+      'http://schemas.cordys.com/notification/workflow/1.0',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  getAllPendingRequestsForParticularAssetManger(request: any) {
+    return this.hs.ajax(
+      'GetallpendingrequestsForAssetManager',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  updateAssetStatus(request: any) {
+    return this.hs.ajax(
+      'UpdateM_assets',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  getAllocationTeamMemberAccordingtoManager(request: any): any {
+    return this.hs.ajax(
+      'GetTeamAllocationMemberByAssetManager',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      { Approver_id: request }
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  createEntryForTeamAllocationMember(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  updateEntryForAssetManager(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
   }
 }
