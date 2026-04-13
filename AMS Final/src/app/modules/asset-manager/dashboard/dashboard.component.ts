@@ -40,28 +40,20 @@ export class ManagerDashboardComponent implements OnInit {
     { icon: 'inventory_2', color: '#f97316', bgColor: 'rgba(249, 115, 22, 0.1)' }
   ];
 
-  // Hardcoded sub-categories per type (replace with service later)
-  private subCategoryMap: Record<string, { name: string; count: number }[]> = {
-    'hardware': [
-      { name: 'Laptop', count: 5 },
-      { name: 'Monitor', count: 2 },
-      { name: 'Desktop', count: 1 }
-    ],
-    'software': [
-      { name: 'Productivity Suite', count: 1 },
-      { name: 'Development Tools', count: 1 },
-      { name: 'Design Tools', count: 1 }
-    ],
-    'network': [
-      { name: 'Router', count: 1 }
-    ],
-    'peripheral': [
-      { name: 'Keyboard', count: 1 },
-      { name: 'Mouse', count: 1 }
-    ],
-    'furniture': [
-      { name: 'Desk', count: 1 }
-    ]
+  // Known mapping of subcategory names → type key (lowercase)
+  // Used to assign subcategory counts from GetDashboardData to their parent type
+  private subCategoryTypeMapping: Record<string, string> = {
+    'laptop': 'hardware', 'monitor': 'hardware', 'desktop': 'hardware',
+    'server': 'hardware', 'workstation': 'hardware', 'tablet': 'hardware',
+    'productivity suite': 'software', 'development tools': 'software',
+    'design tools': 'software', 'software license': 'software',
+    'ide license': 'software', 'license': 'software',
+    'antivirus': 'software', 'ms office': 'software',
+    'router': 'network', 'switch': 'network', 'access point': 'network',
+    'firewall': 'network',
+    'keyboard': 'peripheral', 'mouse': 'peripheral', 'headphones': 'peripheral',
+    'webcam': 'peripheral', 'printer': 'peripheral',
+    'desk': 'furniture', 'chair': 'furniture', 'cabinet': 'furniture'
   };
 
   constructor(
@@ -78,8 +70,32 @@ export class ManagerDashboardComponent implements OnInit {
     this.loadError = '';
 
     try {
-      // Fetch type-wise counts from the SOAP service
-      const typeCounts = await this.assetService.fetchAssetTypeWiseCount();
+      // Fetch type-wise counts AND subcategory counts in parallel
+      const [typeCounts, subCategoryCounts, softwareSubCategoryCounts] = await Promise.all([
+        this.assetService.fetchAssetTypeWiseCount(),
+        this.assetService.fetchDashboardData(),
+        this.assetService.fetchSoftwareTypeData()
+      ]);
+
+      const allSubcategoryCounts = [...subCategoryCounts, ...softwareSubCategoryCounts];
+
+      // Build a map of type → subcategories from GetDashboardData and GetSoftwareTypeData
+      const typeSubCatMap: Record<string, { name: string; count: number }[]> = {};
+      for (const sub of allSubcategoryCounts) {
+        const subNameLower = (sub.name || '').toLowerCase();
+        const typeKey = this.subCategoryTypeMapping[subNameLower] || this.guessTypeFromName(subNameLower);
+        if (!typeSubCatMap[typeKey]) {
+          typeSubCatMap[typeKey] = [];
+        }
+        
+        // Merge identical subcategory names (in case both queries return them)
+        const existingSub = typeSubCatMap[typeKey].find(s => s.name.toLowerCase() === sub.name.toLowerCase());
+        if (existingSub) {
+          existingSub.count += sub.asset_count;
+        } else {
+          typeSubCatMap[typeKey].push({ name: sub.name, count: sub.asset_count });
+        }
+      }
 
       // Build typeBreakdown from service response
       let fallbackIndex = 0;
@@ -93,7 +109,7 @@ export class ManagerDashboardComponent implements OnInit {
           color: style.color,
           bgColor: style.bgColor,
           count: item.asset_count,
-          subCategories: this.subCategoryMap[key] || []
+          subCategories: typeSubCatMap[key] || []
         };
       });
 
@@ -137,33 +153,63 @@ export class ManagerDashboardComponent implements OnInit {
     }
   }
 
+  /**
+   * Attempts to guess the parent type from a subcategory name if not in the mapping.
+   */
+  private guessTypeFromName(name: string): string {
+    // Default to 'hardware' if we can't determine the type
+    return 'hardware';
+  }
+
   getTypePercentage(count: number): number {
     if (this.grandTotal === 0) return 0;
     return Math.round((count / this.grandTotal) * 100);
   }
 
-  getPieChartGradient(): string {
-    if (this.grandTotal === 0 || this.typeBreakdown.length === 0) {
-      return 'conic-gradient(var(--border-color) 0% 100%)';
+  // ===== Interactive Pie Chart Hover =====
+  hoveredTypeIndex: number = -1;
+
+  onTypeHover(index: number): void {
+    this.hoveredTypeIndex = index;
+  }
+
+  onTypeLeave(): void {
+    this.hoveredTypeIndex = -1;
+  }
+
+  /**
+   * Generates an SVG arc path for a donut slice at the given index.
+   * Center: (120,120), outer radius: 110, inner radius: 66
+   */
+  getSlicePath(index: number): string {
+    if (this.grandTotal === 0) return '';
+
+    const cx = 120, cy = 120;
+    const outerR = 110, innerR = 66;
+
+    // Calculate start angle (cumulative of all previous slices)
+    let startAngleDeg = -90; // Start from 12 o'clock
+    for (let i = 0; i < index; i++) {
+      startAngleDeg += (this.typeBreakdown[i].count / this.grandTotal) * 360;
     }
-    
-    let gradientParts = [];
-    let cumulativePercent = 0;
-    
-    for (let i = 0; i < this.typeBreakdown.length; i++) {
-      const item = this.typeBreakdown[i];
-      const start = cumulativePercent;
-      let pct = (item.count / this.grandTotal) * 100;
-      let end = cumulativePercent + pct;
-      
-      if (i === this.typeBreakdown.length - 1) {
-        end = 100;
-      }
-      
-      gradientParts.push(`${item.color} ${start}% ${end}%`);
-      cumulativePercent += pct;
-    }
-    return `conic-gradient(${gradientParts.join(', ')})`;
+    const sliceAngleDeg = (this.typeBreakdown[index].count / this.grandTotal) * 360;
+    const endAngleDeg = startAngleDeg + sliceAngleDeg;
+
+    const startRad = (startAngleDeg * Math.PI) / 180;
+    const endRad = (endAngleDeg * Math.PI) / 180;
+
+    const x1 = cx + outerR * Math.cos(startRad);
+    const y1 = cy + outerR * Math.sin(startRad);
+    const x2 = cx + outerR * Math.cos(endRad);
+    const y2 = cy + outerR * Math.sin(endRad);
+    const x3 = cx + innerR * Math.cos(endRad);
+    const y3 = cy + innerR * Math.sin(endRad);
+    const x4 = cx + innerR * Math.cos(startRad);
+    const y4 = cy + innerR * Math.sin(startRad);
+
+    const largeArc = sliceAngleDeg > 180 ? 1 : 0;
+
+    return `M ${x1} ${y1} A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${innerR} ${innerR} 0 ${largeArc} 0 ${x4} ${y4} Z`;
   }
 
   getSubCatPercentage(subCount: number, typeCount: number): number {

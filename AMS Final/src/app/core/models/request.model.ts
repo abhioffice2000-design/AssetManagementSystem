@@ -18,6 +18,7 @@ export interface AssetRequest {
   emailApprovalDoc?: string;
   requestDate: string;
   lastUpdated: string;
+  document?: string;
   approvalChain: ApprovalEntry[];
   assignedAllocationTeamId?: string;
   allocatedAssetId?: string;

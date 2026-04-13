@@ -143,14 +143,16 @@ export class RequestService {
   private allRequestsList: AssetRequest[] = [];
 
   /**
-   * Fetches pending asset requests from the Cordys SOAP service (Getpendingrequest).
+   * Fetches pending asset requests from the Cordys SOAP service (GetallpendingrequestsForAssetManager).
    * Parses the XML/JSON response and maps each tuple into the AssetRequest model.
    */
-  async fetchPendingRequestsFromService(): Promise<AssetRequest[]> {
+  async fetchPendingRequestsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <Getpendingrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+    <GetallpendingrequestsForAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </GetallpendingrequestsForAssetManager>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
@@ -159,7 +161,7 @@ export class RequestService {
       const tuples = this.hs.xmltojson(response, 'tuple');
 
       if (!tuples) {
-        console.warn('No tuples found in Getpendingrequest response');
+        console.warn('No tuples found in GetallpendingrequestsForAssetManager response');
         this.requests = [];
         this.requestsLoaded = true;
         return [];
@@ -174,20 +176,22 @@ export class RequestService {
       console.log(`Fetched ${this.requests.length} pending requests from service`);
       return [...this.requests];
     } catch (err) {
-      console.error('Failed to fetch requests from Getpendingrequest:', err);
+      console.error('Failed to fetch requests from GetallpendingrequestsForAssetManager:', err);
       throw err;
     }
   }
 
   /**
-   * Fetches ALL asset requests from the Cordys SOAP service (Getallrequest).
-   * Used for the "All Requests" tab — returns requests of every status.
+   * Fetches ALL asset requests from the Cordys SOAP service (GetRequestsForAssetManager).
+   * Used for the "All Requests" tab — returns requests of every status managed by this user.
    */
-  async fetchAllRequestsFromService(): Promise<AssetRequest[]> {
+  async fetchAllRequestsFromService(userId: string = 'usr_004'): Promise<AssetRequest[]> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <Getallrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+    <GetRequestsForAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetRequestsForAssetManager>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
@@ -196,7 +200,7 @@ export class RequestService {
       const tuples = this.hs.xmltojson(response, 'tuple');
 
       if (!tuples) {
-        console.warn('No tuples found in Getallrequest response');
+        console.warn('No tuples found in GetRequestsForAssetManager response');
         this.allRequestsList = [];
         return [];
       }
@@ -205,10 +209,10 @@ export class RequestService {
 
       this.allRequestsList = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
 
-      console.log(`Fetched ${this.allRequestsList.length} total requests from Getallrequest`);
+      console.log(`Fetched ${this.allRequestsList.length} total requests from GetRequestsForAssetManager`);
       return [...this.allRequestsList];
     } catch (err) {
-      console.error('Failed to fetch requests from Getallrequest:', err);
+      console.error('Failed to fetch requests from GetRequestsForAssetManager:', err);
       throw err;
     }
   }
@@ -262,7 +266,7 @@ export class RequestService {
 
     // Format date
     const createdAt = reqData?.created_at || '';
-    const requestDate = createdAt ? createdAt.split('T')[0] : '';
+    const requestDate = createdAt;
 
     return {
       id: reqData?.request_id || '',
@@ -281,6 +285,7 @@ export class RequestService {
       currentStage: currentStage,
       hasEmailApproval: hasEmailApproval,
       emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
+      document: this.getNullableValue(reqData?.document),
       requestDate: requestDate,
       lastUpdated: requestDate,
       requestType: requestType,

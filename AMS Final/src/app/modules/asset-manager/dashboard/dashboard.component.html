@@ -59,26 +59,72 @@
         </div>
 
         <div class="pie-chart-wrapper" *ngIf="typeBreakdown.length > 0">
-          <div class="pie-chart-container">
-            <div class="pie-chart" [ngStyle]="{'background': getPieChartGradient()}"></div>
-            <!-- Optional inner circle for a donut chart if preferred, but pie is fine too; we'll leave it as a pie for exact request or donut for better modern look -->
+          <div class="pie-chart-container"
+            (mouseleave)="onTypeLeave()">
+            <!-- SVG Donut Chart with interactive slices -->
+            <svg class="pie-svg" viewBox="0 0 240 240">
+              <path *ngFor="let item of typeBreakdown; let i = index"
+                [attr.d]="getSlicePath(i)"
+                [attr.fill]="item.color"
+                [class.slice-hovered]="hoveredTypeIndex === i"
+                [class.slice-dimmed]="hoveredTypeIndex !== -1 && hoveredTypeIndex !== i"
+                (mouseenter)="onTypeHover(i)"
+                class="pie-slice" />
+            </svg>
+            <!-- Donut hole center -->
             <div class="donut-hole">
-               <span class="donut-total">{{ grandTotal }}</span>
-               <span class="donut-label">Total</span>
+              <ng-container *ngIf="hoveredTypeIndex === -1">
+                <span class="donut-total">{{ grandTotal }}</span>
+                <span class="donut-label">Total</span>
+              </ng-container>
+              <ng-container *ngIf="hoveredTypeIndex !== -1">
+                <span class="donut-total donut-total-sm">{{ typeBreakdown[hoveredTypeIndex].count }}</span>
+                <span class="donut-label">{{ typeBreakdown[hoveredTypeIndex].type }}</span>
+              </ng-container>
+            </div>
+
+            <!-- Tooltip on hover -->
+            <div class="pie-tooltip" *ngIf="hoveredTypeIndex !== -1"
+              [style.borderColor]="typeBreakdown[hoveredTypeIndex].color">
+              <div class="tooltip-header">
+                <div class="type-icon-wrap"
+                  [style.background]="typeBreakdown[hoveredTypeIndex].bgColor"
+                  [style.color]="typeBreakdown[hoveredTypeIndex].color">
+                  <span class="material-icons-outlined">{{ typeBreakdown[hoveredTypeIndex].icon }}</span>
+                </div>
+                <div class="tooltip-title">
+                  <span class="tooltip-name">{{ typeBreakdown[hoveredTypeIndex].type }}</span>
+                  <span class="tooltip-stats">{{ typeBreakdown[hoveredTypeIndex].count }} assets · {{ getTypePercentage(typeBreakdown[hoveredTypeIndex].count) }}%</span>
+                </div>
+              </div>
+              <div class="tooltip-subcats" *ngIf="typeBreakdown[hoveredTypeIndex].subCategories.length > 0">
+                <div class="tooltip-subcat" *ngFor="let sub of typeBreakdown[hoveredTypeIndex].subCategories">
+                  <span class="tooltip-subcat-dot" [style.background]="typeBreakdown[hoveredTypeIndex].color"></span>
+                  <span class="tooltip-subcat-name">{{ sub.name }}</span>
+                  <span class="tooltip-subcat-count">{{ sub.count }}</span>
+                </div>
+              </div>
             </div>
           </div>
           
           <div class="pie-legend-list">
-            <div class="pie-legend-item" *ngFor="let item of typeBreakdown">
-              <div class="pie-legend-header">
+            <div class="pie-legend-item"
+              *ngFor="let item of typeBreakdown; let i = index"
+              [class.legend-highlighted]="hoveredTypeIndex === i"
+              [class.legend-dimmed]="hoveredTypeIndex !== -1 && hoveredTypeIndex !== i"
+              (mouseenter)="onTypeHover(i)"
+              (mouseleave)="onTypeLeave()">
+              <div class="pie-legend-top">
                 <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
                   <span class="material-icons-outlined">{{ item.icon }}</span>
                 </div>
-                <div class="pie-legend-text">
-                  <span class="type-name">{{ item.type }}</span>
-                  <span class="type-count">{{ item.count }} assets ({{ getTypePercentage(item.count) }}%)</span>
-                </div>
+                <span class="type-name">{{ item.type }}</span>
+                <span class="legend-pct-badge" [style.background]="item.bgColor" [style.color]="item.color">{{ getTypePercentage(item.count) }}%</span>
               </div>
+              <div class="legend-bar-track">
+                <div class="legend-bar-fill" [style.width.%]="getTypePercentage(item.count)" [style.background]="item.color"></div>
+              </div>
+              <span class="legend-count-text">{{ item.count }} assets</span>
             </div>
           </div>
         </div>

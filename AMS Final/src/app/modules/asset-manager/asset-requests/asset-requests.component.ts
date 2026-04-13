@@ -53,10 +53,13 @@ export class AssetRequestsComponent implements OnInit {
     this.loadError = '';
 
     try {
+      const currentUser = this.authService.getCurrentUser();
+      const approverId = currentUser?.id || 'usr_004';
+
       // Fetch all three in parallel: all requests, pending requests, and available assets
       const [allReqs, pendingReqs] = await Promise.all([
-        this.requestService.fetchAllRequestsFromService(),
-        this.requestService.fetchPendingRequestsFromService(),
+        this.requestService.fetchAllRequestsFromService(approverId),
+        this.requestService.fetchPendingRequestsFromService(approverId),
         this.loadAvailableAssets()
       ]);
 
@@ -239,5 +242,15 @@ export class AssetRequestsComponent implements OnInit {
       this.detailRequest.assignedPurchaseDate = asset.purchase_date || '—';
       this.detailRequest.assignedWarrantyExpiry = asset.warranty_expiry || '—';
     }
+  }
+
+  viewDocument(docName: string): void {
+    // Mock implementation for viewing document
+    alert(`Viewing document: ${docName}`);
+  }
+
+  downloadDocument(docName: string): void {
+    // Mock implementation for downloading document
+    alert(`Downloading document: ${docName}`);
   }
 }

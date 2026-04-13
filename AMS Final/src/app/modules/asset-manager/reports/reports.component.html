@@ -50,40 +50,97 @@
     </div>
   </div>
 
-  <!-- Distribution Charts Row -->
-  <div class="grid grid-2 gap-24 mb-24">
-    <!-- Asset Type Distribution -->
-    <div class="card chart-card animate-slide-up">
-      <div class="card-header">
-        <h3>
-          <span class="material-icons-outlined">donut_large</span>
-          Asset Type Distribution
-        </h3>
+  <!-- Asset Type Distribution — Full Width Pie Chart -->
+  <div class="card section-card animate-slide-up mb-24">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="material-icons-outlined">donut_large</span>
+        <h3>Asset Type Distribution</h3>
       </div>
-      <div class="card-body">
-        <div class="bar-chart">
-          <div class="bar-row" *ngFor="let item of typeDistribution">
-            <div class="bar-label">
-              <span class="material-icons-outlined bar-icon" [style.color]="getTypeColor(item.type)">
-                {{ getTypeIcon(item.type) }}
-              </span>
-              <span>{{ item.type }}</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" [style.width.%]="item.percentage"
-                [style.background]="getTypeColor(item.type)">
+      <span class="section-subtitle" *ngIf="grandTotal > 0">Distribution of {{ grandTotal }} assets across types</span>
+    </div>
+    <div class="section-body">
+      <!-- Loading -->
+      <div class="pie-loading" *ngIf="isLoadingPieChart">
+        <div class="spinner"></div>
+        <p class="text-muted">Loading asset data...</p>
+      </div>
+
+      <!-- Empty -->
+      <div class="empty-state" *ngIf="!isLoadingPieChart && typeBreakdown.length === 0">
+        <span class="material-icons-outlined" style="font-size: 40px; color: var(--text-muted);">inventory_2</span>
+        <p class="text-muted">No asset data available</p>
+      </div>
+
+      <!-- Pie Chart + Legend -->
+      <div class="pie-chart-wrapper" *ngIf="!isLoadingPieChart && typeBreakdown.length > 0">
+        <div class="pie-chart-container">
+          <div class="pie-chart" [ngStyle]="{'background': getPieChartGradient()}"></div>
+          <div class="donut-hole">
+            <span class="donut-total">{{ grandTotal }}</span>
+            <span class="donut-label">Total</span>
+          </div>
+        </div>
+        <div class="pie-legend-list">
+          <div class="pie-legend-item" *ngFor="let item of typeBreakdown">
+            <div class="pie-legend-header">
+              <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
+                <span class="material-icons-outlined">{{ item.icon }}</span>
+              </div>
+              <div class="pie-legend-text">
+                <span class="type-name">{{ item.type }}</span>
+                <span class="type-count">{{ item.count }} assets ({{ getPiePercentage(item.count) }}%)</span>
               </div>
             </div>
-            <div class="bar-value">
-              <span class="bar-count">{{ item.count }}</span>
-              <span class="bar-pct">({{ item.percentage }}%)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-Category Breakdown -->
+      <div class="subcat-breakdown-section" *ngIf="!isLoadingPieChart && typeBreakdown.length > 0">
+        <div class="type-group" *ngFor="let item of typeBreakdown">
+          <div class="type-group-header">
+            <div class="type-group-title">
+              <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
+                <span class="material-icons-outlined">{{ item.icon }}</span>
+              </div>
+              <span class="type-group-name">{{ item.type }}</span>
+            </div>
+            <div class="type-group-stats">
+              <span class="type-group-count" [style.background]="item.bgColor" [style.color]="item.color">{{ item.count }}</span>
+              <span class="type-group-pct">{{ getPiePercentage(item.count) }}% of total</span>
+            </div>
+          </div>
+          <div class="subcat-list" *ngIf="item.subCategories && item.subCategories.length > 0">
+            <div class="subcat-item" *ngFor="let sub of item.subCategories">
+              <div class="subcat-info">
+                <span class="subcat-dot" [style.background]="item.color"></span>
+                <span class="subcat-name">{{ sub.name }}</span>
+              </div>
+              <div class="subcat-bar-wrap">
+                <div class="subcat-bar-track">
+                  <div class="subcat-bar-fill" [style.width.%]="getSubCatPercentage(sub.count, item.count)"
+                    [style.background]="item.color"></div>
+                </div>
+              </div>
+              <span class="subcat-count">{{ sub.count }}</span>
+            </div>
+          </div>
+          <div class="subcat-list" *ngIf="!item.subCategories || item.subCategories.length === 0">
+            <div class="subcat-item">
+              <div class="subcat-info">
+                <span class="subcat-dot" [style.background]="item.color" style="opacity:0.4"></span>
+                <span class="subcat-name text-muted">No sub-categories available</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Asset Status Distribution -->
+  <!-- Asset Status Distribution -->
+  <div class="mb-24">
     <div class="card chart-card animate-slide-up">
       <div class="card-header">
         <h3>
