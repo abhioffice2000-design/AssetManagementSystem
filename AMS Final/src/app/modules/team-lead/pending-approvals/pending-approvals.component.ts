@@ -55,6 +55,7 @@ export class PendingApprovalsComponent implements OnInit {
   }
 
   getallrequests() {
+    this.isLoading = true;
     this.hs.ajax('GetPendingRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
       {}
     ).then((resp: any) => {
@@ -80,7 +81,7 @@ export class PendingApprovalsComponent implements OnInit {
             assetType: subCategory.name || reqItem.asset_name || '', 
             description: reqItem.purpose || '',
             urgency: reqItem.urgency || 'Medium',
-            status: subCategory.status || 'Pending', // Restored from reqItem
+            status: item.status || 'Pending', // Restored column mapping
             requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
             currentStage: ApprovalStage.TEAM_LEAD
           } as unknown as AssetRequest;
@@ -92,8 +93,6 @@ export class PendingApprovalsComponent implements OnInit {
       this.isLoading = false;
     });
   }
-
-
 
   get filteredRequests(): AssetRequest[] {
     if (!this.searchTerm.trim()) return this.pendingRequests;
@@ -155,6 +154,8 @@ export class PendingApprovalsComponent implements OnInit {
     }
 
     this.isLoading = true;
+    
+    // Step 1: Update current Team Lead approval record to 'Approved'
     this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
       tuple: {
         old: {
@@ -170,13 +171,32 @@ export class PendingApprovalsComponent implements OnInit {
         }
       }
     }).then(() => {
-      alert('Request Approved successfully');
+      // Step 2: Insert new record for the next approval stage (Asset Manager)
+      const requestId = this.selectedRequest?.requestNumber || this.selectedRequest?.id;
+      
+      const nextStageParams = {
+        tuple: {
+          new: {
+            "t_request_approvals": {
+              "request_id": requestId,
+              "approver_id": "usr_004", // Hardcoded as per sample request
+              "role": "Asset Manager",  // Hardcoded as per sample request
+              "status": "Pending",      // Hardcoded as per sample request
+              "remarks": ""
+            }
+          }
+        }
+      };
+
+      return this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', nextStageParams);
+    }).then(() => {
+      alert('Request Approved and forwarded to Asset Manager successfully');
       this.selectedRequest = null;
       this.tl_remarks = '';
       this.getallrequests();
     }).catch(err => {
-      console.error("Approval error:", err);
-      alert("Failed to approve request. Please try again.");
+      console.error("Approval flow error:", err);
+      alert("Failed to complete approval process. Please try again.");
       this.isLoading = false;
     });
   }
