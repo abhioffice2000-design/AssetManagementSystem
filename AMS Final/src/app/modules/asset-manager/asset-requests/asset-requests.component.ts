@@ -22,7 +22,8 @@ export class AssetRequestsComponent implements OnInit {
   urgencies = Object.values(RequestUrgency);
   availableAssets: any[] = [];
   selectedAssetId = '';
-
+  allocationTeamMemberList: any[] = [];
+  selectedAllocationMemberId = '';
   showActionModal = false;
   selectedRequest: AssetRequest | null = null;
   actionType: 'approve' | 'reject' | null = null;
@@ -42,7 +43,7 @@ export class AssetRequestsComponent implements OnInit {
     private authService: AuthService,
     private userService: UserService,
     private assetService: AssetService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.loadAllData();
@@ -65,7 +66,9 @@ export class AssetRequestsComponent implements OnInit {
 
       this.allRequests = allReqs;
       this.pendingRequests = pendingReqs;
-
+      const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
+      this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
+      console.log('Allocation Team Members:', this.allocationTeamMemberList);
       // Stats from all requests (total count across all statuses)
       this.requestStats = this.requestService.getAllRequestStats();
 
@@ -132,6 +135,7 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   openActionModal(request: AssetRequest, action: 'approve' | 'reject'): void {
+    console.log("Request is ", request);
     this.selectedRequest = request;
     this.actionType = action;
     this.actionComments = '';
@@ -145,20 +149,105 @@ export class AssetRequestsComponent implements OnInit {
     this.actionComments = '';
   }
 
-  confirmAction(): void {
+  async directConfirmAction(request: AssetRequest, action: 'approve' | 'reject'): Promise<void> {
+    this.selectedRequest = request;
+    this.actionType = action;
+    this.actionComments = '';
+    console.log('Selected Allocation Member ID:', this.selectedAllocationMemberId);
+    await this.confirmAction();
+    this.closeDetailModal();
+  }
+
+  async confirmAction(): Promise<void> {
+    debugger;
+    //On approval
+    //update the request approvals table with Asset Manager status on approved
+    //update the asset table for that particular asset id with status  "Move To Allocation Team"
+    //create new entry in  request approvals table with asset id in it 
+
+    //On reject
+    ////update the request approvals table with Asset Manager status on rejected
+    //update the asset_request table with status rejected 
+    console.log("Selected request is ", this.selectedRequest);
     if (!this.selectedRequest || !this.actionType) return;
 
     const currentUser = this.authService.getCurrentUser();
     if (!currentUser) return;
 
     if (this.actionType === 'approve') {
-      this.requestService.approveRequest(
-        this.selectedRequest.id,
-        currentUser.id,
-        currentUser.name,
-        this.actionComments,
-        ApprovalStage.ASSET_MANAGER
-      );
+      var req1 = {
+        tuple: {
+          old: {
+            t_request_approvals: {
+              approval_id: this.selectedRequest.approvalId,
+
+            }
+          }
+          ,
+          new: {
+            t_request_approvals: {
+              status: "Approved",
+              remarks: this.actionComments,
+            }
+
+          }
+
+        }
+      }
+      console.log("First request is", req1)
+      await this.requestService.updateEntryForAssetManager(req1 as any)
+      var req2 = {
+        tuple: {
+          old: {
+            m_assets: {
+              asset_id: this.selectedRequest.assignedAssetId,
+
+            }
+          }
+          ,
+          new: {
+            m_assets: {
+              status: "MoveToAllocationTeam",
+
+
+            }
+          }
+
+        }
+      }
+      console.log("Request2 is ", req2);
+      await this.requestService.updateAssetStatus(req2 as any)
+      var req3 = {
+        tuple: {
+          new: {
+            t_request_approvals: {
+              approver_id: this.selectedAllocationMemberId,
+              request_id: this.selectedRequest.id,
+              role: "Allocation Team Member",
+              status: "Pending",
+              remarks: this.actionComments,
+              temp1: this.selectedRequest.assignedAssetId,
+
+            }
+          }
+        }
+      }
+      console.log("Third request is ", req3);
+      await this.requestService.createEntryForTeamAllocationMember(req3 as any);
+      var taskid = this.selectedRequest?.taskid;
+      console.log("Taskid is  ", taskid);
+      var req4 = {
+        TaskId: `${taskid}`,
+        Action: 'COMPLETE'
+      }
+      await this.requestService.completeUserTask(req4 as any)
+      // this.requestService.approveRequest(
+      //   this.selectedRequest.id,
+      //   currentUser.id,
+      //   currentUser.name,
+      //   this.actionComments,
+      //   ApprovalStage.ASSET_MANAGER
+      // );
     } else {
       this.requestService.rejectRequest(
         this.selectedRequest.id,
@@ -222,7 +311,7 @@ export class AssetRequestsComponent implements OnInit {
 
   onAssetSelect(assetId: string): void {
     if (!this.detailRequest) return;
-    
+
     if (!assetId) {
       this.detailRequest.assignedAssetId = '';
       this.detailRequest.assignedTypeId = '';
@@ -242,6 +331,11 @@ export class AssetRequestsComponent implements OnInit {
       this.detailRequest.assignedPurchaseDate = asset.purchase_date || '—';
       this.detailRequest.assignedWarrantyExpiry = asset.warranty_expiry || '—';
     }
+  }
+
+  onMemberSelect(memberId: string): void {
+    this.selectedAllocationMemberId = memberId;
+    console.log('Allocation member selected:', this.selectedAllocationMemberId);
   }
 
   viewDocument(docName: string): void {

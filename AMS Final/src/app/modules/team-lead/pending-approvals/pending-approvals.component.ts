@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { AssetRequest, ApprovalStage } from '../../../core/models/request.model';
 import { HeroService } from '../../../core/services/hero.service';
-
+import { RequestService } from '../../../core/services/request.service';
 @Component({
   selector: 'app-pending-approvals',
   templateUrl: './pending-approvals.component.html',
@@ -21,8 +21,9 @@ export class PendingApprovalsComponent implements OnInit {
   tl_remarks = '';
 
   constructor(
-    private hs: HeroService
-  ) {}
+    private hs: HeroService,
+    private requestService: RequestService
+  ) { }
 
   ngOnInit(): void {
     this.getuser();
@@ -42,7 +43,7 @@ export class PendingApprovalsComponent implements OnInit {
 
   getuserdetails() {
     const targetUsername = this.user?.UserName || this.user?.username || '';
-    
+
     this.hs.ajax('Getuserbyusername', 'http://schemas.cordys.com/AMS_Database_Metadata',
       { username: targetUsername }
     ).then((resp: any) => {
@@ -55,34 +56,36 @@ export class PendingApprovalsComponent implements OnInit {
   }
 
   getallrequests() {
-    this.hs.ajax('GetPendingRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      {}
+    this.hs.ajax('GetallpendingrequestsForParticularTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { Approver_id: this.userDetails.user_id }
     ).then((resp: any) => {
-      const result = this.hs.xmltojson(resp, "t_request_approvals");
+      const result = this.hs.xmltojson(resp, "t_asset_requests");
       const rawData = Array.isArray(result) ? result : [result];
 
       // Map database fields to the AssetRequest interface
       this.pendingRequests = rawData
         .map((item: any) => {
+          console.log("Item is ", item);
           // Based on API response: t_request_approvals contains joined objects
-          const reqItem = item.t_asset_requests || {}; 
+          const reqItem = item.t_asset_requests || {};
           const userInfo = item.m_users || {};
           const subCategory = item.m_asset_subcategories || {};
-
+          console.log("Username is ", userInfo.name);
           return {
-            approvalId: item.approval_id || '',
+            approvalId: item.t_request_approvals.approval_id || '',
             id: reqItem.request_id || item.request_id,
             requestNumber: reqItem.request_id || item.request_id,
             requesterId: reqItem.user_id,
             requesterName: userInfo.name || 'Unknown',
             requesterTeam: userInfo.team || 'General',
             category: reqItem.asset_type || 'General',
-            assetType: subCategory.name || reqItem.asset_name || '', 
+            assetType: subCategory.name || reqItem.asset_name || '',
             description: reqItem.purpose || '',
             urgency: reqItem.urgency || 'Medium',
             status: subCategory.status || 'Pending', // Restored from reqItem
             requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
-            currentStage: ApprovalStage.TEAM_LEAD
+            currentStage: ApprovalStage.TEAM_LEAD,
+            taskid: item.t_request_approvals.temp2
           } as unknown as AssetRequest;
         }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
 
@@ -98,7 +101,7 @@ export class PendingApprovalsComponent implements OnInit {
   get filteredRequests(): AssetRequest[] {
     if (!this.searchTerm.trim()) return this.pendingRequests;
     const term = this.searchTerm.toLowerCase();
-    return this.pendingRequests.filter(req => 
+    return this.pendingRequests.filter(req =>
       req.requestNumber.toLowerCase().includes(term) ||
       req.requesterName.toLowerCase().includes(term) ||
       req.category.toLowerCase().includes(term) ||
@@ -125,6 +128,7 @@ export class PendingApprovalsComponent implements OnInit {
 
   selectRequest(req: AssetRequest): void {
     this.selectedRequest = req;
+    console.log(this.selectedRequest);
   }
 
   cancelSelection(): void {
@@ -142,20 +146,57 @@ export class PendingApprovalsComponent implements OnInit {
       this.handleReject();
     }
   }
-
-  handleApprove() {
+  /*
+    handleApprove() {
+      if (!this.selectedRequest?.approvalId) {
+        alert("No approval record found for this request");
+        return;
+      }
+  
+      if (!this.tl_remarks || !this.tl_remarks.trim()) {
+        alert("Please enter remarks before approving.");
+        return;
+      }
+  
+      this.isLoading = true;
+      this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
+        tuple: {
+          old: {
+            "t_request_approvals": {
+              approval_id: this.selectedRequest.approvalId
+            }
+          },
+          new: {
+            "t_request_approvals": {
+              status: "Approved",
+              remarks: this.tl_remarks || 'Approved by Team Lead'
+            }
+          }
+        }
+      }).then(() => {
+        alert('Request Approved successfully');
+        this.selectedRequest = null;
+        this.tl_remarks = '';
+        this.getallrequests();
+      }).catch(err => {
+        console.error("Approval error:", err);
+        alert("Failed to approve request. Please try again.");
+        this.isLoading = false;
+      });
+    }
+  */
+  async handleApprove() {
+    console.log(this.selectedRequest);
     if (!this.selectedRequest?.approvalId) {
       alert("No approval record found for this request");
       return;
     }
 
-    if (!this.tl_remarks || !this.tl_remarks.trim()) {
-      alert("Please enter remarks before approving.");
-      return;
-    }
-
-    this.isLoading = true;
-    this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
+    // if (!this.tl_remarks || !this.tl_remarks.trim()) {
+    //   alert("Please enter remarks before approving.");
+    //   return;
+    // }
+    var req1 = {
       tuple: {
         old: {
           "t_request_approvals": {
@@ -169,7 +210,12 @@ export class PendingApprovalsComponent implements OnInit {
           }
         }
       }
-    }).then(() => {
+    };
+
+    this.isLoading = true;
+    var res2 = await this.requestService.updateEntryForTeamLead(req1 as any);
+    /*
+ await this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', req1).then(() => {
       alert('Request Approved successfully');
       this.selectedRequest = null;
       this.tl_remarks = '';
@@ -179,6 +225,35 @@ export class PendingApprovalsComponent implements OnInit {
       alert("Failed to approve request. Please try again.");
       this.isLoading = false;
     });
+    */
+    var newrequestid = this.selectedRequest.requestNumber
+    console.log("Taskid response is", res2);
+    var taskid = this.selectedRequest?.taskid;
+    console.log("taskid", taskid);
+    var request2 = {
+      tuple: {
+
+        new: {
+          t_request_approvals: {
+            request_id: `${newrequestid}`,
+            approver_id: 'usr_004',
+            role: 'Asset Manager',
+            status: 'Pending'
+          }
+        }
+      }
+    }
+    var res3 = await this.requestService.updateEntryForTeamLead(request2 as any);
+
+    console.log("res3", res3)
+    var req3 =
+    {
+      TaskId: `${taskid}`,
+      Action: 'COMPLETE'
+    }
+    await this.requestService.completeUserTask(req3 as any);
+
+
   }
 
   handleReject() {

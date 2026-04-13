@@ -33,6 +33,7 @@ export interface AssetRequest {
   requesterStatus?: string;
   requesterProject?: string;
   requesterRole?: string;
+  taskid?: string;
 }
 
 export enum RequestType {
