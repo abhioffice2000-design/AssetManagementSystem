@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { User } from '../../../core/models/user.model';
 import { AssetService } from '../../../core/services/asset.service';
 import { Asset } from '../../../core/models/asset.model';
-import { AdminDataService, Role, Project, Allocation } from '../../../core/services/admin-data.service';
+import { AdminDataService, Role, Project, Allocation, AssetTypeAssignment, AssignedAsset } from '../../../core/services/admin-data.service';
 
 type UserTab = 'users' | 'roles' | 'projects' | 'assignments';
 
@@ -12,6 +12,11 @@ type UserTab = 'users' | 'roles' | 'projects' | 'assignments';
   styleUrls: ['./user-management.component.scss']
 })
 export class UserManagementComponent implements OnInit {
+  readonly employeeRoleName = 'Employee';
+  readonly teamLeadRoleName = 'Team Lead';
+  readonly assetManagerRoleName = 'Asset Manager';
+  readonly assetTeamMemberRoleName = 'Asset Allocation Team';
+
   users: User[] = [];
   filteredUsers: User[] = [];
   searchTerm = '';
@@ -24,24 +29,50 @@ export class UserManagementComponent implements OnInit {
 
   roles: Role[] = [];
   projects: Project[] = [];
+  filteredProjects: Project[] = [];
+  assetTypes: AssetTypeAssignment[] = [];
   allocations: Allocation[] = [];
 
   showAddUserModal = false;
   showAddRoleModal = false;
   showAddProjectModal = false;
   showAssignAssetModal = false;
+  isSavingProject = false;
+  isSavingUser = false;
+  showNoProjectsModal = false;
+  addUserEmailError = '';
 
   newRole: Partial<Role> = { name: '', code: '', description: '', isActive: true };
-  newProject: Partial<Project> = { name: '', projectCode: '', department: '', teamLead: '', status: 'Active' };
+  newProject: Pick<Partial<Project>, 'name'> = { name: '' };
   newAllocation: Partial<Allocation> = { assetId: '', userId: '', department: '', status: 'Active' };
+  newUser: {
+    name: string;
+    email: string;
+    roleName: string;
+    projectId: string;
+    assetTypeId: string;
+  } = {
+    name: '',
+    email: '',
+    roleName: '',
+    projectId: '',
+    assetTypeId: ''
+  };
 
   showEditModal = false;
   showInactiveModal = false;
   showAssetsModal = false;
+  isUpdatingUserStatus = false;
   editingUser: User | null = null;
   userToDeactivate: User | null = null;
   selectedUser: User | null = null;
   selectedUserAssets: Asset[] = [];
+
+  showUserAssetsSidebar = false;
+  selectedSidebarUser: User | null = null;
+  allAssignedAssets: AssignedAsset[] = [];
+  userAssignedAssets: AssignedAsset[] = [];
+  isLoadingUserAssets = false;
 
   constructor(
     private assetService: AssetService,
@@ -52,8 +83,10 @@ export class UserManagementComponent implements OnInit {
     await this.loadUsers();
     await this.loadRoles();
     await this.loadProjects();
+    await this.loadAssetTypes();
     this.allocations = this.adminDataService.getAllocations();
     this.filterUsers();
+    this.filterProjects();
   }
 
   setTab(tab: UserTab): void {
@@ -61,17 +94,68 @@ export class UserManagementComponent implements OnInit {
   }
 
   // Modals for add
-  openAddUserModal(): void { this.showAddUserModal = true; }
-  closeAddUserModal(): void { this.showAddUserModal = false; }
+  openAddUserModal(): void {
+    this.resetNewUserForm();
+    this.showAddUserModal = true;
+  }
+
+  closeAddUserModal(): void {
+    this.showAddUserModal = false;
+    this.isSavingUser = false;
+    this.resetNewUserForm();
+  }
 
   openAddRoleModal(): void { this.showAddRoleModal = true; }
   closeAddRoleModal(): void { this.showAddRoleModal = false; }
 
-  openAddProjectModal(): void { this.showAddProjectModal = true; }
-  closeAddProjectModal(): void { this.showAddProjectModal = false; }
+  openAddProjectModal(): void {
+    this.newProject = { name: '' };
+    this.showAddProjectModal = true;
+  }
+
+  closeAddProjectModal(): void {
+    this.showAddProjectModal = false;
+    this.isSavingProject = false;
+    this.newProject = { name: '' };
+  }
 
   openAssignAssetModal(): void { this.showAssignAssetModal = true; }
   closeAssignAssetModal(): void { this.showAssignAssetModal = false; }
+
+  closeNoProjectsModal(): void {
+    this.showNoProjectsModal = false;
+  }
+
+  async openUserAssetsSidebar(user: User): Promise<void> {
+    this.selectedSidebarUser = user;
+    this.showUserAssetsSidebar = true;
+    this.isLoadingUserAssets = true;
+    this.userAssignedAssets = [];
+
+    try {
+      // Always fetch fresh data to ensure accuracy or use a slightly more nuanced caching strategy
+      this.allAssignedAssets = await this.adminDataService.GetAllAssetsAssignedToAllUsers();
+      this.userAssignedAssets = this.allAssignedAssets.filter(asset => asset.userId === user.id);
+    } catch (error) {
+      console.error('Error fetching assigned assets:', error);
+    } finally {
+      this.isLoadingUserAssets = false;
+    }
+  }
+
+  closeUserAssetsSidebar(): void {
+    this.showUserAssetsSidebar = false;
+    this.selectedSidebarUser = null;
+    this.userAssignedAssets = [];
+  }
+
+  onSearchTermChange(): void {
+    if (this.activeTab === 'users') {
+      this.filterUsers();
+    } else if (this.activeTab === 'projects') {
+      this.filterProjects();
+    }
+  }
 
   filterUsers(): void {
     this.filteredUsers = this.users.filter(user => {
@@ -83,6 +167,13 @@ export class UserManagementComponent implements OnInit {
       return matchesSearch && matchesRole;
     });
     this.currentPage = 1;
+  }
+
+  filterProjects(): void {
+    this.filteredProjects = this.projects.filter(project => {
+      if (!this.searchTerm) return true;
+      return project.name.toLowerCase().includes(this.searchTerm.toLowerCase());
+    });
   }
 
   get totalPages(): number {
@@ -154,6 +245,90 @@ export class UserManagementComponent implements OnInit {
     }
   }
 
+  onAddUserRoleChange(roleName: string): void {
+    this.newUser.roleName = roleName;
+    this.newUser.projectId = '';
+    this.newUser.assetTypeId = '';
+
+    if (roleName === this.teamLeadRoleName && this.availableTeamLeadProjects.length === 0) {
+      this.showNoProjectsModal = true;
+    }
+  }
+
+  onAddUserEmailChange(email: string): void {
+    this.newUser.email = email;
+    this.addUserEmailError = this.isDuplicateEmail(email.trim())
+      ? 'This email already exists. Same user cannot be added again.'
+      : '';
+  }
+
+  async saveNewUser(): Promise<void> {
+    const name = this.newUser.name.trim();
+    const email = this.newUser.email.trim();
+    const roleName = this.newUser.roleName;
+    const selectedRole = this.roles.find(role => role.name === roleName);
+
+    if (!name || !email || !selectedRole || this.isSavingUser) {
+      return;
+    }
+
+    if (this.isDuplicateEmail(email)) {
+      this.addUserEmailError = 'This email already exists. Same user cannot be added again.';
+      return;
+    }
+
+    if (this.requiresProjectSelection && !this.newUser.projectId) {
+      return;
+    }
+
+    if (this.requiresAssetTypeSelection && !this.newUser.assetTypeId) {
+      return;
+    }
+
+    this.isSavingUser = true;
+
+    try {
+      const userId = this.generateNextUserId();
+      await this.adminDataService.addUser({
+        userId,
+        name,
+        email,
+        roleId: selectedRole.id,
+        projectId: this.newUser.projectId || undefined,
+        assetTypeId: this.newUser.assetTypeId || undefined
+      });
+      if (roleName === this.teamLeadRoleName && this.newUser.projectId) {
+        await this.adminDataService.assignTeamLeadToProject(this.newUser.projectId, userId);
+      }
+      await this.loadUsers();
+      await this.loadProjects();
+      this.filterUsers();
+      this.closeAddUserModal();
+    } catch (error) {
+      console.error('Unable to add new user.', error);
+      this.isSavingUser = false;
+    }
+  }
+
+  async saveProject(): Promise<void> {
+    const projectName = this.newProject.name?.trim();
+
+    if (!projectName || this.isSavingProject) {
+      return;
+    }
+
+    this.isSavingProject = true;
+
+    try {
+      await this.adminDataService.addProject(projectName);
+      await this.loadProjects();
+      this.closeAddProjectModal();
+    } catch (error) {
+      console.error('Unable to add project.', error);
+      this.isSavingProject = false;
+    }
+  }
+
   openInactiveModal(user: User): void {
     this.userToDeactivate = user;
     this.showInactiveModal = true;
@@ -161,22 +336,93 @@ export class UserManagementComponent implements OnInit {
 
   closeInactiveModal(): void {
     this.showInactiveModal = false;
+    this.isUpdatingUserStatus = false;
     this.userToDeactivate = null;
   }
 
-  confirmInactive(): void {
-    if (this.userToDeactivate) {
-      const updatedUser = { ...this.userToDeactivate, isActive: false };
-      this.users = this.users.map(user => user.id === updatedUser.id ? updatedUser : user);
-      this.filterUsers();
-      this.closeInactiveModal();
+  async confirmInactive(): Promise<void> {
+    if (this.userToDeactivate && !this.isUpdatingUserStatus) {
+      this.isUpdatingUserStatus = true;
+      try {
+        const nextStatus = !this.userToDeactivate.isActive;
+        await this.adminDataService.updateUserActiveStatus(this.userToDeactivate.id, nextStatus);
+        const updatedUser = { ...this.userToDeactivate, isActive: nextStatus };
+        this.users = this.users.map(user => user.id === updatedUser.id ? updatedUser : user);
+        this.filterUsers();
+        this.closeInactiveModal();
+      } catch (error) {
+        console.error('Unable to mark user inactive.', error);
+        this.isUpdatingUserStatus = false;
+      }
     }
   }
 
   toggleUserActive(user: User): void {
-    const updatedUser = { ...user, isActive: !user.isActive };
-    this.users = this.users.map(item => item.id === updatedUser.id ? updatedUser : item);
-    this.filterUsers();
+    this.openInactiveModal(user);
+  }
+
+  get requiresProjectSelection(): boolean {
+    return this.newUser.roleName === this.employeeRoleName || this.newUser.roleName === this.teamLeadRoleName;
+  }
+
+  get requiresAssetTypeSelection(): boolean {
+    return this.newUser.roleName === this.assetManagerRoleName || this.newUser.roleName === this.assetTeamMemberRoleName;
+  }
+
+  get shouldShowProjectDropdown(): boolean {
+    return this.requiresProjectSelection;
+  }
+
+  get shouldShowAssetTypeDropdown(): boolean {
+    return this.requiresAssetTypeSelection;
+  }
+
+  get canSaveNewUser(): boolean {
+    if (this.isSavingUser || !!this.addUserEmailError) {
+      return false;
+    }
+
+    if (!this.newUser.name.trim() || !this.newUser.email.trim() || !this.newUser.roleName) {
+      return false;
+    }
+
+    if (this.requiresProjectSelection && !this.newUser.projectId) {
+      return false;
+    }
+
+    if (this.requiresAssetTypeSelection && !this.newUser.assetTypeId) {
+      return false;
+    }
+
+    return true;
+  }
+
+  get availableProjectsForNewUser(): Project[] {
+    if (this.newUser.roleName === this.teamLeadRoleName) {
+      return this.availableTeamLeadProjects;
+    }
+
+    if (this.newUser.roleName === this.employeeRoleName) {
+      return this.projects;
+    }
+
+    return [];
+  }
+
+  get availableAssetTypesForNewUser(): AssetTypeAssignment[] {
+    if (this.newUser.roleName === this.assetManagerRoleName) {
+      return this.assetTypes.filter(assetType => !assetType.assetManager.trim());
+    }
+
+    if (this.newUser.roleName === this.assetTeamMemberRoleName) {
+      return this.assetTypes;
+    }
+
+    return [];
+  }
+
+  get availableTeamLeadProjects(): Project[] {
+    return this.projects.filter(project => !project.teamLead?.trim());
   }
 
   openAssetsModal(user: User): void {
@@ -214,9 +460,47 @@ export class UserManagementComponent implements OnInit {
   private async loadProjects(): Promise<void> {
     try {
       this.projects = await this.adminDataService.getProjectsFromDB();
+      this.filterProjects();
     } catch (error) {
       console.error('Unable to load DB projects for admin user management.', error);
       this.projects = [];
+      this.filteredProjects = [];
     }
+  }
+
+  private async loadAssetTypes(): Promise<void> {
+    try {
+      this.assetTypes = await this.adminDataService.getAssetTypeAssignmentDetails();
+    } catch (error) {
+      console.error('Unable to load DB asset types for admin user management.', error);
+      this.assetTypes = [];
+    }
+  }
+
+  private resetNewUserForm(): void {
+    this.newUser = {
+      name: '',
+      email: '',
+      roleName: '',
+      projectId: '',
+      assetTypeId: ''
+    };
+    this.addUserEmailError = '';
+  }
+
+  private generateNextUserId(): string {
+    const nextNumber = this.users
+      .map(user => {
+        const match = user.id.match(/(\d+)$/);
+        return match ? Number(match[1]) : 0;
+      })
+      .reduce((max, value) => Math.max(max, value), 0) + 1;
+
+    return `usr_${String(nextNumber).padStart(3, '0')}`;
+  }
+
+  private isDuplicateEmail(email: string): boolean {
+    const normalizedEmail = email.trim().toLowerCase();
+    return !!normalizedEmail && this.users.some(user => user.email.trim().toLowerCase() === normalizedEmail);
   }
 }

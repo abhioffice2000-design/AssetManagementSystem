@@ -27,6 +27,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
   constructor(private authService: AuthService, private router: Router) {}
 
   ngOnInit(): void {
+    this.currentRoute = this.router.url;
     this.subscriptions.push(
       this.authService.currentUser$.subscribe(user => {
         this.currentUser = user;
@@ -56,7 +57,8 @@ export class SidebarComponent implements OnInit, OnDestroy {
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'User Management', icon: 'people', route: `${base}/users` },
-          { label: 'Master Data', icon: 'settings', route: `${base}/master-data` }
+          { label: 'Master Data', icon: 'settings', route: `${base}/master-data` },
+          { label: 'Asset Transactions', icon: 'sync_alt', route: `${base}/transactions` }
         ];
         break;
       case UserRole.ASSET_MANAGER:
@@ -96,7 +98,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   isActive(route: string): boolean {
-    return this.currentRoute.startsWith(route);
+    if (!this.currentRoute || !route) return false;
+    
+    // Normalize both routes to remove triple slashes and ensure leading slash
+    const normalizedCurrent = ('/' + this.currentRoute).replace(/\/+/g, '/');
+    const normalizedRoute = ('/' + route).replace(/\/+/g, '/');
+    
+    // For exact dashboard match or sub-routes
+    return normalizedCurrent === normalizedRoute || normalizedCurrent.startsWith(normalizedRoute + '/');
   }
 
   toggleCollapse(): void {

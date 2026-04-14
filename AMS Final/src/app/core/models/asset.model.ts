@@ -1,11 +1,12 @@
 export interface Asset {
   id: string;
+  assetId?: string; // optional for backward compatibility with existing static data
   assetTag: string;
   name: string;
   type: AssetType;
   category: string;
   subCategory: string;
-  status: AssetStatus;
+  status: string; // Changed from AssetStatus to string for dynamic values
   assignedTo?: string;
   assignedToName?: string;
   department?: string;
@@ -29,6 +30,7 @@ export enum AssetType {
   FURNITURE = 'Furniture'
 }
 
+// Keeping the enum for common internal states but the model now supports arbitrary strings
 export enum AssetStatus {
   AVAILABLE = 'Available',
   ALLOCATED = 'Allocated',

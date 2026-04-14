@@ -64,6 +64,7 @@ export interface Project {
   description: string;
   department: string;
   teamLead: string;
+  teamLeadId?: string;
   startDate: string;
   endDate?: string;
   status: 'Active' | 'Completed' | 'On Hold' | 'Cancelled';
@@ -81,8 +82,60 @@ export interface Role {
   isActive: boolean;
 }
 
+export interface AssetTypeAssignment {
+  id: string;
+  name: string;
+  assetManager: string;
+  teamMembers: string;
+}
+
+export interface AssignedAsset {
+  userId: string;
+  userName: string;
+  email: string;
+  roleName: string;
+  assetId: string;
+  assetName: string;
+  assetType: string;
+  subCategory: string;
+}
+
+export interface AssetRequest {
+  requestId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  assetType: string;
+  reason: string;
+  urgency: string;
+  status: string;
+  emailApproval: boolean;
+  document: string;
+  createdAt: string;
+}
+
+interface UserMasterRecord {
+  userId: string;
+  name: string;
+  email: string;
+  roleId: string;
+  roleName: string;
+  status: string;
+  projectId: string;
+  assetTypeId: string;
+  createdAt: string;
+  temp1: string;
+  temp2: string;
+  temp3: string;
+  temp4: string;
+  temp5: string;
+  temp6: string;
+  temp7: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminDataService {
+  private userMasterCache = new Map<string, UserMasterRecord>();
 
   constructor(private heroService: HeroService) {}
 
@@ -140,12 +193,13 @@ export class AdminDataService {
     }
 
     return projectsData.map((projectData: any) => ({
-      id: projectData.project_code || projectData.project_name,
-      projectCode: this.normalizeNullable(projectData.project_code, '-'),
+      id: this.normalizeNullable(projectData.project_id || projectData.project_code, projectData.project_name),
+      projectCode: this.normalizeNullable(projectData.project_id || projectData.project_code, '-'),
       name: this.normalizeNullable(projectData.project_name, 'Untitled Project'),
       description: '',
       department: '',
-      teamLead: this.normalizeNullable(projectData.team_lead, '-'),
+      teamLead: this.normalizeSoapNullable(projectData.team_lead || projectData.tl_id, ''),
+      teamLeadId: this.normalizeSoapNullable(projectData.tl_id, ''),
       startDate: '',
       endDate: '',
       status: this.normalizeNullable(projectData.temp1, 'Active') as Project['status'],
@@ -157,6 +211,133 @@ export class AdminDataService {
   async getProjectsByStatus(status: string): Promise<Project[]> {
     const projects = await this.getProjectsFromDB();
     return projects.filter(project => project.status === status);
+  }
+
+  async addProject(projectName: string): Promise<void> {
+    const normalizedProjectName = this.normalizeNullable(projectName, '');
+
+    if (!normalizedProjectName) {
+      throw new Error('Project name is required.');
+    }
+
+    const addProjectSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_projects xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_projects qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <project_name>${this.xmlEscape(normalizedProjectName)}</project_name>
+          </m_projects>
+        </new>
+      </tuple>
+    </UpdateM_projects>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, addProjectSoap);
+  }
+
+  async addUser(user: {
+    userId: string;
+    name: string;
+    email: string;
+    roleId: string;
+    projectId?: string;
+    assetTypeId?: string;
+  }): Promise<void> {
+    const userId = this.normalizeNullable(user.userId, '');
+    const name = this.normalizeNullable(user.name, '');
+    const email = this.normalizeNullable(user.email, '');
+    const roleId = this.normalizeNullable(user.roleId, '');
+    const projectId = this.normalizeNullable(user.projectId, '');
+    const assetTypeId = this.normalizeNullable(user.assetTypeId, '');
+
+    if (!userId || !name || !email || !roleId) {
+      throw new Error('User ID, name, email, and role are required.');
+    }
+
+    const addUserSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_users xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <user_id>${this.xmlEscape(userId)}</user_id>
+            <name>${this.xmlEscape(name)}</name>
+            <email>${this.xmlEscape(email)}</email>
+            <role_id>${this.xmlEscape(roleId)}</role_id>
+            <status>Active</status>
+            <temp1>Qwerty@1234</temp1>
+            ${projectId ? `<project_id>${this.xmlEscape(projectId)}</project_id>` : ''}
+            ${assetTypeId ? `<asset_type_id>${this.xmlEscape(assetTypeId)}</asset_type_id>` : ''}
+          </m_users>
+        </new>
+      </tuple>
+    </UpdateM_users>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, addUserSoap);
+  }
+
+  async getAssetTypeAssignmentDetails(): Promise<AssetTypeAssignment[]> {
+    const getAssetAssignmentsSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetNAssetManagerDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, getAssetAssignmentsSoap);
+    let assetTypesData = this.heroService.xmltojson(response, 'm_asset_types');
+
+    if (!assetTypesData) {
+      return [];
+    }
+
+    if (!Array.isArray(assetTypesData)) {
+      assetTypesData = [assetTypesData];
+    }
+
+    return assetTypesData.map((assetTypeData: any) => ({
+      id: this.normalizeNullable(assetTypeData.type_id, assetTypeData.type_name),
+      name: this.normalizeNullable(assetTypeData.type_name, 'Unnamed Asset Type'),
+      assetManager: this.normalizeSoapNullable(assetTypeData.asset_manager, ''),
+      teamMembers: this.normalizeSoapNullable(assetTypeData.team_members, '')
+    })) as AssetTypeAssignment[];
+  }
+
+  async assignTeamLeadToProject(projectId: string, teamLeadUserId: string): Promise<void> {
+    const normalizedProjectId = this.normalizeNullable(projectId, '');
+    const normalizedTeamLeadUserId = this.normalizeNullable(teamLeadUserId, '');
+
+    if (!normalizedProjectId || !normalizedTeamLeadUserId) {
+      throw new Error('Project ID and team lead user ID are required.');
+    }
+
+    const assignLeadSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_projects xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_projects qConstraint="0">
+            <project_id>${this.xmlEscape(normalizedProjectId)}</project_id>
+          </m_projects>
+        </old>
+        <new>
+          <m_projects qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <tl_id>${this.xmlEscape(normalizedTeamLeadUserId)}</tl_id>
+          </m_projects>
+        </new>
+      </tuple>
+    </UpdateM_projects>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, assignLeadSoap);
   }
 
   async getRolesFromDB(): Promise<Role[]> {
@@ -211,14 +392,74 @@ export class AdminDataService {
       usersData = [usersData];
     }
 
-    return usersData.map((userData: any) => ({
-      id: userData.user_id || userData.email,
-      name: userData.name || 'Unknown User',
-      email: userData.email || '',
-      role: userData.m_roles?.role || userData.role || userData.role_id,
-      isActive: (userData.status || '').toLowerCase() === 'active',
-      joinDate: (userData.created_at || new Date().toISOString()).split('T')[0]
-    })) as User[];
+    this.userMasterCache.clear();
+
+    return usersData.map((userData: any) => {
+      const userId = userData.user_id || userData.email;
+      const roleName = this.normalizeNullable(userData.m_roles?.role || userData.role || userData.role_id, 'Employee');
+      const masterRecord: UserMasterRecord = {
+        userId,
+        name: this.normalizeNullable(userData.name, 'Unknown User'),
+        email: this.normalizeNullable(userData.email, ''),
+        roleId: this.normalizeNullable(userData.role_id, ''),
+        roleName,
+        status: this.normalizeNullable(userData.status, 'Active'),
+        projectId: this.normalizeNullable(userData.project_id, 'null'),
+        assetTypeId: this.normalizeNullable(userData.asset_type_id, 'null'),
+        createdAt: this.normalizeNullable(userData.created_at, new Date().toISOString()),
+        temp1: this.normalizeNullable(userData.temp1, 'null'),
+        temp2: this.normalizeNullable(userData.temp2, 'null'),
+        temp3: this.normalizeNullable(userData.temp3, 'null'),
+        temp4: this.normalizeNullable(userData.temp4, 'null'),
+        temp5: this.normalizeNullable(userData.temp5, 'null'),
+        temp6: this.normalizeNullable(userData.temp6, 'null'),
+        temp7: this.normalizeNullable(userData.temp7, 'null')
+      };
+
+      this.userMasterCache.set(userId, masterRecord);
+
+      return {
+        id: userId,
+        name: masterRecord.name,
+        email: masterRecord.email,
+        role: masterRecord.roleName as User['role'],
+        department: '',
+        team: '',
+        designation: '',
+        isActive: masterRecord.status.toLowerCase() === 'active',
+        joinDate: masterRecord.createdAt.split('T')[0]
+      };
+    }) as User[];
+  }
+
+  async updateUserActiveStatus(userId: string, isActive: boolean): Promise<void> {
+    const newStatus = isActive ? 'Active' : 'Inactive';
+
+    const updateUserSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_users xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_users qConstraint="0">
+            <user_id>${this.xmlEscape(userId)}</user_id>
+          </m_users>
+        </old>
+        <new>
+          <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <status>${this.xmlEscape(newStatus)}</status>
+          </m_users>
+        </new>
+      </tuple>
+    </UpdateM_users>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, updateUserSoap);
+    const cachedRecord = this.userMasterCache.get(userId);
+    if (cachedRecord) {
+      this.userMasterCache.set(userId, { ...cachedRecord, status: newStatus });
+    }
   }
 
   getUserStatsFromUsers(users: User[]) {
@@ -244,6 +485,71 @@ export class AdminDataService {
     };
   }
 
+  async GetAllAssetsAssignedToAllUsers(): Promise<AssignedAsset[]> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllAssetsAssignedToAllUsers xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, soapMsg);
+    let usersData = this.heroService.xmltojson(response, 'm_users');
+
+    if (!usersData) return [];
+    if (!Array.isArray(usersData)) usersData = [usersData];
+
+    return usersData
+      .filter((u: any) => this.normalizeSoapNullable(u.m_assets?.asset_id, 'null') !== 'null')
+      .map((u: any) => ({
+        userId: this.normalizeNullable(u.user_id, ''),
+        userName: this.normalizeNullable(u.user_name, ''),
+        email: this.normalizeNullable(u.email, ''),
+        roleName: this.normalizeSoapNullable(u.m_roles?.role_name, ''),
+        assetId: this.normalizeSoapNullable(u.m_assets?.asset_id, ''),
+        assetName: this.normalizeSoapNullable(u.m_assets?.asset_name, ''),
+        assetType: this.normalizeSoapNullable(u.m_asset_types?.asset_type, ''),
+        subCategory: this.normalizeSoapNullable(u.m_asset_subcategories?.sub_category, '')
+      })) as AssignedAsset[];
+  }
+
+  async getAllRequests(): Promise<AssetRequest[]> {
+    const getAllRequestSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getallrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, getAllRequestSoap);
+    let requestsData = this.heroService.xmltojson(response, 't_asset_requests');
+
+    if (!requestsData) {
+      return [];
+    }
+
+    if (!Array.isArray(requestsData)) {
+      requestsData = [requestsData];
+    }
+
+    return requestsData.map((requestData: any) => {
+      const emailApprovalRaw = this.normalizeNullable(requestData.email_approval, 'false').toLowerCase();
+      return {
+        requestId: this.normalizeNullable(requestData.request_id, ''),
+        userId: this.normalizeNullable(requestData.user_id, ''),
+        userName: this.normalizeSoapNullable(requestData.m_users?.name, 'Unknown User'),
+        userEmail: this.normalizeSoapNullable(requestData.m_users?.email, ''),
+        assetType: this.normalizeNullable(requestData.asset_type, '-'),
+        reason: this.normalizeNullable(requestData.reason, '-'),
+        urgency: this.normalizeNullable(requestData.urgency, '-'),
+        status: this.normalizeNullable(requestData.status, 'Pending'),
+        emailApproval: emailApprovalRaw === 'true' || emailApprovalRaw === '1' || emailApprovalRaw === 'yes',
+        document: this.normalizeSoapNullable(requestData.document, ''),
+        createdAt: this.normalizeNullable(requestData.created_at, '')
+      };
+    }) as AssetRequest[];
+  }
+
   private normalizeNullable(value: any, fallback: string): string {
     if (value === null || value === undefined) {
       return fallback;
@@ -257,5 +563,29 @@ export class AdminDataService {
     const normalized = this.normalizeNullable(value, '0');
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private normalizeSoapNullable(value: any, fallback: string): string {
+    if (value === null || value === undefined) {
+      return fallback;
+    }
+
+    if (typeof value === 'object') {
+      if (value['@nil'] === 'true' || value['@null'] === 'true' || value.null === 'true') {
+        return fallback;
+      }
+      return fallback;
+    }
+
+    return this.normalizeNullable(value, fallback);
+  }
+
+  private xmlEscape(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 }
