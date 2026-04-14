@@ -8,11 +8,13 @@ import { SharedModule } from '../../shared/shared.module';
 import { AdminDashboardComponent } from './dashboard/dashboard.component';
 import { UserManagementComponent } from './user-management/user-management.component';
 import { MasterDataComponent } from './master-data/master-data.component';
+import { AssetTransactionComponent } from './asset-transaction/asset-transaction.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: AdminDashboardComponent },
   { path: 'users', component: UserManagementComponent },
   { path: 'master-data', component: MasterDataComponent },
+  { path: 'transactions', component: AssetTransactionComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
 
@@ -20,7 +22,8 @@ const routes: Routes = [
   declarations: [
     AdminDashboardComponent,
     UserManagementComponent,
-    MasterDataComponent
+    MasterDataComponent,
+    AssetTransactionComponent
   ],
   imports: [
     CommonModule,

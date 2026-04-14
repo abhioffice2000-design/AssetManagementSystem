@@ -16,6 +16,12 @@ type AddAssetForm = {
   warrantyExpiry: string;
   status: AssetStatus | '';
 };
+type AssetCategoryGroup = {
+  type: AssetType;
+  icon: string;
+  categories: AssetCategory[];
+  assetCount: number;
+};
 
 @Component({
   selector: 'app-master-data',
@@ -27,14 +33,20 @@ export class MasterDataComponent implements OnInit {
 
   assetTypes: Array<{ type: AssetType; count: number; value: number }> = [];
   assetCategories: AssetCategory[] = [];
+  assetCategoryGroups: AssetCategoryGroup[] = [];
   assets: Asset[] = [];
   projects: Project[] = [];
   filteredAssets: Asset[] = [];
 
-  assetTypeOptions = Object.values(AssetType);
-  assetStatusOptions = Object.values(AssetStatus);
+  assetTypeOptions: AssetType[] = [];
+  assetStatusOptions: string[] = [];
   assetSearchTerm = '';
   selectedAssetType = '';
+  selectedAssetSubCategory = '';
+  selectedAssetStatus = '';
+  assetSubCategoryOptions: string[] = [];
+  currentPage = 1;
+  pageSize = 5;
   showAddAssetModal = false;
   selectedCategory = '';
   submittedAssetForm = false;
@@ -85,6 +97,28 @@ export class MasterDataComponent implements OnInit {
     }
   };
 
+  assetDoughnutChartData: ChartData<'doughnut', number[], string> = {
+    labels: [],
+    datasets: [{ data: [] }]
+  };
+  assetDoughnutChartOptions: ChartOptions<'doughnut'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '72%',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const total = context.dataset.data.reduce((a: number, b: number) => a + b, 0);
+            const percentage = Math.round((Number(context.raw) / total) * 100);
+            return `${context.label}: ${context.raw} (${percentage}%)`;
+          }
+        }
+      }
+    }
+  };
+
   constructor(
     private assetService: AssetService,
     private adminDataService: AdminDataService
@@ -95,19 +129,23 @@ export class MasterDataComponent implements OnInit {
   }
 
   async loadData(): Promise<void> {
+    await this.loadAssetsFromService();
     const assetStats = this.assetService.getAssetStats();
 
     this.assetTypes = assetStats.byType;
     this.assetCategories = this.assetService.getCategories();
     this.assets = this.assetService.getAssets();
+    this.assetCategoryGroups = this.buildAssetCategoryGroups();
+    this.assetTypeOptions = this.assetTypes.map(item => item.type);
+    this.assetSubCategoryOptions = Array.from(new Set(this.assets.map(a => a.subCategory))).filter(Boolean).sort();
+    this.assetStatusOptions = Array.from(new Set(this.assets.map(a => a.status))).filter(Boolean).sort();
     this.projects = await this.getResolvedProjects();
     this.filterAssets();
 
     this.summaryCards = [
       { label: 'Asset Types', value: this.assetTypes.length, icon: 'category', color: 'blue' },
       { label: 'Asset Sub Categories', value: this.assetCategories.length, icon: 'dashboard', color: 'purple' },
-      { label: 'Assets', value: this.assets.length, icon: 'inventory_2', color: 'green' },
-      { label: 'Projects', value: this.projects.length, icon: 'folder_open', color: 'amber' }
+      { label: 'Assets', value: this.assets.length, icon: 'inventory_2', color: 'green' }
     ];
 
     this.assetTypeChartData = {
@@ -115,10 +153,22 @@ export class MasterDataComponent implements OnInit {
       datasets: [
         {
           data: this.assetTypes.map(item => item.count),
-          backgroundColor: ['#2563eb', '#22c55e', '#f59e0b', '#14b8a6', '#94a3b8'],
+          backgroundColor: this.assetTypes.map(item => this.getAssetTypeColor(item.type)),
           borderRadius: 10,
           barThickness: 18,
           maxBarThickness: 18
+        }
+      ]
+    };
+
+    this.assetDoughnutChartData = {
+      labels: this.assetTypes.map(item => item.type),
+      datasets: [
+        {
+          data: this.assetTypes.map(item => item.count),
+          backgroundColor: this.assetTypes.map(item => this.getAssetTypeColor(item.type)),
+          borderWidth: 0,
+          hoverOffset: 4
         }
       ]
     };
@@ -134,6 +184,10 @@ export class MasterDataComponent implements OnInit {
 
   getAssetTypeShare(count: number): number {
     return this.totalAssetTypeCount ? Math.round((count / this.totalAssetTypeCount) * 100) : 0;
+  }
+
+  getCategoryAssetCount(category: AssetCategory): number {
+    return this.assets.filter(asset => asset.type === category.type && asset.category === category.name).length;
   }
 
   setTab(tab: MasterTab): void {
@@ -228,8 +282,60 @@ export class MasterDataComponent implements OnInit {
         asset.category.toLowerCase().includes(search) ||
         asset.vendor.toLowerCase().includes(search);
       const matchesType = !this.selectedAssetType || asset.type === this.selectedAssetType;
-      return matchesSearch && matchesType;
+      const matchesSubCategory = !this.selectedAssetSubCategory || asset.subCategory === this.selectedAssetSubCategory;
+      const matchesStatus = !this.selectedAssetStatus || asset.status === this.selectedAssetStatus;
+      return matchesSearch && matchesType && matchesSubCategory && matchesStatus;
     });
+    this.currentPage = 1;
+  }
+
+  get paginatedAssets() {
+    const startIndex = (this.currentPage - 1) * this.pageSize;
+    return this.filteredAssets.slice(startIndex, startIndex + this.pageSize);
+  }
+
+  get totalPages() {
+    return Math.ceil(this.filteredAssets.length / this.pageSize);
+  }
+
+  get pageNumbers() {
+    return Array.from({ length: this.totalPages }, (_, i) => i + 1);
+  }
+
+  setPage(page: number) {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
+  }
+
+  nextPage() {
+    this.currentPage++;
+  }
+
+  prevPage() {
+    this.currentPage--;
+  }
+
+  getAssetTypeIcon(type: AssetType): string {
+    const icons: Record<string, string> = {
+      [AssetType.HARDWARE]: 'laptop',
+      [AssetType.SOFTWARE]: 'code',
+      [AssetType.NETWORK]: 'router',
+      [AssetType.PERIPHERAL]: 'mouse',
+      [AssetType.FURNITURE]: 'chair'
+    };
+    return icons[type] || 'category';
+  }
+
+  getAssetTypeColor(type: AssetType): string {
+    const colors: Record<string, string> = {
+      [AssetType.HARDWARE]: '#3b82f6',
+      [AssetType.SOFTWARE]: '#8b5cf6',
+      [AssetType.NETWORK]: '#f59e0b',
+      [AssetType.PERIPHERAL]: '#14b8a6',
+      [AssetType.FURNITURE]: '#ec4899'
+    };
+    return colors[type] || '#94a3b8';
   }
 
   getTypeBadgeClass(type: AssetType): string {
@@ -243,15 +349,14 @@ export class MasterDataComponent implements OnInit {
     return map[type] || 'badge-default';
   }
 
-  getStatusBadgeClass(status: AssetStatus): string {
-    const map: Record<string, string> = {
-      [AssetStatus.AVAILABLE]: 'badge-green',
-      [AssetStatus.ALLOCATED]: 'badge-blue',
-      [AssetStatus.IN_REPAIR]: 'badge-amber',
-      [AssetStatus.RETIRED]: 'badge-default',
-      [AssetStatus.RESERVED]: 'badge-teal'
-    };
-    return map[status] || 'badge-default';
+  getStatusBadgeClass(status: string): string {
+    const s = status.toLowerCase();
+    if (s.includes('available')) return 'badge-green';
+    if (s.includes('allocated')) return 'badge-blue';
+    if (s.includes('repair') || s.includes('maintenance')) return 'badge-amber';
+    if (s.includes('retired')) return 'badge-default';
+    if (s.includes('reserved') || s.includes('team')) return 'badge-teal';
+    return 'badge-default';
   }
 
   getConditionBadgeClass(condition: AssetCondition): string {
@@ -275,8 +380,9 @@ export class MasterDataComponent implements OnInit {
     return map[status] || 'badge-default';
   }
 
-  formatAssetStatus(status: AssetStatus): string {
-    return status === AssetStatus.IN_REPAIR ? 'Maintenance' : status;
+  formatAssetStatus(status: string): string {
+    if (status === 'MoveToAllocationTeam') return 'Allocation Team';
+    return status;
   }
 
   private async getResolvedProjects(): Promise<Project[]> {
@@ -286,6 +392,33 @@ export class MasterDataComponent implements OnInit {
       console.error('Unable to load DB projects for master data.', error);
       return [];
     }
+  }
+
+  private async loadAssetsFromService(): Promise<void> {
+    try {
+      await this.assetService.fetchAssetsFromService();
+    } catch (error) {
+      console.error('Unable to load DB assets for master data.', error);
+    }
+  }
+
+  private buildAssetCategoryGroups(): AssetCategoryGroup[] {
+    const categoryMap = new Map<AssetType, AssetCategory[]>();
+
+    this.assetCategories.forEach(category => {
+      const categories = categoryMap.get(category.type) || [];
+      categories.push(category);
+      categoryMap.set(category.type, categories);
+    });
+
+    return this.assetTypes
+      .filter(item => categoryMap.has(item.type))
+      .map(item => ({
+        type: item.type,
+        icon: categoryMap.get(item.type)?.[0]?.icon || 'category',
+        categories: categoryMap.get(item.type) || [],
+        assetCount: item.count
+      }));
   }
 
   private createEmptyAsset(): AddAssetForm {

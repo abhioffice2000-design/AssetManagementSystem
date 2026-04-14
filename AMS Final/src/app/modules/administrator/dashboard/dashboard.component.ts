@@ -1,8 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { AssetService } from '../../../core/services/asset.service';
-import { RequestService } from '../../../core/services/request.service';
-import { AdminDataService } from '../../../core/services/admin-data.service';
+import { AdminDataService, AssetRequest } from '../../../core/services/admin-data.service';
 import { Chart, ChartData, ChartOptions, registerables } from 'chart.js';
+import { Asset } from '../../../core/models/asset.model';
 
 Chart.register(...registerables);
 
@@ -16,6 +16,8 @@ export class AdminDashboardComponent implements OnInit {
   assetStats: any = {};
   reqStats: any = {};
   activeProjects = 0;
+  assetStatusSubtitle = 'Status wise distribution';
+  assetSubCategorySubtitle = 'Top sub categories by count';
 
   assetStatusChartType: 'doughnut' = 'doughnut';
   requestTrendChartType: 'line' = 'line';
@@ -89,7 +91,6 @@ export class AdminDashboardComponent implements OnInit {
 
   constructor(
     private assetService: AssetService,
-    private requestService: RequestService,
     private adminDataService: AdminDataService
   ) { }
 
@@ -98,28 +99,27 @@ export class AdminDashboardComponent implements OnInit {
   }
 
   private async loadDashboardData(): Promise<void> {
-    this.assetStats = this.assetService.getAssetStats();
-    this.reqStats = this.requestService.getRequestStats();
+    await this.loadAssetStats();
+    const allRequests = await this.getResolvedAssetRequests();
+    this.reqStats = this.getRequestStatsFromRequests(allRequests);
     this.userStats = await this.getResolvedUserStats();
     const roleStats = await this.getResolvedRoleStats();
     this.activeProjects = await this.getResolvedActiveProjectCount();
 
+    const statusCounts = this.getStatusWiseAssetCounts(this.assetService.getAssets());
+    this.assetStatusSubtitle = statusCounts.labels.join(' / ') || 'Status wise distribution';
     this.assetStatusChartData = {
-      labels: ['Available', 'Allocated', 'Maintenance'],
+      labels: statusCounts.labels,
       datasets: [
         {
-          data: [
-            this.assetStats.available,
-            this.assetStats.allocated,
-            this.assetStats.inRepair
-          ],
-          backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b'],
+          data: statusCounts.counts,
+          backgroundColor: statusCounts.colors,
           borderWidth: 0
         }
       ]
     };
 
-    const requestTrend = this.buildRequestTrend(this.requestService.getRequests());
+    const requestTrend = this.buildAssetRequestTrend(allRequests);
     this.requestTrendChartData = {
       labels: requestTrend.labels,
       datasets: [
@@ -134,21 +134,16 @@ export class AdminDashboardComponent implements OnInit {
       ]
     };
 
+    const subCategoryCounts = this.getSubCategoryWiseCounts(this.assetService.getAssets());
+    this.assetSubCategorySubtitle = subCategoryCounts.labels.length
+      ? `${subCategoryCounts.labels.slice(0, 4).join(', ')}${subCategoryCounts.labels.length > 4 ? ', and more' : ''}`
+      : 'No sub category data';
     this.assetCategoryChartData = {
-      labels: this.assetStats.byCategory.map((item: any) => item.category),
+      labels: subCategoryCounts.labels,
       datasets: [
         {
-          data: this.assetStats.byCategory.map((item: any) => item.count),
-          backgroundColor: [
-            '#6366f1',
-            '#0ea5e9',
-            '#14b8a6',
-            '#f59e0b',
-            '#8b5cf6',
-            '#22c55e',
-            '#ef4444',
-            '#64748b'
-          ],
+          data: subCategoryCounts.counts,
+          backgroundColor: subCategoryCounts.colors,
           borderWidth: 0
         }
       ]
@@ -183,6 +178,29 @@ export class AdminDashboardComponent implements OnInit {
       console.error('Unable to load DB role stats for dashboard.', error);
       return [];
     }
+  }
+
+  private async getResolvedAssetRequests(): Promise<AssetRequest[]> {
+    try {
+      return await this.adminDataService.getAllRequests();
+    } catch (error) {
+      console.error('Unable to load request trend from Getallrequest service.', error);
+      return [];
+    }
+  }
+
+  private async loadAssetStats(): Promise<void> {
+    try {
+      if (!this.assetService.isLoaded()) {
+        await this.assetService.fetchAssetsFromService();
+      }
+      this.assetStats = this.assetService.getAssetStats();
+    } catch (error) {
+      console.error('Unable to load asset stats for dashboard.', error);
+      this.assetStats = this.assetService.getAssetStats();
+    }
+
+    this.assetStats = this.assetStats || this.assetService.getAssetStats();
   }
 
   private async getResolvedActiveProjectCount(): Promise<number> {
@@ -226,5 +244,141 @@ export class AdminDashboardComponent implements OnInit {
     }
 
     return { labels, counts };
+  }
+
+  private getRequestStatsFromRequests(requests: AssetRequest[]): { pending: number; total: number; approved: number; rejected: number } {
+    const pending = requests.filter((request) => request.status?.toLowerCase() === 'pending').length;
+    const approved = requests.filter((request) => {
+      const status = request.status?.toLowerCase();
+      return status === 'approved' || status === 'completed';
+    }).length;
+    const rejected = requests.filter((request) => request.status?.toLowerCase() === 'rejected').length;
+
+    return {
+      pending,
+      total: requests.length,
+      approved,
+      rejected
+    };
+  }
+
+  private buildAssetRequestTrend(requests: AssetRequest[]): { labels: string[]; counts: number[] } {
+    if (!requests.length) {
+      return { labels: [], counts: [] };
+    }
+
+    const monthMap = new Map<string, number>();
+    const validDates = requests
+      .map(request => new Date(request.createdAt))
+      .filter(date => !Number.isNaN(date.getTime()));
+
+    if (!validDates.length) {
+      return { labels: [], counts: [] };
+    }
+
+    validDates.forEach((date) => {
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      monthMap.set(key, (monthMap.get(key) || 0) + 1);
+    });
+
+    const latestTime = Math.max(...validDates.map(date => date.getTime()));
+    const latestDate = new Date(latestTime);
+    const labels: string[] = [];
+    const counts: number[] = [];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    for (let offset = 5; offset >= 0; offset--) {
+      const date = new Date(latestDate.getFullYear(), latestDate.getMonth() - offset, 1);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      labels.push(`${monthNames[date.getMonth()]} ${String(date.getFullYear()).slice(2)}`);
+      counts.push(monthMap.get(key) || 0);
+    }
+
+    return { labels, counts };
+  }
+
+  private getStatusWiseAssetCounts(assets: Asset[]): { labels: string[]; counts: number[]; colors: string[] } {
+    const statusMap = new Map<string, number>();
+
+    assets.forEach((asset) => {
+      const normalizedStatus = this.normalizeAssetStatus(asset.status);
+      statusMap.set(normalizedStatus, (statusMap.get(normalizedStatus) || 0) + 1);
+    });
+
+    const statusEntries = Array.from(statusMap.entries()).sort((a, b) => b[1] - a[1]);
+    const labels = statusEntries.map(([label]) => label);
+    const counts = statusEntries.map(([, count]) => count);
+    const colors = labels.map((label, index) => this.getStatusColor(label, index));
+
+    return { labels, counts, colors };
+  }
+
+  private normalizeAssetStatus(status: string): string {
+    const value = (status || '').trim().toLowerCase();
+
+    if (!value) {
+      return 'Unknown';
+    }
+
+    if (value === 'move_to_allocation_team' || value === 'movetoallocationteam') {
+      return 'Move To Allocation Team';
+    }
+
+    if (value === 'in_repair') {
+      return 'In Repair';
+    }
+
+    return value
+      .split(/[\s_]+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  private getStatusColor(status: string, fallbackIndex: number): string {
+    const normalized = status.toLowerCase();
+    if (normalized.includes('available')) return '#22c55e';
+    if (normalized.includes('allocated')) return '#3b82f6';
+    if (normalized.includes('maintenance') || normalized.includes('repair')) return '#f59e0b';
+    if (normalized.includes('retired')) return '#64748b';
+    if (normalized.includes('reserved')) return '#8b5cf6';
+    if (normalized.includes('move to allocation')) return '#06b6d4';
+
+    const palette = ['#10b981', '#6366f1', '#f43f5e', '#0ea5e9', '#a855f7', '#14b8a6'];
+    return palette[fallbackIndex % palette.length];
+  }
+
+  private getSubCategoryWiseCounts(assets: Asset[]): { labels: string[]; counts: number[]; colors: string[] } {
+    const subCategoryMap = new Map<string, number>();
+
+    assets.forEach((asset) => {
+      const subCategoryName = this.normalizeSubCategory(asset.subCategory || asset.category);
+      subCategoryMap.set(subCategoryName, (subCategoryMap.get(subCategoryName) || 0) + 1);
+    });
+
+    const subCategoryEntries = Array.from(subCategoryMap.entries()).sort((a, b) => b[1] - a[1]);
+    const labels = subCategoryEntries.map(([label]) => label);
+    const counts = subCategoryEntries.map(([, count]) => count);
+    const palette = [
+      '#6366f1',
+      '#0ea5e9',
+      '#14b8a6',
+      '#f59e0b',
+      '#8b5cf6',
+      '#22c55e',
+      '#ef4444',
+      '#64748b'
+    ];
+    const colors = labels.map((_, index) => palette[index % palette.length]);
+
+    return { labels, counts, colors };
+  }
+
+  private normalizeSubCategory(value: string): string {
+    const normalized = (value || '').trim();
+    if (!normalized || normalized.toLowerCase() === 'null') {
+      return 'Uncategorized';
+    }
+    return normalized;
   }
 }

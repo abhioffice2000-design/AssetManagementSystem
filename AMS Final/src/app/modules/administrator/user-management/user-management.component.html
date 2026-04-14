@@ -6,14 +6,14 @@
       <p class="page-subtitle">Manage all system users, roles and access</p>
     </div>
     <div class="user-actions">
-      <div class="search-box user-search">
+      <div *ngIf="activeTab !== 'roles'" class="search-box user-search">
         <span class="material-icons-outlined search-icon">search</span>
         <input
           type="text"
           class="form-control"
           placeholder="Search..."
           [(ngModel)]="searchTerm"
-          (ngModelChange)="filterUsers()"
+          (ngModelChange)="onSearchTermChange()"
           style="padding-left: 40px;"
         />
       </div>
@@ -25,13 +25,10 @@
       <button *ngIf="activeTab === 'users'" class="btn btn-primary add-user-btn" (click)="openAddUserModal()">
         <span class="material-icons-outlined">person_add</span> Add User
       </button>
-      <button *ngIf="activeTab === 'roles'" class="btn btn-primary add-user-btn" (click)="openAddRoleModal()">
-        <span class="material-icons-outlined">add</span> Add Role
-      </button>
       <button *ngIf="activeTab === 'projects'" class="btn btn-primary add-user-btn" (click)="openAddProjectModal()">
         <span class="material-icons-outlined">add</span> Add Project
       </button>
-      <button *ngIf="activeTab === 'assignments'" class="btn btn-primary add-user-btn" (click)="openAssignAssetModal()">
+      <button *ngIf="false && activeTab === 'assignments'" class="btn btn-primary add-user-btn" (click)="openAssignAssetModal()">
         <span class="material-icons-outlined">assignment</span> Assign Asset
       </button>
     </div>
@@ -50,7 +47,7 @@
       <span class="material-icons-outlined">folder_open</span>
       Projects ({{ projects.length }})
     </button>
-    <button class="tab-btn" [class.active]="activeTab === 'assignments'" (click)="setTab('assignments')">
+    <button *ngIf="false" class="tab-btn" [class.active]="activeTab === 'assignments'" (click)="setTab('assignments')">
       <span class="material-icons-outlined">assignment_ind</span>
       Assign Assets ({{ allocations.length }})
     </button>
@@ -96,13 +93,13 @@
                   </span>
                 </td>
                 <td>
-                  <button class="btn btn-sm btn-outline" title="View Assets" (click)="openAssetsModal(user)">
+                  <button class="btn btn-sm btn-outline" title="View Assets" (click)="openUserAssetsSidebar(user)">
                     <span class="material-icons-outlined" style="font-size: 16px;">inventory_2</span>
                   </button>
                 </td>
                 <td>
                   <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-sm btn-outline" title="Edit" (click)="openEditModal(user)">
+                    <button *ngIf="false" class="btn btn-sm btn-outline" title="Edit" (click)="openEditModal(user)">
                       <span class="material-icons-outlined" style="font-size: 16px;">edit</span>
                     </button>
                     <button class="btn btn-sm btn-outline" 
@@ -125,30 +122,27 @@
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
-
-    <div class="pagination-bar" *ngIf="filteredUsers.length > pageSize">
-      <div class="pagination-info">
-        Showing {{ getRangeStart() }} to {{ getRangeEnd() }} of {{ filteredUsers.length }} users
-      </div>
-
-      <div class="pagination-controls">
-        <button class="btn btn-sm btn-outline" [disabled]="currentPage === 1" (click)="previousPage()">
-          Prev
-        </button>
-
-        <button
-          class="btn btn-sm btn-outline page-btn"
-          *ngFor="let page of pageNumbers"
-          [class.active]="page === currentPage"
-          (click)="goToPage(page)">
-          {{ page }}
-        </button>
-
-        <button class="btn btn-sm btn-outline" [disabled]="currentPage === totalPages" (click)="nextPage()">
-          Next
-        </button>
+        <div class="pagination-wrapper" *ngIf="filteredUsers.length > 0">
+          <div class="pagination-bar">
+            <div class="pagination-info">
+              Showing {{ getRangeStart() }} to {{ getRangeEnd() }} of {{ filteredUsers.length }} users
+            </div>
+            <div class="pagination-controls">
+              <button class="page-btn" [disabled]="currentPage === 1" (click)="previousPage()" title="Previous Page">
+                <span class="material-icons-outlined">chevron_left</span>
+              </button>
+              <button class="page-btn" 
+                      *ngFor="let page of pageNumbers" 
+                      [class.active]="page === currentPage"
+                      (click)="goToPage(page)">
+                {{ page }}
+              </button>
+              <button class="page-btn" [disabled]="currentPage === totalPages" (click)="nextPage()" title="Next Page">
+                <span class="material-icons-outlined">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -202,13 +196,19 @@
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let project of projects">
+              <tr *ngFor="let project of filteredProjects">
                 <td>{{ project.name }}</td>
                 <td>{{ project.teamLead }}</td>
                 <td><span class="badge" [ngClass]="project.status === 'Active' ? 'badge-green' : 'badge-default'">
                   {{ project.status }}
                 </span></td>
                 <td>{{ project.memberCount }}</td>
+              </tr>
+              <tr *ngIf="filteredProjects.length === 0">
+                <td colspan="4" style="text-align: center; padding: 40px; opacity: 0.5;">
+                  <span class="material-icons-outlined" style="font-size: 3rem; display: block; margin-bottom: 8px;">search_off</span>
+                  No projects found
+                </td>
               </tr>
             </tbody>
           </table>
@@ -318,13 +318,24 @@
         <span class="material-icons-outlined">close</span>
       </button>
     </div>
-    <div class="modal-body" *ngIf="userToDeactivate as user">
-      <p>Are you sure you want to mark <strong>{{ user.name }}</strong> as inactive?</p>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">They will no longer be able to log in or be assigned new assets.</p>
+    <div class="modal-body" *ngIf="userToDeactivate">
+      <p>Are you sure you want to mark <strong>{{ userToDeactivate.name }}</strong> as {{ userToDeactivate.isActive ? 'inactive' : 'active' }}?</p>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
+        {{ userToDeactivate.isActive
+          ? 'They will no longer be able to log in or be assigned new assets.'
+          : 'They will be able to log in and receive new asset assignments again.' }}
+      </p>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-outline" (click)="closeInactiveModal()">Cancel</button>
-      <button class="btn btn-primary" style="background-color: #ef4444; border-color: #ef4444;" (click)="confirmInactive()">Yes, Make Inactive</button>
+      <button class="btn btn-outline" [disabled]="isUpdatingUserStatus" (click)="closeInactiveModal()">Cancel</button>
+      <button
+        class="btn btn-primary"
+        [disabled]="isUpdatingUserStatus"
+        [style.background-color]="userToDeactivate?.isActive ? '#ef4444' : '#10b981'"
+        [style.border-color]="userToDeactivate?.isActive ? '#ef4444' : '#10b981'"
+        (click)="confirmInactive()">
+        {{ isUpdatingUserStatus ? 'Updating...' : (userToDeactivate?.isActive ? 'Yes, Make Inactive' : 'Yes, Make Active') }}
+      </button>
     </div>
   </div>
 </div>
@@ -386,30 +397,63 @@
     <div class="modal-body">
       <div class="form-group mb-16">
         <label>Full Name</label>
-        <input type="text" class="form-control" placeholder="Enter full name">
+        <input type="text" class="form-control" [(ngModel)]="newUser.name" placeholder="Enter full name">
       </div>
       <div class="form-group mb-16">
         <label>Email Address</label>
-        <input type="email" class="form-control" placeholder="Enter email address">
+        <input type="email" class="form-control" [ngModel]="newUser.email" (ngModelChange)="onAddUserEmailChange($event)" placeholder="Enter email address">
+        <div class="field-error" *ngIf="addUserEmailError">{{ addUserEmailError }}</div>
       </div>
       <div class="form-group mb-16">
         <label>Role</label>
-        <select class="form-control">
+        <select class="form-control" [(ngModel)]="newUser.roleName" (ngModelChange)="onAddUserRoleChange($event)">
           <option value="">Select a role</option>
           <option *ngFor="let role of roles" [value]="role.name">{{ role.name }}</option>
         </select>
       </div>
-      <div class="form-group mb-16">
-        <label>Project / Team</label>
-        <select class="form-control">
-          <option value="">Select project/team</option>
-          <option *ngFor="let project of projects" [value]="project.name">{{ project.name }}</option>
+      <div class="form-group mb-16" *ngIf="shouldShowProjectDropdown">
+        <label>Project</label>
+        <select class="form-control" [(ngModel)]="newUser.projectId">
+          <option value="">Select a project</option>
+          <option *ngFor="let project of availableProjectsForNewUser" [value]="project.id">{{ project.name }}</option>
         </select>
+      </div>
+      <div class="form-group mb-16" *ngIf="shouldShowAssetTypeDropdown">
+        <label>Asset Type</label>
+        <select class="form-control" [(ngModel)]="newUser.assetTypeId">
+          <option value="">Select an asset type</option>
+          <option *ngFor="let assetType of availableAssetTypesForNewUser" [value]="assetType.id">{{ assetType.name }}</option>
+        </select>
+        <div class="field-error" *ngIf="newUser.roleName === assetManagerRoleName && availableAssetTypesForNewUser.length === 0">
+          No asset type is available without an assigned asset manager.
+        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeAddUserModal()">Cancel</button>
-      <button class="btn btn-primary" (click)="closeAddUserModal()">Save User</button>
+      <button
+        class="btn btn-primary"
+        [disabled]="!canSaveNewUser"
+        (click)="saveNewUser()">
+        {{ isSavingUser ? 'Saving...' : 'Save User' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="showNoProjectsModal">
+  <div class="modal-container animate-slide-up" style="max-width: 420px;">
+    <div class="modal-header">
+      <h3>No Projects Available</h3>
+      <button class="btn-icon" (click)="closeNoProjectsModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>Add project first to assign a team lead.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" (click)="closeNoProjectsModal()">OK</button>
     </div>
   </div>
 </div>
@@ -458,22 +502,12 @@
         <label>Project Name</label>
         <input type="text" class="form-control" [(ngModel)]="newProject.name" placeholder="Enter project name">
       </div>
-      <div class="form-group mb-16">
-        <label>Project Code</label>
-        <input type="text" class="form-control" [(ngModel)]="newProject.projectCode" placeholder="Enter project code (e.g., PRJ-001)">
-      </div>
-      <div class="form-group mb-16">
-        <label>Department</label>
-        <input type="text" class="form-control" [(ngModel)]="newProject.department" placeholder="Enter department">
-      </div>
-      <div class="form-group mb-16">
-        <label>Team Lead</label>
-        <input type="text" class="form-control" [(ngModel)]="newProject.teamLead" placeholder="Enter team lead name">
-      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeAddProjectModal()">Cancel</button>
-      <button class="btn btn-primary" (click)="closeAddProjectModal()">Save Project</button>
+      <button class="btn btn-primary" [disabled]="isSavingProject || !newProject.name?.trim()" (click)="saveProject()">
+        {{ isSavingProject ? 'Saving...' : 'Save Project' }}
+      </button>
     </div>
   </div>
 </div>
@@ -512,6 +546,65 @@
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeAssignAssetModal()">Cancel</button>
       <button class="btn btn-primary" (click)="closeAssignAssetModal()">Assign Asset</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Assets Right Sidebar -->
+<div class="right-sidebar-overlay" *ngIf="showUserAssetsSidebar" (click)="closeUserAssetsSidebar()"></div>
+<div class="right-sidebar" [class.show]="showUserAssetsSidebar">
+  <div class="sidebar-header">
+    <div class="header-main">
+      <div class="user-brief">
+        <div class="avatar-sm">{{ selectedSidebarUser?.name?.charAt(0) }}</div>
+        <div style="flex: 1;">
+          <h4>{{ selectedSidebarUser?.name }}</h4>
+          <p>{{ selectedSidebarUser?.email }}</p>
+        </div>
+      </div>
+      <button class="btn-icon" (click)="closeUserAssetsSidebar()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="sidebar-content">
+    <div class="section-title">
+      <span>Assigned Assets</span>
+      <span class="count-badge">{{ userAssignedAssets.length }}</span>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" *ngIf="isLoadingUserAssets">
+      <div class="spinner"></div>
+      <p>Fetching assigned assets...</p>
+    </div>
+
+    <!-- Assets List -->
+    <div class="assets-list" *ngIf="!isLoadingUserAssets && userAssignedAssets.length > 0">
+      <div class="asset-item" *ngFor="let asset of userAssignedAssets">
+        <div class="asset-icon">
+          <span class="material-icons-outlined">inventory_2</span>
+        </div>
+        <div class="asset-details">
+          <div class="asset-name">{{ asset.assetName }}</div>
+          <div class="asset-meta">
+            <span>{{ asset.assetType }}</span>
+            <span class="dot"></span>
+            <span>{{ asset.subCategory }}</span>
+          </div>
+          <div class="asset-id">{{ asset.assetId }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-assets" *ngIf="!isLoadingUserAssets && userAssignedAssets.length === 0">
+      <div class="empty-icon">
+        <span class="material-icons-outlined">search_off</span>
+      </div>
+      <h5>No Assets Assigned</h5>
+      <p>This user currently has no assets allocated to them.</p>
     </div>
   </div>
 </div>
