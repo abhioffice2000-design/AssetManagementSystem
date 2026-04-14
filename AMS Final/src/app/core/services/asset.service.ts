@@ -50,7 +50,14 @@ export class AssetService {
           serial_number: this.getNullableValue(data?.serial_number) || '',
           purchase_date: data?.purchase_date || '',
           warranty_expiry: data?.warranty_expiry || '',
-          status: data?.status || ''
+          status: data?.status || '',
+          temp1: this.getNullableValue(data?.temp1) || '',
+          temp2: this.getNullableValue(data?.temp2) || '',
+          temp3: this.getNullableValue(data?.temp3) || '',
+          temp4: this.getNullableValue(data?.temp4) || '',
+          temp5: this.getNullableValue(data?.temp5) || '',
+          temp6: this.getNullableValue(data?.temp6) || '',
+          temp7: this.getNullableValue(data?.temp7) || ''
         };
       });
 
@@ -58,6 +65,104 @@ export class AssetService {
       return [...this.assetDetailRecords];
     } catch (err) {
       console.error('Failed to fetch asset details from Getassetdetails:', err);
+      throw err;
+    }
+  }
+
+  async fetchAllRawAssets(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getallassetdetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      return tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.m_assets || tuple?.m_assets || tuple;
+        return {
+          asset_id: data?.asset_id || '',
+          asset_name: data?.asset_name || '',
+          type_id: data?.type_id || '',
+          sub_category_id: data?.sub_category_id || '',
+          serial_number: this.getNullableValue(data?.serial_number) || '',
+          purchase_date: data?.purchase_date || '',
+          warranty_expiry: data?.warranty_expiry || '',
+          status: data?.status || '',
+          temp1: this.getNullableValue(data?.temp1) || '',
+          temp2: this.getNullableValue(data?.temp2) || '',
+          temp3: this.getNullableValue(data?.temp3) || '',
+          temp4: this.getNullableValue(data?.temp4) || '',
+          temp5: this.getNullableValue(data?.temp5) || '',
+          temp6: this.getNullableValue(data?.temp6) || '',
+          temp7: this.getNullableValue(data?.temp7) || ''
+        };
+      });
+    } catch (err) {
+      console.error('Failed to fetch all raw assets:', err);
+      return [];
+    }
+  }
+
+  async releaseAsset(asset: any): Promise<void> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_assets qConstraint="0">
+            <asset_id>${asset.asset_id}</asset_id>
+            <asset_name>${asset.asset_name}</asset_name>
+            <type_id>${asset.type_id}</type_id>
+            <sub_category_id>${asset.sub_category_id}</sub_category_id>
+            <serial_number>${asset.serial_number || ''}</serial_number>
+            <purchase_date>${asset.purchase_date || ''}</purchase_date>
+            <warranty_expiry>${asset.warranty_expiry || ''}</warranty_expiry>
+            <status>${asset.status}</status>
+            <temp1>${asset.temp1 || ''}</temp1>
+            <temp2>${asset.temp2 || ''}</temp2>
+            <temp3>${asset.temp3 || ''}</temp3>
+            <temp4>${asset.temp4 || ''}</temp4>
+            <temp5>${asset.temp5 || ''}</temp5>
+            <temp6>${asset.temp6 || ''}</temp6>
+            <temp7>${asset.temp7 || ''}</temp7>
+          </m_assets>
+        </old>
+        <new>
+          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <asset_id>${asset.asset_id}</asset_id>
+            <asset_name>${asset.asset_name}</asset_name>
+            <type_id>${asset.type_id}</type_id>
+            <sub_category_id>${asset.sub_category_id}</sub_category_id>
+            <serial_number>${asset.serial_number || ''}</serial_number>
+            <purchase_date>${asset.purchase_date || ''}</purchase_date>
+            <warranty_expiry>${asset.warranty_expiry || ''}</warranty_expiry>
+            <status>Available</status>
+            <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp2>${asset.temp2 || ''}</temp2>
+            <temp3>${asset.temp3 || ''}</temp3>
+            <temp4>${asset.temp4 || ''}</temp4>
+            <temp5>${asset.temp5 || ''}</temp5>
+            <temp6>${asset.temp6 || ''}</temp6>
+            <temp7>${asset.temp7 || ''}</temp7>
+          </m_assets>
+        </new>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapMsg);
+      console.log(`Asset ${asset.asset_id} marked as available.`);
+    } catch (err) {
+      console.error(`Failed to release asset ${asset.asset_id}:`, err);
       throw err;
     }
   }
