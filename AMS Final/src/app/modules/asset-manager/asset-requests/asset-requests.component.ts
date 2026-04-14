@@ -223,7 +223,7 @@ export class AssetRequestsComponent implements OnInit {
             t_request_approvals: {
               approver_id: this.selectedAllocationMemberId,
               request_id: this.selectedRequest.id,
-              role: "Allocation Team Member",
+              role: "Asset Allocation Team",
               status: "Pending",
               remarks: this.actionComments,
               temp1: this.selectedRequest.assignedAssetId,
