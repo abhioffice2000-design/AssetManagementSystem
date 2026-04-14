@@ -62,6 +62,8 @@ export class PendingApprovalsComponent implements OnInit {
       const result = this.hs.xmltojson(resp, "t_asset_requests");
       const rawData = Array.isArray(result) ? result : [result];
 
+
+
       // Map database fields to the AssetRequest interface
       this.pendingRequests = rawData
         .map((item: any) => {

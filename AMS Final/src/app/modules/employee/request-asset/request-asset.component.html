@@ -40,16 +40,20 @@
 
       <div class="form-group mt-24">
         <label>Business Justification *</label>
-        <textarea formControlName="justification" class="form-control" placeholder="Please explain why you need this asset..." rows="4"></textarea>
+        <textarea formControlName="justification" class="form-control"
+          placeholder="Please explain why you need this asset..." rows="4"></textarea>
       </div>
 
-      <div class="form-group mt-24 bg-gray" style="padding: 16px; border-radius: var(--radius-md); background: var(--gray-50); border: 1px dashed var(--border-color);">
+      <div class="form-group mt-24 bg-gray"
+        style="padding: 16px; border-radius: var(--radius-md); background: var(--gray-50); border: 1px dashed var(--border-color);">
         <div style="display: flex; gap: 12px; align-items: flex-start;">
           <input type="checkbox" formControlName="hasEmailApproval" id="hasEmailApproval" style="margin-top: 4px;">
           <div>
-            <label for="hasEmailApproval" style="margin-bottom: 4px;">I have pre-approval email from Manager/Head</label>
-            <p class="text-sm text-muted">Checking this will skip the Team Lead approval stage and route directly to Asset Manager.</p>
-            
+            <label for="hasEmailApproval" style="margin-bottom: 4px;">I have pre-approval email from
+              Manager/Head</label>
+            <p class="text-sm text-muted">Checking this will skip the Team Lead approval stage and route directly to
+              Asset Manager.</p>
+
             <div *ngIf="requestForm.get('hasEmailApproval')?.value" class="mt-16 animate-slide-up">
               <input type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.eml,.msg">
               <p class="text-xs text-muted mt-8">Upload email screenshot or PDF</p>
@@ -58,7 +62,8 @@
         </div>
       </div>
 
-      <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
+      <div class="mt-24 pt-16"
+        style="border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
         <button type="button" class="btn btn-outline" routerLink="/employee/dashboard">Cancel</button>
         <button type="button" class="btn btn-primary" (click)="onSubmit()">Submit Request</button>
       </div>
