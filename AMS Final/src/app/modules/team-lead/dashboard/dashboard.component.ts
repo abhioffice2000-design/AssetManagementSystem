@@ -134,7 +134,7 @@ export class LeadDashboardComponent implements OnInit {
       {}
     ).then((resp: any) => {
       const result = this.hs.xmltojson(resp, "t_request_approvals");
-      const rawData = Array.isArray(result) ? result : [result];
+      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
       // Map database fields to the AssetRequest interface fields used in the template
       this.teamRequests = rawData.map((item: any) => {
@@ -174,7 +174,7 @@ export class LeadDashboardComponent implements OnInit {
     ).then((resp: any) => {
       const result = this.hs.xmltojson(resp, "m_users");
       // If result is a list of users, use the length; if it's a specific count object, use the value
-      this.teamSize = Array.isArray(result) ? result.length : (parseInt(result?.count) || parseInt(result) || 0);
+      this.teamSize = result ? (Array.isArray(result) ? result.length : (parseInt(result?.count) || parseInt(result) || 0)) : 0;
       console.log("Team Size updated from API:", this.teamSize);
     }).catch(err => {
       console.error("Error fetching user count in getusercount:", err);
@@ -186,7 +186,7 @@ export class LeadDashboardComponent implements OnInit {
       {}
     ).then((resp: any) => {
       const result = this.hs.xmltojson(resp, "t_request_approvals");
-      const rawData = Array.isArray(result) ? result : [result];
+      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
       this.pendingApprovalsCount = rawData.length;
       console.log("Pending Approvals count updated from API:", this.pendingApprovalsCount);
     }).catch(err => {

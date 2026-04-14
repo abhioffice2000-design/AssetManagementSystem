@@ -1,0 +1,72 @@
+<div class="card animate-fade-in" style="max-width: 800px; margin: 0 auto;">
+  <div class="card-header pb-0 border-0">
+    <h3 class="m-0">Request New Asset</h3>
+    <p class="text-muted mt-8">Submit a request for new hardware, software, or other assets for yourself.</p>
+  </div>
+  <div class="card-body">
+    <form [formGroup]="requestForm" (ngSubmit)="onSubmit()">
+      <div class="grid grid-2 gap-20 form-group mb-16">
+        <div>
+          <label class="form-label">Asset Type *</label>
+          <select formControlName="assetType" class="form-control" (change)="onTypeChange()">
+            <option value="" disabled>Select Type</option>
+            <option *ngFor="let type of availableTypes" [value]="getObjectId(type, 'type')">
+              {{ getObjectName(type, 'type') }}
+            </option>
+          </select>
+          <div *ngIf="isFieldInvalid('assetType')" class="error-msg">Asset type is required</div>
+        </div>
+        <div>
+          <label class="form-label" [class.text-danger]="isFieldInvalid('category')">Category *</label>
+          <select formControlName="category" class="form-control" [class.border-danger]="isFieldInvalid('category')" (change)="onCategoryChange()">
+            <option value="" disabled>Select Category</option>
+            <option *ngFor="let cat of availableCategories" [value]="getObjectId(cat, 'category')">
+              {{ getObjectName(cat, 'category') }}
+            </option>
+          </select>
+          <div *ngIf="isFieldInvalid('category')" class="error-msg">Category is required</div>
+        </div>
+      </div>
+
+      <div class="grid grid-2 gap-20 form-group mb-16">
+        <div>
+          <label class="form-label">Sub-Category</label>
+          <select formControlName="subCategory" class="form-control">
+            <option value="">Select Sub-Category</option>
+            <option *ngFor="let sub of availableSubCategories" [value]="getObjectId(sub, 'subcategory')">
+              {{ getObjectName(sub, 'subcategory') }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Urgency *</label>
+          <select formControlName="urgency" class="form-control">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group mb-24">
+        <label class="form-label" [class.text-danger]="isFieldInvalid('justification')">Business Justification *</label>
+        <textarea formControlName="justification" class="form-control" [class.border-danger]="isFieldInvalid('justification')" placeholder="Please explain why you need this asset..." rows="4"></textarea>
+        <div class="field-hint" [class.text-danger]="isFieldInvalid('justification')">
+          <span *ngIf="!requestForm.get('justification')?.value?.length" class="text-muted">Minimum 10 characters required</span>
+          <span *ngIf="requestForm.get('justification')?.value?.length > 0 && requestForm.get('justification')?.value?.length < 10" class="text-danger">
+            Need {{ 10 - requestForm.get('justification')?.value?.length }} more characters
+          </span>
+          <span *ngIf="requestForm.get('justification')?.value?.length >= 10" class="text-success">Ideal length reached</span>
+        </div>
+      </div>
+
+      <div class="mt-24 pt-16" style="border-top: 1px solid #edf2f7; display: flex; justify-content: flex-end; gap: 12px;">
+        <button type="button" class="btn btn-outline" routerLink="/team-lead/my-asset">Cancel</button>
+        <button type="submit" class="btn btn-primary" [disabled]="requestForm.invalid || isSubmitting">
+          <span *ngIf="isSubmitting">Submitting...</span>
+          <span *ngIf="!isSubmitting">Submit Request</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
