@@ -57,7 +57,6 @@
         (click)="switchTab('requests')">
         <span class="material-icons-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">pending_actions</span>
         My Pending Requests
-        <span *ngIf="pendingRequests.length > 0" class="badge badge-warning" style="margin-left: 8px;">{{ pendingRequests.length }}</span>
       </button>
     </div>
 
@@ -69,12 +68,12 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Asset Tag</th>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Condition</th>
-                <th>Warranty</th>
-                <th>Status</th>
+                <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">tag</span> Asset Number</th>
+                <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">devices</span> Asset Name</th>
+                <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">category</span> Category</th>
+                <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">health_and_safety</span> Condition</th>
+                <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">security</span> Warranty</th>
+                <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">circle</span> Status</th>
               </tr>
             </thead>
             <tbody>
@@ -126,12 +125,12 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Request ID</th>
-                <th>Asset Type</th>
-                <th>Asset Name</th>
-                <th>Urgency</th>
-                <th>Submitted On</th>
-                <th>Status</th>
+                <th><span class="material-icons-outlined">tag</span> Request ID</th>
+                <th><span class="material-icons-outlined">category</span> Asset Type</th>
+                <th><span class="material-icons-outlined">devices</span> Asset Name</th>
+                <th><span class="material-icons-outlined">speed</span> Urgency</th>
+                <th><span class="material-icons-outlined">event</span> Submitted On</th>
+                <th><span class="material-icons-outlined">info</span> Status</th>
               </tr>
             </thead>
             <tbody>

@@ -148,56 +148,12 @@ export class PendingApprovalsComponent implements OnInit {
       this.handleReject();
     }
   }
-  /*
-    handleApprove() {
-      if (!this.selectedRequest?.approvalId) {
-        alert("No approval record found for this request");
-        return;
-      }
-  
-      if (!this.tl_remarks || !this.tl_remarks.trim()) {
-        alert("Please enter remarks before approving.");
-        return;
-      }
-  
-      this.isLoading = true;
-      this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
-        tuple: {
-          old: {
-            "t_request_approvals": {
-              approval_id: this.selectedRequest.approvalId
-            }
-          },
-          new: {
-            "t_request_approvals": {
-              status: "Approved",
-              remarks: this.tl_remarks || 'Approved by Team Lead'
-            }
-          }
-        }
-      }).then(() => {
-        alert('Request Approved successfully');
-        this.selectedRequest = null;
-        this.tl_remarks = '';
-        this.getallrequests();
-      }).catch(err => {
-        console.error("Approval error:", err);
-        alert("Failed to approve request. Please try again.");
-        this.isLoading = false;
-      });
-    }
-  */
   async handleApprove() {
     console.log(this.selectedRequest);
     if (!this.selectedRequest?.approvalId) {
       alert("No approval record found for this request");
       return;
     }
-
-    // if (!this.tl_remarks || !this.tl_remarks.trim()) {
-    //   alert("Please enter remarks before approving.");
-    //   return;
-    // }
     var req1 = {
       tuple: {
         old: {
@@ -216,18 +172,7 @@ export class PendingApprovalsComponent implements OnInit {
 
     this.isLoading = true;
     var res2 = await this.requestService.updateEntryForTeamLead(req1 as any);
-    /*
- await this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', req1).then(() => {
-      alert('Request Approved successfully');
-      this.selectedRequest = null;
-      this.tl_remarks = '';
-      this.getallrequests();
-    }).catch(err => {
-      console.error("Approval error:", err);
-      alert("Failed to approve request. Please try again.");
-      this.isLoading = false;
-    });
-    */
+
     var newrequestid = this.selectedRequest.requestNumber
     console.log("Taskid response is", res2);
     var taskid = this.selectedRequest?.taskid;
