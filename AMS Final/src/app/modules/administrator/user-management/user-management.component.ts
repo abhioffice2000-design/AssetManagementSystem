@@ -39,8 +39,8 @@ export class UserManagementComponent implements OnInit {
   showAssignAssetModal = false;
   isSavingProject = false;
   isSavingUser = false;
-  showNoProjectsModal = false;
   addUserEmailError = '';
+  addProjectError = '';
 
   newRole: Partial<Role> = { name: '', code: '', description: '', isActive: true };
   newProject: Pick<Partial<Project>, 'name'> = { name: '' };
@@ -65,6 +65,8 @@ export class UserManagementComponent implements OnInit {
   isUpdatingUserStatus = false;
   editingUser: User | null = null;
   userToDeactivate: User | null = null;
+  assetsToRelease: any[] = [];
+  isCheckingAssetsBeforeDeactivate = false;
   selectedUser: User | null = null;
   selectedUserAssets: Asset[] = [];
 
@@ -117,14 +119,12 @@ export class UserManagementComponent implements OnInit {
     this.showAddProjectModal = false;
     this.isSavingProject = false;
     this.newProject = { name: '' };
+    this.addProjectError = '';
   }
 
   openAssignAssetModal(): void { this.showAssignAssetModal = true; }
   closeAssignAssetModal(): void { this.showAssignAssetModal = false; }
 
-  closeNoProjectsModal(): void {
-    this.showNoProjectsModal = false;
-  }
 
   async openUserAssetsSidebar(user: User): Promise<void> {
     this.selectedSidebarUser = user;
@@ -249,10 +249,6 @@ export class UserManagementComponent implements OnInit {
     this.newUser.roleName = roleName;
     this.newUser.projectId = '';
     this.newUser.assetTypeId = '';
-
-    if (roleName === this.teamLeadRoleName && this.availableTeamLeadProjects.length === 0) {
-      this.showNoProjectsModal = true;
-    }
   }
 
   onAddUserEmailChange(email: string): void {
@@ -317,7 +313,15 @@ export class UserManagementComponent implements OnInit {
       return;
     }
 
+    // Duplicate check
+    const isDuplicate = this.projects.some(p => p.name.trim().toLowerCase() === projectName.toLowerCase());
+    if (isDuplicate) {
+      this.addProjectError = 'Project name already exists. Please use a different name.';
+      return;
+    }
+
     this.isSavingProject = true;
+    this.addProjectError = '';
 
     try {
       await this.adminDataService.addProject(projectName);
@@ -325,19 +329,36 @@ export class UserManagementComponent implements OnInit {
       this.closeAddProjectModal();
     } catch (error) {
       console.error('Unable to add project.', error);
+      this.addProjectError = 'Unable to add project. Please try again.';
       this.isSavingProject = false;
     }
   }
 
-  openInactiveModal(user: User): void {
+  async openInactiveModal(user: User): Promise<void> {
     this.userToDeactivate = user;
     this.showInactiveModal = true;
+    this.assetsToRelease = [];
+
+    // Only check assets if we are marking a user INACTIVE
+    if (user.isActive) {
+      this.isCheckingAssetsBeforeDeactivate = true;
+      try {
+        const allAssets = await this.assetService.fetchAllRawAssets();
+        this.assetsToRelease = allAssets.filter(asset => asset.temp1 === user.id);
+      } catch (error) {
+        console.error('Error fetching assets before deactivation:', error);
+      } finally {
+        this.isCheckingAssetsBeforeDeactivate = false;
+      }
+    }
   }
 
   closeInactiveModal(): void {
     this.showInactiveModal = false;
     this.isUpdatingUserStatus = false;
+    this.isCheckingAssetsBeforeDeactivate = false;
     this.userToDeactivate = null;
+    this.assetsToRelease = [];
   }
 
   async confirmInactive(): Promise<void> {
@@ -345,7 +366,18 @@ export class UserManagementComponent implements OnInit {
       this.isUpdatingUserStatus = true;
       try {
         const nextStatus = !this.userToDeactivate.isActive;
+
+        // 1. Release assets if user is being deactivated
+        if (!nextStatus && this.assetsToRelease.length > 0) {
+          for (const asset of this.assetsToRelease) {
+            await this.assetService.releaseAsset(asset);
+          }
+        }
+
+        // 2. Update user status in DB
         await this.adminDataService.updateUserActiveStatus(this.userToDeactivate.id, nextStatus);
+
+        // 3. Update local state
         const updatedUser = { ...this.userToDeactivate, isActive: nextStatus };
         this.users = this.users.map(user => user.id === updatedUser.id ? updatedUser : user);
         this.filterUsers();
@@ -358,7 +390,7 @@ export class UserManagementComponent implements OnInit {
   }
 
   toggleUserActive(user: User): void {
-    this.openInactiveModal(user);
+    this.openInactiveModal(user).then();
   }
 
   get requiresProjectSelection(): boolean {
@@ -386,12 +418,17 @@ export class UserManagementComponent implements OnInit {
       return false;
     }
 
-    if (this.requiresProjectSelection && !this.newUser.projectId) {
-      return false;
+    // Role-specific validation for Projects (Employee, Team Lead)
+    if (this.requiresProjectSelection) {
+      if (!this.newUser.projectId) return false;
+      if (this.newUser.roleName === this.teamLeadRoleName && this.availableTeamLeadProjects.length === 0) return false;
     }
 
-    if (this.requiresAssetTypeSelection && !this.newUser.assetTypeId) {
-      return false;
+    // Role-specific validation for Asset Types (Asset Manager, Asset Team)
+    if (this.requiresAssetTypeSelection) {
+      if (!this.newUser.assetTypeId) return false;
+      if (this.newUser.roleName === this.assetManagerRoleName && this.availableAssetTypesForNewUser.length === 0) return false;
+      if (this.assetTypes.length === 0) return false;
     }
 
     return true;

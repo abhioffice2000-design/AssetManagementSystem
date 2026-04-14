@@ -166,6 +166,13 @@ h5 { font-size: 1rem; font-weight: 500; line-height: 1.5; }
   font-size: 0.928rem;
   transition: all var(--transition-fast);
   white-space: nowrap;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+    filter: grayscale(0.5);
+  }
 }
 
 .btn-primary {
