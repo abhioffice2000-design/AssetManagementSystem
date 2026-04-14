@@ -7,6 +7,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { Asset } from '../../../core/models/asset.model';
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
+import { HeroService } from '../../../core/services/hero.service';
 
 @Component({
   selector: 'app-tl-return-asset',
@@ -25,23 +26,14 @@ export class ReturnAssetComponent implements OnInit {
     private requestService: RequestService,
     private authService: AuthService,
     private notificationService: NotificationService,
-    private router: Router
+    private router: Router,
+    private hs: HeroService
   ) {}
 
-  async ngOnInit(): Promise<void> {
+  ngOnInit(): void {
     const user = this.authService.getCurrentUser();
     if (user) {
-      this.isLoading = true;
-      try {
-        this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
-        if (this.myAssets.length === 0) {
-          this.myAssets = this.assetService.getAssetsByUser(user.id);
-        }
-      } catch (e) {
-        this.myAssets = this.assetService.getAssetsByUser(user.id);
-      } finally {
-        this.isLoading = false;
-      }
+      this.getAssetsByUser(user.id);
     }
     
     this.returnForm = this.fb.group({
@@ -98,5 +90,37 @@ export class ReturnAssetComponent implements OnInit {
     this.requestService.addRequest(newReq as any);
     this.notificationService.showToast('Return request submitted successfully!', 'success');
     this.router.navigate(['/team-lead/my-asset']);
+  }
+
+  getAssetsByUser(userId?: string): void {
+    this.isLoading = true;
+    this.hs.ajax('GetAssetsByUser', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { userId: userId || '' }
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, 'm_assets');
+      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
+
+      this.myAssets = rawData.map((item: any) => ({
+        id: item.asset_id || item.id || '',
+        assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
+        name: item.asset_name || item.name || '',
+        category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || item.asset_type || '',
+        subCategory: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || '',
+        condition: item.condition || 'Good',
+        status: item.status || 'Allocated',
+        warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
+        assignedTo: item.user_id || userId || '',
+        serialNumber: item.serial_number || item.asset_tag || ''
+      } as any));
+
+      this.isLoading = false;
+    }).catch((err: any) => {
+      console.error('[ReturnAsset] Error fetching assets:', err);
+      const user = this.authService.getCurrentUser();
+      if (user) {
+        this.myAssets = this.assetService.getAssetsByUser(user.id);
+      }
+      this.isLoading = false;
+    });
   }
 }

@@ -7,6 +7,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { Asset } from '../../../core/models/asset.model';
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
+import { HeroService } from '../../../core/services/hero.service';
 
 @Component({
   selector: 'app-tl-extend-warranty',
@@ -25,31 +26,15 @@ export class ExtendWarrantyComponent implements OnInit {
     private requestService: RequestService,
     private authService: AuthService,
     private notificationService: NotificationService,
-    private router: Router
+    private router: Router,
+    private hs: HeroService
   ) {}
 
-  async ngOnInit(): Promise<void> {
+  ngOnInit(): void {
     const user = this.authService.getCurrentUser();
     if (!user) return;
     
-    this.isLoading = true;
-    try {
-      const allMyAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
-      const filtered = allMyAssets.length > 0 ? allMyAssets : this.assetService.getAssetsByUser(user.id);
-      
-      const oneYearFromNow = new Date();
-      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-
-      this.eligibleAssets = filtered.filter(a => {
-        if (!a.warrantyExpiry) return false;
-        const expiry = new Date(a.warrantyExpiry);
-        return expiry < oneYearFromNow;
-      });
-    } catch (e) {
-      this.eligibleAssets = [];
-    } finally {
-      this.isLoading = false;
-    }
+    this.getAssetsByUser(user.id);
     
     this.warrantyForm = this.fb.group({
       assetId: ['', Validators.required],
@@ -105,5 +90,55 @@ export class ExtendWarrantyComponent implements OnInit {
     this.requestService.addRequest(newReq as any);
     this.notificationService.showToast('Warranty extension request submitted successfully!', 'success');
     this.router.navigate(['/team-lead/my-asset']);
+  }
+
+  getAssetsByUser(userId?: string): void {
+    this.isLoading = true;
+    this.hs.ajax('GetAssetsByUser', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { userId: userId || '' }
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, 'm_assets');
+      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
+
+      const mappedAssets = rawData.map((item: any) => ({
+        id: item.asset_id || item.id || '',
+        assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
+        name: item.asset_name || item.name || '',
+        category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || item.asset_type || '',
+        subCategory: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || '',
+        condition: item.condition || 'Good',
+        status: item.status || 'Allocated',
+        warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
+        assignedTo: item.user_id || userId || '',
+        serialNumber: item.serial_number || item.asset_tag || '',
+        type: item.asset_type || ''
+      } as any));
+
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+
+      this.eligibleAssets = mappedAssets.filter((a: any) => {
+        if (!a.warrantyExpiry) return false;
+        const expiry = new Date(a.warrantyExpiry);
+        return expiry < oneYearFromNow;
+      });
+
+      this.isLoading = false;
+    }).catch((err: any) => {
+      console.error('[ExtendWarranty] Error fetching assets:', err);
+      const user = this.authService.getCurrentUser();
+      if (user) {
+        const allMyAssets = this.assetService.getAssetsByUser(user.id);
+        const oneYearFromNow = new Date();
+        oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+
+        this.eligibleAssets = allMyAssets.filter(a => {
+          if (!a.warrantyExpiry) return false;
+          const expiry = new Date(a.warrantyExpiry);
+          return expiry < oneYearFromNow;
+        });
+      }
+      this.isLoading = false;
+    });
   }
 }

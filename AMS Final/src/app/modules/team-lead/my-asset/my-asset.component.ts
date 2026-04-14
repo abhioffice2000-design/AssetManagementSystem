@@ -31,34 +31,82 @@ export class MyAssetComponent implements OnInit {
     if (!user) return;
 
     this.isLoading = true;
-    try {
-      // Fetch assets from Cordys
-      this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
-      
-      // Fallback to mock data if empty
-      if (this.myAssets.length === 0) {
-        this.myAssets = this.assetService.getAssetsByUser(user.id);
-      }
-    } catch (error) {
-      console.error('Failed to fetch assets from Cordys', error);
-      this.myAssets = this.assetService.getAssetsByUser(user.id);
-    }
-    
-    this.calculateExpiringWarranty();
-    this.isLoading = false;
 
-    // Also load pending requests from Cordys
-    this.loadPendingRequests(user.id);
+    // Fetch current assets from Cordys
+    this.getAssetsByUser(user.id);
+
+    // Fetch pending requests from Cordys
+    this.PendingRequestsForTeamLead(user.id);
   }
 
-  loadPendingRequests(userId: string): void {
+  switchTab(tab: 'assets' | 'requests'): void {
+    this.activeTab = tab;
+    // Refresh pending requests when clicking the tab
+    if (tab === 'requests') {
+      const user = this.authService.getCurrentUser();
+      if (user) {
+        this.PendingRequestsForTeamLead(user.id);
+      }
+    }
+  }
+
+  private calculateExpiringWarranty(): void {
+    const now = new Date();
+    const ninetyDaysFromNow = new Date();
+    ninetyDaysFromNow.setDate(now.getDate() + 90);
+    
+    this.expiringWarrantyCount = this.myAssets.filter(a => {
+      if (!a.warrantyExpiry) return false;
+      const expiry = new Date(a.warrantyExpiry);
+      return expiry > now && expiry <= ninetyDaysFromNow;
+    }).length;
+  }
+
+  getAssetsByUser(userId?: string): void {
+    this.isLoading = true;
+    this.hs.ajax('GetAssetsByUser', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { userId: userId || '' }
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, 'm_assets');
+      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
+
+      // Map m_assets fields to the Asset interface used by the table
+      this.myAssets = rawData.map((item: any) => ({
+        id: item.asset_id || item.id || '',
+        assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
+        name: item.asset_name || item.name || '',
+        category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || item.asset_type || '',
+        condition: item.condition || 'Good',
+        status: item.status || 'Allocated',
+        warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
+        assignedTo: item.user_id || userId || ''
+      } as any));
+
+      console.log('[MyAsset] My assets from Cordys:', this.myAssets);
+      this.calculateExpiringWarranty();
+      this.isLoading = false;
+    }).catch((err: any) => {
+      console.error('[MyAsset] Error fetching assets:', err);
+      // Fallback to local mock data
+      const user = this.authService.getCurrentUser();
+      if (user) {
+        this.myAssets = this.assetService.getAssetsByUser(user.id);
+        this.calculateExpiringWarranty();
+      }
+      this.isLoading = false;
+    });
+  }
+
+  PendingRequestsForTeamLead(userId?: string): void {
     this.isLoadingRequests = true;
-    this.hs.ajax('GetRequestsByUserId', 'http://schemas.cordys.com/AMS_Database_Metadata', {
-      user_id: userId
-    }).then((resp: any) => {
+    this.hs.ajax('GetPendinRequestForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { project_id: userId || '' }
+    ).then((resp: any) => {
+      // Extract from t_asset_requests (or the expected returning XML tag)
       const result = this.hs.xmltojson(resp, 't_asset_requests');
       const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
+      // Map to AssetRequest interface for the pending requests array
       this.pendingRequests = rawData
         .filter((item: any) => item.status === 'Pending')
         .map((item: any) => ({
@@ -75,24 +123,10 @@ export class MyAssetComponent implements OnInit {
       console.log('[MyAsset] Pending requests from Cordys:', this.pendingRequests);
       this.isLoadingRequests = false;
     }).catch((err: any) => {
-      console.error('[MyAsset] Failed to load pending requests:', err);
+      console.error('[MyAsset] Error fetching pending requests:', err);
       this.isLoadingRequests = false;
     });
   }
 
-  switchTab(tab: 'assets' | 'requests'): void {
-    this.activeTab = tab;
-  }
-
-  private calculateExpiringWarranty(): void {
-    const now = new Date();
-    const ninetyDaysFromNow = new Date();
-    ninetyDaysFromNow.setDate(now.getDate() + 90);
-    
-    this.expiringWarrantyCount = this.myAssets.filter(a => {
-      if (!a.warrantyExpiry) return false;
-      const expiry = new Date(a.warrantyExpiry);
-      return expiry > now && expiry <= ninetyDaysFromNow;
-    }).length;
-  }
 }
+
