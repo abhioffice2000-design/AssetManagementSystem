@@ -591,4 +591,31 @@ export class RequestService {
       return err;
     })
   }
+
+  updateEntryForAllocationTeamMember(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+  createNewEntryForAssetManagerConfirmation(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
 }
