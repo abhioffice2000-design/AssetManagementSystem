@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
-import { AssetRequest, ApprovalStage, RequestStatus, RequestUrgency } from '../../../core/models/request.model';
+import { AssetRequest, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
@@ -14,7 +14,7 @@ export class AssetRequestsComponent implements OnInit {
   allRequests: AssetRequest[] = [];
   filteredRequests: AssetRequest[] = [];
   pendingRequests: AssetRequest[] = [];
-  activeTab: 'pending' | 'all' = 'pending';
+  activeTab: 'pending' | 'all' | 'return' = 'pending';
   searchTerm = '';
   selectedStatus = '';
   selectedUrgency = '';
@@ -32,6 +32,7 @@ export class AssetRequestsComponent implements OnInit {
   showDetailModal = false;
   detailRequest: AssetRequest | null = null;
 
+  returnRequests: AssetRequest[] = [];
   requestStats = { total: 0, pending: 0, approved: 0, rejected: 0, completed: 0, inProgress: 0 };
 
   // Loading & error state
@@ -58,9 +59,10 @@ export class AssetRequestsComponent implements OnInit {
       const approverId = currentUser?.id || 'usr_004';
 
       // Fetch all three in parallel: all requests, pending requests, and available assets
-      const [allReqs, pendingReqs] = await Promise.all([
+      const [allReqs, pendingReqs, returnReqs] = await Promise.all([
         this.requestService.fetchAllRequestsFromService(approverId),
         this.requestService.fetchPendingRequestsFromService(approverId),
+        this.requestService.fetchPendingReturnApprovalsFromService(approverId),
         this.loadAvailableAssets()
       ]);
 
@@ -69,6 +71,8 @@ export class AssetRequestsComponent implements OnInit {
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
       this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
       console.log('Allocation Team Members:', this.allocationTeamMemberList);
+      this.returnRequests = returnReqs;
+
       // Stats from all requests (total count across all statuses)
       this.requestStats = this.requestService.getAllRequestStats();
 
@@ -95,7 +99,7 @@ export class AssetRequestsComponent implements OnInit {
     }
   }
 
-  switchTab(tab: 'pending' | 'all'): void {
+  switchTab(tab: 'pending' | 'all' | 'return'): void {
     this.activeTab = tab;
     this.searchTerm = '';
     this.selectedStatus = '';
@@ -104,7 +108,15 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   applyFilters(): void {
-    const source = this.activeTab === 'pending' ? this.pendingRequests : this.allRequests;
+    let source: AssetRequest[] = [];
+    if (this.activeTab === 'pending') {
+      source = this.pendingRequests;
+    } else if (this.activeTab === 'return') {
+      source = this.returnRequests;
+    } else {
+      source = this.allRequests;
+    }
+
     this.filteredRequests = source.filter(req => {
       const matchesSearch = !this.searchTerm ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
@@ -158,110 +170,193 @@ export class AssetRequestsComponent implements OnInit {
     this.closeDetailModal();
   }
 
-  async confirmAction(): Promise<void> {
-    debugger;
-    //On approval
-    //update the request approvals table with Asset Manager status on approved
-    //update the asset table for that particular asset id with status  "Move To Allocation Team"
-    //create new entry in  request approvals table with asset id in it 
+  // async confirmAction(): Promise<void> {
+  //   debugger;
+  //On approval
+  //update the request approvals table with Asset Manager status on approved
+  //update the asset table for that particular asset id with status  "Move To Allocation Team"
+  //create new entry in  request approvals table with asset id in it 
 
-    //On reject
-    ////update the request approvals table with Asset Manager status on rejected
-    //update the asset_request table with status rejected 
-    console.log("Selected request is ", this.selectedRequest);
+  //On reject
+  ////update the request approvals table with Asset Manager status on rejected
+  // //update the asset_request table with status rejected 
+  // console.log("Selected request is ", this.selectedRequest);
+  async confirmAction(): Promise<void> {
+    debugger
+    console.log("Confirming action for request:", this.selectedRequest);
     if (!this.selectedRequest || !this.actionType) return;
 
     const currentUser = this.authService.getCurrentUser();
-    if (!currentUser) return;
-
-    if (this.actionType === 'approve') {
-      var req1 = {
-        tuple: {
-          old: {
-            t_request_approvals: {
-              approval_id: this.selectedRequest.approvalId,
-
-            }
-          }
-          ,
-          new: {
-            t_request_approvals: {
-              status: "Approved",
-              remarks: this.actionComments,
-            }
-
-          }
-
-        }
-      }
-      console.log("First request is", req1)
-      await this.requestService.updateEntryForAssetManager(req1 as any)
-      var req2 = {
-        tuple: {
-          old: {
-            m_assets: {
-              asset_id: this.selectedRequest.assignedAssetId,
-
-            }
-          }
-          ,
-          new: {
-            m_assets: {
-              status: "MoveToAllocationTeam",
-
-
-            }
-          }
-
-        }
-      }
-      console.log("Request2 is ", req2);
-      await this.requestService.updateAssetStatus(req2 as any)
-      var req3 = {
-        tuple: {
-          new: {
-            t_request_approvals: {
-              approver_id: this.selectedAllocationMemberId,
-              request_id: this.selectedRequest.id,
-              role: "Asset Allocation Team",
-              status: "Pending",
-              remarks: this.actionComments,
-              temp1: this.selectedRequest.assignedAssetId,
-
-            }
-          }
-        }
-      }
-      console.log("Third request is ", req3);
-      await this.requestService.createEntryForTeamAllocationMember(req3 as any);
-      var taskid = this.selectedRequest?.taskid;
-      console.log("Taskid is  ", taskid);
-      var req4 = {
-        TaskId: `${taskid}`,
-        Action: 'COMPLETE'
-      }
-      await this.requestService.completeUserTask(req4 as any)
-      // this.requestService.approveRequest(
-      //   this.selectedRequest.id,
-      //   currentUser.id,
-      //   currentUser.name,
-      //   this.actionComments,
-      //   ApprovalStage.ASSET_MANAGER
-      // );
-    } else {
-      this.requestService.rejectRequest(
-        this.selectedRequest.id,
-        currentUser.id,
-        currentUser.name,
-        this.actionComments,
-        ApprovalStage.ASSET_MANAGER
-      );
+    if (!currentUser) {
+      console.warn("No current user found during confirmAction");
+      return;
     }
 
-    this.closeActionModal();
-    this.loadAllData();
-  }
+    if (this.actionType === 'approve') {
+      if (this.selectedRequest.requestType !== RequestType.RETURN_ASSET) {
+        var req1 = {
+          tuple: {
+            old: {
+              t_request_approvals: {
+                approval_id: this.selectedRequest.approvalId,
 
+              }
+            }
+            ,
+            new: {
+              t_request_approvals: {
+                status: "Approved",
+                remarks: this.actionComments,
+              }
+
+            }
+
+          }
+        }
+        console.log("First request is", req1)
+        await this.requestService.updateEntryForAssetManager(req1 as any)
+        var req2 = {
+          tuple: {
+            old: {
+              m_assets: {
+                asset_id: this.selectedRequest.assignedAssetId,
+
+              }
+            }
+            ,
+            new: {
+              m_assets: {
+                status: "MoveToAllocationTeam",
+
+
+              }
+            }
+
+          }
+        }
+        console.log("Request2 is ", req2);
+        await this.requestService.updateAssetStatus(req2 as any)
+        var req3 = {
+          tuple: {
+            new: {
+              t_request_approvals: {
+                approver_id: this.selectedAllocationMemberId,
+                request_id: this.selectedRequest.id,
+                role: "Asset Allocation Team",
+                status: "Pending",
+                remarks: this.actionComments,
+                temp1: this.selectedRequest.assignedAssetId,
+
+              }
+            }
+          }
+        }
+        console.log("Third request is ", req3);
+        await this.requestService.createEntryForTeamAllocationMember(req3 as any);
+        var taskid = this.selectedRequest?.taskid;
+        console.log("Taskid is  ", taskid);
+        var req4 = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        }
+        await this.requestService.completeUserTask(req4 as any)
+        // this.requestService.approveRequest(
+        //   this.selectedRequest.id,
+        //   currentUser.id,
+        //   currentUser.name,
+        //   this.actionComments,
+        //   ApprovalStage.ASSET_MANAGER
+        // );
+      }
+      // Check by request type rather than tab for more robust logic
+      if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
+        if (this.actionType === 'approve') {
+          console.log("Executing Return Approval Flow...");
+
+          // Request 1: Update current manager approval to 'Approved'
+          const req6 = {
+            tuple: {
+              old: {
+                t_asset_return_approvals: {
+                  return_approval_id: this.selectedRequest.returnapprovalId,
+                }
+              },
+              new: {
+                t_asset_return_approvals: {
+                  status: "Approved",
+                  remarks: this.actionComments,
+                }
+              }
+            }
+          };
+
+          console.log("SOAP Update (REQ6):", req6);
+          try {
+            await this.requestService.updateReturnAssetStatus(req6 as any);
+            console.log("Step 1 (Update Status) Success");
+
+            // Request 2: Create next pending task for Allocation Team
+            const req7 = {
+              tuple: {
+                new: {
+                  t_asset_return_approvals: {
+                    approver_id: 'usr_007', // Allocation Team ID
+                    request_id: this.selectedRequest.id,
+                    role: "Allocation Team Member",
+                    status: "Pending",
+                    remarks: this.actionComments,
+                  }
+                }
+              }
+            };
+
+            console.log("SOAP Create (REQ7):", req7);
+            await this.requestService.completeTask(req7 as any);
+            var taskid = this.selectedRequest?.taskid;
+            var req4 = {
+              TaskId: `${taskid}`,
+              Action: 'COMPLETE'
+            }
+            await this.requestService.completeUserTask(req4 as any)
+            console.log("Step 2 (Forwarding) Success");
+          } catch (error) {
+            console.error("Return Approval SOAP call failed:", error);
+          }
+        } else {
+          // Rejection logic for returns
+          this.requestService.rejectRequest(
+            this.selectedRequest.id,
+            currentUser.id,
+            currentUser.name,
+            this.actionComments,
+            ApprovalStage.ASSET_MANAGER
+          );
+        }
+      } else {
+        // Standard Request Logic (New Asset / Warranty)
+        if (this.actionType === 'approve') {
+          this.requestService.approveRequest(
+            this.selectedRequest.id,
+            currentUser.id,
+            currentUser.name,
+            this.actionComments,
+            ApprovalStage.ASSET_MANAGER
+          );
+        } else {
+          this.requestService.rejectRequest(
+            this.selectedRequest.id,
+            currentUser.id,
+            currentUser.name,
+            this.actionComments,
+            ApprovalStage.ASSET_MANAGER
+          );
+        }
+      }
+
+      this.closeActionModal();
+      this.loadAllData();
+    }
+  }
   getTimeSince(dateStr: string): string {
     const date = new Date(dateStr);
     const now = new Date();

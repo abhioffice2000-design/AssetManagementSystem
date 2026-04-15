@@ -141,28 +141,7 @@
             <label>Status</label>
             <app-status-badge [status]="selectedAsset.status"></app-status-badge>
           </div>
-          <div class="detail-item">
-            <label>Condition</label>
-            <span class="condition-badge" [ngClass]="getConditionClass(selectedAsset.condition)">
-              {{ selectedAsset.condition }}
-            </span>
-          </div>
-          <div class="detail-item">
-            <label>Serial Number</label>
-            <span>{{ selectedAsset.serialNumber }}</span>
-          </div>
-          <div class="detail-item">
-            <label>Vendor</label>
-            <span>{{ selectedAsset.vendor }}</span>
-          </div>
-          <div class="detail-item">
-            <label>Cost</label>
-            <span class="text-primary fw-600">{{ formatCurrency(selectedAsset.cost) }}</span>
-          </div>
-          <div class="detail-item">
-            <label>Location</label>
-            <span>{{ selectedAsset.location }}</span>
-          </div>
+
           <div class="detail-item">
             <label>Purchase Date</label>
             <span>{{ selectedAsset.purchaseDate }}</span>

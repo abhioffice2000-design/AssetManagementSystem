@@ -25,18 +25,19 @@ export class ReturnAssetComponent implements OnInit {
     private authService: AuthService,
     private notificationService: NotificationService,
     private router: Router
-  ) {}
+  ) { }
 
-  ngOnInit(): void {
-    const user = this.authService.getCurrentUser();
-    if (user) {
-      this.myAssets = this.assetService.getAssetsByUser(user.id);
-    }
-    
+  async ngOnInit(): Promise<void> {
+    // Initialize form immediately to prevent NG01052 Error
     this.returnForm = this.fb.group({
       assetId: ['', Validators.required],
       justification: ['', [Validators.required, Validators.minLength(5)]]
     });
+
+    const user = this.authService.getCurrentUser();
+    if (user) {
+      this.myAssets = await this.assetService.getAssetsByUserSOAP(user.id);
+    }
   }
 
   onAssetSelect(): void {
@@ -44,48 +45,112 @@ export class ReturnAssetComponent implements OnInit {
     this.selectedAsset = this.myAssets.find(a => a.id === id);
   }
 
-  onSubmit(): void {
-    if (this.returnForm.invalid || !this.selectedAsset) return;
+  async onSubmit(): Promise<void> {
+    // debugger;
+    console.log('onSubmit triggered. Form valid?', this.returnForm.valid, 'Selected Asset:', this.selectedAsset);
+    if (this.returnForm.invalid || !this.selectedAsset) {
+      console.warn('Form is invalid or no asset selected!');
+      return;
+    }
 
     const user = this.authService.getCurrentUser();
     if (!user) return;
     const formVal = this.returnForm.value;
 
-    const newReq = {
-      id: `REQ${Date.now()}`,
-      requestNumber: this.requestService.generateRequestNumber(RequestType.RETURN_ASSET),
-      requesterId: user.id,
-      requesterName: user.name,
-      requesterDepartment: user.department,
-      requesterTeam: user.team,
-      assetType: this.selectedAsset.type,
-      category: this.selectedAsset.category,
-      subCategory: this.selectedAsset.subCategory,
-      justification: formVal.justification,
-      urgency: RequestUrgency.LOW,
-      status: RequestStatus.PENDING,
-      currentStage: ApprovalStage.TEAM_LEAD,
-      hasEmailApproval: false,
-      requestDate: new Date().toISOString(),
-      lastUpdated: new Date().toISOString(),
-      requestType: RequestType.RETURN_ASSET,
-      allocatedAssetId: this.selectedAsset.id,
-      approvalChain: [
-        { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' as any },
-        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' as any },
-        { stage: ApprovalStage.ALLOCATION, action: 'Pending' as any }
-      ],
-      comments: [{
-        id: `C${Date.now()}`,
-        userId: user.id,
-        userName: user.name,
-        comment: `Returning asset: ${this.selectedAsset.assetTag} - ${this.selectedAsset.name}`,
-        timestamp: new Date().toISOString()
-      }]
-    };
+    try {
+      console.log('Preparing SOAP request for User ID:', user.id);
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const formattedDate = `${yyyy}-${mm}-${dd}`;
 
-    this.requestService.addRequest(newReq as any);
-    this.notificationService.showToast('Return request submitted successfully!', 'success');
-    this.router.navigate(['/employee/dashboard']);
+      const remarks = "waiting for approval .";
+
+      var request3 = {
+        tuple: {
+          new: {
+            t_asset_returns: {
+              requested_by: `${user.id}`,
+              return_date: formattedDate,
+              status: 'Pending',
+              remarks: 'waiting for approval'
+            }
+          }
+        }
+      };
+
+      var res3: any = await this.requestService.createEntryForReturn(request3 as any);
+
+      const tReturns = res3?.old?.t_asset_returns || res3?.new?.t_asset_returns || res3?.t_asset_returns || {};
+      const return_id = tReturns.return_id || tReturns.id || 'SYS_UNKNOWN';
+
+      var request4 = {
+        tuple: {
+          new: {
+            t_asset_return_approvals: {
+              request_id: `${return_id}`,
+              approver_id: `usr_004`,
+              role: `Asset Manager`,
+              status: `Pending`,
+              remarks: 'waiting for approval'
+            }
+          }
+        }
+      };
+
+      var res4: any = await this.requestService.createEntryForAssetApprovals(request4 as any);
+
+      const tApprovals = res4?.old?.t_asset_return_approvals || res4?.new?.t_asset_return_approvals || res4?.t_asset_return_approvals || {};
+      const return_approval_id = tApprovals.return_approval_id || tApprovals.id || 'SYS_UNKNOWN_APP';
+      console.log("approvalreturnid", return_approval_id);
+      let request5 = {
+        user_id: user.id,
+        return_approval_id: `${return_approval_id}`,
+        returnid: `${return_id}`
+      };
+      console.log("request5", request5);
+      await this.requestService.callBPMForReturn(request5 as any);
+
+      const newReq = {
+        id: `REQ${Date.now()}`,
+        requestNumber: this.requestService.generateRequestNumber(RequestType.RETURN_ASSET),
+        requesterId: user.id,
+        requesterName: user.name,
+        requesterDepartment: user.department,
+        requesterTeam: user.team,
+        assetType: this.selectedAsset.type,
+        category: this.selectedAsset.category,
+        subCategory: this.selectedAsset.subCategory,
+        justification: formVal.justification,
+        urgency: RequestUrgency.LOW,
+        status: RequestStatus.PENDING,
+        currentStage: ApprovalStage.TEAM_LEAD,
+        hasEmailApproval: false,
+        requestDate: new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+        requestType: RequestType.RETURN_ASSET,
+        allocatedAssetId: this.selectedAsset.id,
+        approvalChain: [
+          { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' as any },
+          { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' as any },
+          { stage: ApprovalStage.ALLOCATION, action: 'Pending' as any }
+        ],
+        comments: [{
+          id: `C${Date.now()}`,
+          userId: user.id,
+          userName: user.name,
+          comment: `Returning asset: ${this.selectedAsset.assetTag} - ${this.selectedAsset.name}`,
+          timestamp: new Date().toISOString()
+        }]
+      };
+
+      this.requestService.addRequest(newReq as any);
+      this.notificationService.showToast('Return request submitted successfully!', 'success');
+      this.router.navigate(['/employee/dashboard']);
+    } catch (err) {
+      console.error(err);
+      this.notificationService.showToast('Failed to submit return request', 'error');
+    }
   }
 }

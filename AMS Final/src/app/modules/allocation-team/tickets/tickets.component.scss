@@ -27,6 +27,7 @@
       color: #1a202c;
       margin: 0 0 0.25rem;
     }
+
     p {
       font-size: 0.9rem;
       color: #718096;
@@ -45,10 +46,21 @@
         border-radius: 9999px;
         font-size: 0.875rem;
         font-weight: 600;
-        .material-icons { font-size: 1rem; }
+
+        .material-icons {
+          font-size: 1rem;
+        }
       }
-      .unresolved-pill { background: #fff3cd; color: #856404; }
-      .resolved-pill   { background: #d1fae5; color: #065f46; }
+
+      .unresolved-pill {
+        background: #fff3cd;
+        color: #856404;
+      }
+
+      .resolved-pill {
+        background: #d1fae5;
+        color: #065f46;
+      }
     }
   }
 
@@ -76,7 +88,9 @@
       margin-bottom: -2px;
       transition: color 0.2s ease;
 
-      .material-icons { font-size: 1.1rem; }
+      .material-icons {
+        font-size: 1.1rem;
+      }
 
       .tab-count {
         display: inline-flex;
@@ -91,14 +105,24 @@
         height: 18px;
         padding: 0 5px;
       }
-      .resolved-count { background: #d1fae5; color: #065f46; }
 
-      &:hover { color: #1a56db; }
+      .resolved-count {
+        background: #d1fae5;
+        color: #065f46;
+      }
+
+      &:hover {
+        color: #1a56db;
+      }
 
       &.active {
         color: #1a56db;
         border-bottom-color: #1a56db;
-        .tab-count { background: #dbeafe; color: #1d4ed8; }
+
+        .tab-count {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
       }
     }
   }
@@ -136,8 +160,13 @@
         border-bottom: 1px solid #edf2f7;
         transition: background 0.15s ease;
 
-        &:last-child { border-bottom: none; }
-        &:hover { background: #f0f4ff; }
+        &:last-child {
+          border-bottom: none;
+        }
+
+        &:hover {
+          background: #f0f4ff;
+        }
 
         &.row-selected {
           background: #ebf4ff;
@@ -208,29 +237,48 @@
           transition: all 0.15s ease;
           white-space: nowrap;
 
-          .material-icons { font-size: 0.95rem; }
+          .material-icons {
+            font-size: 0.95rem;
+          }
         }
 
         .btn-view {
           background: #eff6ff;
           color: #1d4ed8;
-          &:hover { background: #dbeafe; }
+
+          &:hover {
+            background: #dbeafe;
+          }
         }
 
         .btn-allocate {
           background: #d1fae5;
           color: #065f46;
           padding: 0.35rem 0.5rem;
-          &:hover { background: #6ee7b7; }
-          .material-icons { font-size: 1.1rem; margin: 0; }
+
+          &:hover {
+            background: #6ee7b7;
+          }
+
+          .material-icons {
+            font-size: 1.1rem;
+            margin: 0;
+          }
         }
 
         .btn-reject {
           background: #fee2e2;
           color: #991b1b;
           padding: 0.35rem 0.5rem;
-          &:hover { background: #fca5a5; }
-          .material-icons { font-size: 1.1rem; margin: 0; }
+
+          &:hover {
+            background: #fca5a5;
+          }
+
+          .material-icons {
+            font-size: 1.1rem;
+            margin: 0;
+          }
         }
       }
 
@@ -239,20 +287,55 @@
         padding: 3rem;
         color: #a0aec0;
 
-        .material-icons { font-size: 3rem; display: block; margin-bottom: 0.75rem; }
-        p { font-size: 1rem; margin: 0; }
+        .material-icons {
+          font-size: 3rem;
+          display: block;
+          margin-bottom: 0.75rem;
+        }
+
+        p {
+          font-size: 1rem;
+          margin: 0;
+        }
       }
     }
   }
 
   // ─── Status Badge Colors ──────────────────────────────────────────────────
-  .status-pending     { background: #fef3c7; color: #92400e; }
-  .status-approved    { background: #d1fae5; color: #065f46; }
-  .status-inprogress  { background: #dbeafe; color: #1d4ed8; }
-  .status-completed   { background: #dcfce7; color: #166534; }
-  .status-rejected    { background: #fee2e2; color: #991b1b; }
-  .status-cancelled   { background: #f1f5f9; color: #475569; }
-  .status-default     { background: #f1f5f9; color: #475569; }
+  .status-pending {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .status-approved {
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  .status-inprogress {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  .status-completed {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .status-rejected {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .status-cancelled {
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  .status-default {
+    background: #f1f5f9;
+    color: #475569;
+  }
 
   // ─── Availability Badge ───────────────────────────────────────────────────
   .avail-badge {
@@ -262,12 +345,36 @@
     font-weight: 700;
     display: inline-block;
   }
-  .avail-available { background: #d1fae5; color: #065f46; }
-  .avail-allocated  { background: #dbeafe; color: #1d4ed8; }
-  .avail-inrepair   { background: #fef3c7; color: #92400e; }
-  .avail-retired    { background: #fee2e2; color: #991b1b; }
-  .avail-reserved   { background: #ede9fe; color: #5b21b6; }
-  .avail-default    { background: #f1f5f9; color: #475569; }
+
+  .avail-available {
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  .avail-allocated {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  .avail-inrepair {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .avail-retired {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  .avail-reserved {
+    background: #ede9fe;
+    color: #5b21b6;
+  }
+
+  .avail-default {
+    background: #f1f5f9;
+    color: #475569;
+  }
 
   // ─── Loading State ────────────────────────────────────────────────────────
   .loading-state {
@@ -288,7 +395,11 @@
       animation: spin 0.7s linear infinite;
     }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   }
 }
 
@@ -300,7 +411,15 @@
   z-index: 40;
   animation: fadeIn 0.2s ease;
 
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 // ─── Details Drawer ──────────────────────────────────────────────────────────
@@ -318,7 +437,9 @@
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-  &.open { transform: translateX(0); }
+  &.open {
+    transform: translateX(0);
+  }
 
   // Drawer Header
   .drawer-header {
@@ -358,8 +479,14 @@
       align-items: center;
       transition: all 0.15s;
 
-      &:hover { background: #f1f5f9; color: #334155; }
-      .material-icons { font-size: 1.25rem; }
+      &:hover {
+        background: #f1f5f9;
+        color: #334155;
+      }
+
+      .material-icons {
+        font-size: 1.25rem;
+      }
     }
   }
 
@@ -383,7 +510,9 @@
     font-size: 0.875rem;
     font-weight: 700;
 
-    .material-icons { font-size: 1rem; }
+    .material-icons {
+      font-size: 1rem;
+    }
   }
 
   // Detail Section
@@ -424,9 +553,14 @@
         font-weight: 600;
         text-align: right;
 
-        &.mono { font-family: monospace; color: #1a56db; }
+        &.mono {
+          font-family: monospace;
+          color: #1a56db;
+        }
 
-        &.expiring-text { color: #c05621; }
+        &.expiring-text {
+          color: #c05621;
+        }
 
         .expiring-tag {
           display: inline-block;
@@ -464,19 +598,29 @@
       cursor: pointer;
       transition: all 0.2s ease;
 
-      .material-icons { font-size: 1.1rem; }
+      .material-icons {
+        font-size: 1.1rem;
+      }
     }
 
     .drawer-btn-allocate {
       background: #d1fae5;
       color: #065f46;
-      &:hover { background: #059669; color: white; }
+
+      &:hover {
+        background: #059669;
+        color: white;
+      }
     }
 
     .drawer-btn-reject {
       background: #fee2e2;
       color: #991b1b;
-      &:hover { background: #dc2626; color: white; }
+
+      &:hover {
+        background: #dc2626;
+        color: white;
+      }
     }
   }
 }

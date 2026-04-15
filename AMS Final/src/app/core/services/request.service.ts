@@ -218,6 +218,36 @@ export class RequestService {
   }
 
   /**
+   * Fetches pending return approvals for a manager from Cordys (GetPendingReturnApprovalsForManager).
+   */
+  async fetchPendingReturnApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetPendingReturnApprovalsForManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </GetPendingReturnApprovalsForManager>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetPendingReturnApprovalsForManager response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch return approvals from GetPendingReturnApprovalsForManager:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Returns the stored all-requests list.
    */
   getAllRequests(): AssetRequest[] {
@@ -298,6 +328,53 @@ export class RequestService {
       ],
       comments: [],
       // Requester details from nested m_users
+      requesterStatus: this.getNullableValue(userInfo?.status),
+      requesterProject: this.getNullableValue(userInfo?.project_id),
+      requesterRole: this.getNullableValue(userInfo?.role_id)
+    };
+  }
+
+  /**
+   * Specialized mapping for return requests (t_asset_returns).
+   */
+  private mapReturnTupleToRequest(tuple: any): AssetRequest {
+    const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
+    const userInfo = data?.m_users || {};
+    const approvalData = data?.t_asset_return_approvals || {};
+
+    const status = this.mapToStatus(data?.status || '');
+    const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
+
+    return {
+      taskid: approvalData.temp2,
+      returnapprovalId: approvalData?.return_approval_id || '',
+      id: data?.return_id || '',
+      requestNumber: data?.return_id || '',
+      requesterId: data?.requested_by || userInfo?.user_id || '',
+      requesterName: userInfo?.name || '',
+      requesterEmail: userInfo?.email || '',
+      requesterDepartment: this.getNullableValue(userInfo?.department) || '',
+      requesterTeam: this.getNullableValue(userInfo?.team) || '',
+      assetType: 'Hardware', // Default for returns if not specified
+      category: 'Asset Return',
+      subCategory: 'N/A',
+      justification: data?.remarks || '',
+      urgency: RequestUrgency.MEDIUM,
+      status: status,
+      currentStage: currentStage,
+      hasEmailApproval: false,
+      requestDate: data?.return_date || '',
+      lastUpdated: data?.return_date || '',
+      requestType: RequestType.RETURN_ASSET,
+      approvalChain: [
+        {
+          stage: ApprovalStage.ASSET_MANAGER,
+          action: 'Pending',
+          approverId: approvalData?.approver_id,
+          comments: approvalData?.remarks
+        }
+      ],
+      comments: [],
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
       requesterRole: this.getNullableValue(userInfo?.role_id)
@@ -450,6 +527,76 @@ export class RequestService {
       completed: this.requests.filter(r => r.status === RequestStatus.COMPLETED).length,
       inProgress: this.requests.filter(r => r.status === RequestStatus.IN_PROGRESS).length
     };
+  }
+
+  createEntryForReturn(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_returns',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  createEntryForAssetApprovals(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_return_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  callBPMForReturn(request: any) {
+    return this.hs.ajax(
+      'AMS_Return_Approval',
+      'http://schemas.cordys.com/default',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  updateReturnAssetStatus(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_return_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  completeTask(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_return_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
   }
 
   generateRequestNumber(type: RequestType): string {
@@ -608,6 +755,34 @@ export class RequestService {
   createNewEntryForAssetManagerConfirmation(request: any) {
     return this.hs.ajax(
       'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+
+  updateEntryForAllocationTeamMemberAssetReturn(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_return_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+
+  createNewEntryForAssetManagerConfirmationAssetReturn(request: any) {
+    return this.hs.ajax(
+      'UpdateT_asset_return_approvals',
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
