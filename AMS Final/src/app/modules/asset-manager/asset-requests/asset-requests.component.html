@@ -81,6 +81,10 @@
           Pending Approval
           <span class="tab-badge" *ngIf="pendingRequests.length > 0">{{ pendingRequests.length }}</span>
         </button>
+        <button class="tab-btn" [class.active]="activeTab === 'return'" (click)="switchTab('return')">
+          <span class="material-icons-outlined">assignment_return</span>
+          Return Request
+        </button>
         <button class="tab-btn" [class.active]="activeTab === 'all'" (click)="switchTab('all')">
           <span class="material-icons-outlined">list_alt</span>
           All Requests
@@ -142,6 +146,16 @@
                 <span class="material-icons-outlined">info</span>
                 Details
               </button>
+              <ng-container *ngIf="activeTab === 'pending' || activeTab === 'return'">
+                <button class="btn-approve" (click)="openActionModal(req, 'approve')">
+                  <span class="material-icons-outlined">check</span>
+                  Approve
+                </button>
+                <button class="btn-reject" (click)="openActionModal(req, 'reject')">
+                  <span class="material-icons-outlined">close</span>
+                  Reject
+                </button>
+              </ng-container>
             </div>
           </div>
         </div>
@@ -151,10 +165,11 @@
       <div class="empty-state card" *ngIf="filteredRequests.length === 0">
         <span class="material-icons-outlined empty-icon">task_alt</span>
         <h4 *ngIf="activeTab === 'pending'">No pending approvals</h4>
+        <h4 *ngIf="activeTab === 'return'">No return requests found</h4>
         <h4 *ngIf="activeTab === 'all'">No requests found</h4>
         <p class="text-muted">
-          {{ activeTab === 'pending' ? 'All caught up! There are no requests awaiting your approval.' : 'Try adjusting
-          your search or filter criteria.' }}
+          {{ activeTab === 'pending' ? 'All caught up! There are no requests awaiting your approval.' : (activeTab ===
+          'return' ? 'There are no return requests at this time.' : 'Try adjusting your search or filter criteria.') }}
         </p>
       </div>
     </div>
@@ -184,7 +199,7 @@
           <div class="horizontal-timeline">
             <div class="hz-timeline-item" *ngFor="let entry of detailRequest.approvalChain; let last = last"
               [ngClass]="getApprovalStageClass(entry.action)">
-              
+
               <div class="hz-timeline-marker">
                 <div class="hz-timeline-dot">
                   <span class="material-icons-outlined">{{ getApprovalIcon(entry.action) }}</span>
@@ -194,7 +209,8 @@
 
               <div class="hz-timeline-content">
                 <span class="hz-timeline-stage">{{ entry.stage }}</span>
-                <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action }}</span>
+                <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action
+                  }}</span>
                 <div class="hz-timeline-meta" *ngIf="entry.approverName">
                   <span class="material-icons-outlined">person</span> {{ entry.approverName }}
                 </div>
@@ -224,15 +240,18 @@
             </div>
             <div class="detail-item">
               <label>Asset Type</label>
-              <span>{{ detailRequest.assetType }}<span *ngIf="detailRequest.category && detailRequest.category !== ''"> — {{ detailRequest.category }}</span></span>
+              <span>{{ detailRequest.assetType }}<span *ngIf="detailRequest.category && detailRequest.category !== ''">
+                  — {{ detailRequest.category }}</span></span>
             </div>
             <div class="detail-item">
               <label>Urgency</label>
-              <span class="urgency-badge" [ngClass]="getUrgencyClass(detailRequest.urgency)">{{ detailRequest.urgency | uppercase }}</span>
+              <span class="urgency-badge" [ngClass]="getUrgencyClass(detailRequest.urgency)">{{ detailRequest.urgency |
+                uppercase }}</span>
             </div>
             <div class="detail-item">
               <label>User Status</label>
-              <span class="status-badge" [class.status-active]="detailRequest.requesterStatus === 'Active'">{{ detailRequest.requesterStatus || '—' }}</span>
+              <span class="status-badge" [class.status-active]="detailRequest.requesterStatus === 'Active'">{{
+                detailRequest.requesterStatus || '—' }}</span>
             </div>
             <div class="detail-item">
               <label>Project ID</label>
@@ -291,13 +310,13 @@
             </div>
             <div class="detail-item full-col">
               <label>Assign Allocation Team Member</label>
-              <select class="asset-select" name="allocationMember"
-                [(ngModel)]="selectedAllocationMemberId"
+              <select class="asset-select" name="allocationMember" [(ngModel)]="selectedAllocationMemberId"
                 (ngModelChange)="onMemberSelect($event)">
                 <option value="">-- Select Team Member --</option>
                 <option *ngFor="let member of allocationTeamMemberList"
                   [value]="member?.old?.m_users?.user_id || member?.m_users?.user_id || member?.user_id">
-                  {{ (member?.old?.m_users?.name || member?.m_users?.name || member?.name) + ' — ' + (member?.old?.m_users?.email || member?.m_users?.email || member?.email || '') }}
+                  {{ (member?.old?.m_users?.name || member?.m_users?.name || member?.name) + ' — ' +
+                  (member?.old?.m_users?.email || member?.m_users?.email || member?.email || '') }}
                 </option>
               </select>
             </div>

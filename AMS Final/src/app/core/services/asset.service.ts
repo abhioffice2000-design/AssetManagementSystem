@@ -833,6 +833,50 @@ export class AssetService {
     };
   }
 
+  async getAssetsByUserSOAP(userId: string): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetsByUser xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetAssetsByUser>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, soapRequest);
+      
+      let data = this.hs.xmltojson(resp, 'm_assets') ||
+        this.hs.xmltojson(resp, 'GetAssetsByUserResponse') ||
+        this.hs.xmltojson(resp, 'tuple');
+        
+      if (!data) return [];
+      if (!Array.isArray(data)) data = [data];
+
+      return data.map((item: any) => {
+        const row = item.new ? item.new : (item.old ? item.old : item);
+        const actualItem = row.m_assets || row;
+
+        return {
+          id: actualItem.asset_id || actualItem.Asset_id || '',
+          assetTag: actualItem.asset_id || actualItem.Asset_id || '',
+          name: actualItem.asset_name || actualItem.Asset_name || '',
+          type: actualItem.type_id || '',
+          category: actualItem.sub_category_id || '',
+          subCategory: actualItem.sub_category_id || '',
+          status: actualItem.status || actualItem.Status || 'Allocated',
+          purchaseDate: actualItem.purchase_date || '',
+          warrantyExpiry: actualItem.warranty_expiry || '',
+          serialNumber: actualItem.serial_number || '',
+          condition: actualItem.condition || actualItem.Condition || 'Good',
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching assets by user from Cordys:', error);
+      return [];
+    }
+  }
+
   getTeamWiseHolding() {
     const teamMap = new Map<string, { department: string; team: string; count: number; value: number }>();
     this.assets.filter(a => a.team).forEach(a => {

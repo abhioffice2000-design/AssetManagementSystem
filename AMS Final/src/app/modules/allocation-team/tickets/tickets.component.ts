@@ -30,9 +30,10 @@ export interface EnrichedTicket {
   styleUrls: ['./tickets.component.scss']
 })
 export class AllocationTicketsComponent implements OnInit {
-  activeTab: 'unresolved' | 'resolved' = 'unresolved';
+  activeTab: 'unresolved' | 'resolved' | 'return' = 'unresolved';
   loading = true;
   allTickets: EnrichedTicket[] = [];
+  returnTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
   drawerOpen = false;
   assetManagerNameForThisUser: string = "";
@@ -98,12 +99,110 @@ export class AllocationTicketsComponent implements OnInit {
         this.allTickets = tupleArray.map((t: any) => this.mapTupleToEnrichedTicket(t));
         console.log(`Loaded ${this.allTickets.length} tickets`);
       }
+      // Sync return tickets load
+      await this.loadReturnTickets();
     } catch (err) {
       console.error('Failed to load allocation tickets:', err);
       this.allTickets = [];
     } finally {
       this.loading = false;
     }
+  }
+
+  async loadReturnTickets(): Promise<void> {
+    const request = { Approver_id: 'usr_007' };
+
+    try {
+      const res = await this.hs.ajax(
+        'GetPendingReturnApprovalsForManager',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        request
+      );
+
+      const tuples = this.hs.xmltojson(res, 'tuple');
+      if (!tuples) {
+        this.returnTickets = [];
+      } else {
+        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
+        console.log('Processed Return Tuples:', tupleArray);
+        this.returnTickets = tupleArray.map((t: any) => this.mapReturnTupleToEnrichedTicket(t));
+        console.log('Return Tickets Statuses:', this.returnTickets.map(t => `${t.ticketId}: ${t.status}`));
+      }
+    } catch (err) {
+      console.error('Failed to load return tickets:', err);
+      this.returnTickets = [];
+    }
+  }
+
+  private findTaskIdRecursively(obj: any): string | null {
+    if (!obj || typeof obj !== 'object') return null;
+    const targets = ['temp2', 'temp1', 'temp3', 'task_id', 'taskId', 'WORKITEM_ID'];
+    for (const key of targets) {
+      const val = this.getVal(obj[key]);
+      if (val && val !== '—' && val !== '–' && val !== '-' && val !== 'null' && val !== 'NaN') return val;
+    }
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const result = this.findTaskIdRecursively(obj[key]);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+
+  private mapReturnTupleToEnrichedTicket(tuple: any): EnrichedTicket {
+    const returnData = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
+    let approvalObj = returnData?.t_asset_return_approvals ?? {};
+
+    if (Array.isArray(approvalObj)) {
+      approvalObj = approvalObj.find((a: any) => this.getVal(a.status) === 'Pending') ?? approvalObj[0] ?? {};
+    }
+
+    const userData = returnData?.m_users ?? {};
+    const statusStr = this.getVal(returnData?.status) ?? this.getVal(approvalObj?.status) ?? 'Pending';
+    const status = this.mapToStatus(statusStr);
+
+    // Recursive search for TaskID to handle any XML structure
+    // const taskId = this.findTaskIdRecursively(tuple) || '—';
+    const taskId = "-";
+    // if (taskId === '—') {
+    //   console.warn('CRITICAL: TaskID still missing for Return ID:', this.getVal(returnData?.return_id));
+    //   console.log('Full Raw Tuple for analysis:', JSON.stringify(tuple));
+    // } else {
+    //   console.log(`Successfully identified TaskID [${taskId}] for return ${this.getVal(returnData?.return_id)}`);
+    // }
+
+    return {
+      taskid: returnData?.t_asset_return_approvals.temp2,
+      approvalid: this.getVal(approvalObj?.return_approval_id) ?? '—',
+      ticketId: this.getVal(returnData?.return_id) ?? this.getVal(approvalObj?.request_id) ?? '—',
+      requestorName: this.getVal(userData?.name) ?? '—',
+      assetType: 'Hardware',
+      subCategory: 'N/A',
+      assetName: 'Asset Return',
+      assetId: this.getVal(returnData?.asset_id) ?? '—',
+      warrantyExpiry: '—',
+      availabilityStatus: 'N/A',
+      assignedDate: this.getVal(returnData?.return_date) ?? '',
+      assetManagerName: '—',
+      teamLeadName: '—',
+      urgency: 'Medium',
+      reason: this.getVal(returnData?.remarks) ?? '—',
+      status,
+      rawRequest: {
+        id: this.getVal(returnData?.return_id) ?? '',
+        requestNumber: this.getVal(returnData?.return_id) ?? '',
+        requesterId: this.getVal(returnData?.requested_by) ?? '',
+        requesterName: this.getVal(userData?.name) ?? '',
+        requestType: 'RETURN_ASSET' as any,
+        status,
+        currentStage: ApprovalStage.ALLOCATION,
+        requestDate: this.getVal(returnData?.return_date) ?? '',
+        lastUpdated: this.getVal(returnData?.return_date) ?? '',
+        approvalChain: [{ stage: ApprovalStage.ALLOCATION, action: 'Pending' }],
+        comments: []
+      } as any
+    };
   }
 
   /**
@@ -195,10 +294,13 @@ export class AllocationTicketsComponent implements OnInit {
     return 'Medium';
   }
 
-  setTab(tab: 'unresolved' | 'resolved'): void {
+  setTab(tab: 'unresolved' | 'resolved' | 'return'): void {
     this.activeTab = tab;
     this.drawerOpen = false;
     this.selectedTicket = null;
+    if (tab === 'return') {
+      this.loadReturnTickets();
+    }
   }
 
   openDetails(ticket: EnrichedTicket): void {
@@ -228,7 +330,13 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   get filteredTickets(): EnrichedTicket[] {
-    return this.activeTab === 'unresolved' ? this.unresolvedTickets : this.resolvedTickets;
+    if (this.activeTab === 'unresolved') return this.unresolvedTickets;
+    if (this.activeTab === 'resolved') return this.resolvedTickets;
+    return this.returnTickets.filter(t =>
+      t.status === RequestStatus.PENDING ||
+      t.status === RequestStatus.IN_PROGRESS ||
+      t.status === RequestStatus.APPROVED // Keep approved in list temporarily until refresh
+    );
   }
 
   getStatusClass(status: RequestStatus): string {
@@ -244,6 +352,11 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async allocate(ticket: EnrichedTicket): Promise<void> {
+    if (this.activeTab === 'return') {
+      await this.allocateAssetReturn(ticket);
+      return;
+    }
+
     debugger
     var req1 = {
       tuple: {
@@ -322,7 +435,13 @@ export class AllocationTicketsComponent implements OnInit {
     this.loadTickets();
   }
 
-  reject(ticket: EnrichedTicket): void {
+  async reject(ticket: EnrichedTicket): Promise<void> {
+    debugger;
+    if (this.activeTab === 'return') {
+      await this.rejectAssetReturn(ticket);
+      return;
+    }
+
     this.requestService.rejectRequest(
       ticket.rawRequest.id,
       'USR003',
@@ -332,6 +451,134 @@ export class AllocationTicketsComponent implements OnInit {
     );
     this.loadTickets();
   }
+  async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
+    debugger;
+    console.log("Starting allocateAssetReturn for:", ticket.ticketId);
+
+    if (!ticket.ticketId || ticket.ticketId === '—' || !ticket.approvalid || ticket.approvalid === '—') {
+      console.error("Cannot proceed: Missing Ticket ID or Approval ID", ticket);
+      return;
+    }
+
+    // Force routing to usr_004 for returns
+    const approverId = 'usr_004';
+
+    try {
+      // 1. Update current approval status
+      var req11 = {
+        tuple: {
+          old: {
+            t_asset_return_approvals: {
+              return_approval_id: ticket.approvalid,
+            }
+          },
+          new: {
+            t_asset_return_approvals: {
+              status: "Approved",
+              remarks: "Allocated to Asset Manager"
+            }
+          }
+        }
+      };
+
+      console.log("Step 1: Updating current approval status...", req11);
+      const res1 = await this.requestService.updateEntryForAllocationTeamMemberAssetReturn(req11 as any);
+      console.log("Step 1 Complete. Response Tuple:", JSON.stringify(res1));
+
+      // Capture TaskID from Step 1 response if current one is missing
+      let currentTaskId = ticket.taskid;
+      if (!currentTaskId || currentTaskId === '—' || currentTaskId === '-' || currentTaskId === '–') {
+        // Try looking in new tag of response
+        const newRecord = res1?.new?.t_asset_return_approvals || res1?.t_asset_return_approvals || res1;
+        const respTaskId = this.getVal(newRecord?.temp2) || this.getVal(newRecord?.temp1) || this.findTaskIdRecursively(res1);
+        if (respTaskId) {
+          console.log("Captured TaskID from Step 1 response:", respTaskId);
+          currentTaskId = respTaskId;
+        }
+      }
+
+      // 2. Create next approval entry for Asset Manager
+      var req12 = {
+        tuple: {
+          new: {
+            t_asset_return_approvals: {
+              approver_id: approverId,
+              request_id: ticket.ticketId,
+              role: "Asset Manager",
+              status: "Pending",
+              remarks: "Waiting for Hand-off Confirmation"
+            }
+          }
+        }
+      };
+
+      console.log("Step 2: Creating entry for Asset Manager (usr_004)...", req12);
+      const res2 = await this.requestService.createNewEntryForAssetManagerConfirmationAssetReturn(req12 as any);
+      console.log("Step 2 Complete. Response:", res2);
+
+      // 3. Complete BPM Task if available
+      console.log("Final Task ID for completion:", currentTaskId);
+
+      console.log("SOAP Create (REQ7):", req11);
+      //  await this.requestService.completeTask(req12 as any);
+      // var req4 = {
+      //   TaskId: `${taskid}`,
+      //   Action: 'COMPLETE'
+      // }
+      // await this.requestService.completeUserTask(req4 as any)
+      // console.log("Step 2 (Forwarding) Success");
+      // Check for truthiness and skip placeholders (Em Dash, En Dash, Hyphen)
+      if (currentTaskId && currentTaskId !== '—' && currentTaskId !== '–' && currentTaskId !== '-') {
+        var req4 = {
+          TaskId: `${currentTaskId}`,
+          Action: 'COMPLETE'
+        };
+        console.log("Step 3: Completing BPM task...", req4);
+        const res3 = await this.requestService.completeUserTask(req4 as any);
+        console.log("Step 3 Complete. Response:", res3);
+      } else {
+        console.warn("Skipping Step 3: No valid TaskID found in initial data or Step 1 response.");
+      }
+
+      console.log("All steps finished for return ticket:", ticket.ticketId);
+      this.loadTickets();
+
+    } catch (error) {
+      console.error("Critical error in allocateAssetReturn workflow:", error);
+    }
+  }
+
+  async rejectAssetReturn(ticket: EnrichedTicket): Promise<void> {
+    var reqReject = {
+      tuple: {
+        old: {
+          t_asset_return_approvals: {
+            return_approval_id: ticket.approvalid,
+          }
+        },
+        new: {
+          t_asset_return_approvals: {
+            status: "Rejected",
+            remarks: "Rejected by Allocation Team"
+          }
+        }
+      }
+    }
+    console.log("Rejecting return request:", reqReject);
+    await this.requestService.updateEntryForAllocationTeamMemberAssetReturn(reqReject as any);
+
+    var taskid = ticket.taskid;
+    if (taskid && taskid !== '—') {
+      var req4 = {
+        TaskId: `${taskid}`,
+        Action: 'COMPLETE'
+      }
+      await this.requestService.completeUserTask(req4 as any)
+    }
+    console.log("task id", taskid);
+    this.loadTickets();
+  }
+
 
   isExpiringSoon(dateStr: string): boolean {
     if (!dateStr || dateStr === '—') return false;
