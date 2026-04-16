@@ -14,7 +14,11 @@ export class AssetRequestsComponent implements OnInit {
   allRequests: AssetRequest[] = [];
   filteredRequests: AssetRequest[] = [];
   pendingRequests: AssetRequest[] = [];
-  activeTab: 'pending' | 'all' | 'return' = 'pending';
+  // activeTab: 'pending' | 'all' | 'return' = 'pending';
+  confirmationRequests: AssetRequest[] = [];
+  filteredConfirmationRequests: AssetRequest[] = [];
+  confirmationSearchTerm = '';
+  activeTab: 'pending' | 'all' | 'confirmation' | 'return' = 'pending';
   searchTerm = '';
   selectedStatus = '';
   selectedUrgency = '';
@@ -59,19 +63,28 @@ export class AssetRequestsComponent implements OnInit {
       const approverId = currentUser?.id || 'usr_004';
 
       // Fetch all three in parallel: all requests, pending requests, and available assets
-      const [allReqs, pendingReqs, returnReqs] = await Promise.all([
+      // const [allReqs, pendingReqs, returnReqs] = await Promise.all([
+      //   this.requestService.fetchAllRequestsFromService(approverId),
+      //   this.requestService.fetchPendingRequestsFromService(approverId),
+      //   this.requestService.fetchPendingReturnApprovalsFromService(approverId),
+      // Fetch all in parallel: all requests, pending requests, confirmation requests, and available assets
+      const [allReqs, pendingReqs, confirmReqs, returnReqs] = await Promise.all([
         this.requestService.fetchAllRequestsFromService(approverId),
         this.requestService.fetchPendingRequestsFromService(approverId),
+        this.requestService.fetchConfirmationRequestsFromService(approverId),
         this.requestService.fetchPendingReturnApprovalsFromService(approverId),
         this.loadAvailableAssets()
       ]);
 
       this.allRequests = allReqs;
       this.pendingRequests = pendingReqs;
+      this.confirmationRequests = confirmReqs;
+
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
       this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
       console.log('Allocation Team Members:', this.allocationTeamMemberList);
       this.returnRequests = returnReqs;
+      console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
       // Stats from all requests (total count across all statuses)
       this.requestStats = this.requestService.getAllRequestStats();
@@ -83,10 +96,13 @@ export class AssetRequestsComponent implements OnInit {
       this.allRequests = [];
       this.filteredRequests = [];
       this.pendingRequests = [];
+      this.confirmationRequests = [];
+      this.filteredConfirmationRequests = [];
     } finally {
       this.isLoading = false;
     }
   }
+
 
   async loadAvailableAssets(): Promise<void> {
     try {
@@ -99,11 +115,13 @@ export class AssetRequestsComponent implements OnInit {
     }
   }
 
-  switchTab(tab: 'pending' | 'all' | 'return'): void {
+  //switchTab(tab: 'pending' | 'all' | 'return'): void {
+  switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
     this.activeTab = tab;
     this.searchTerm = '';
     this.selectedStatus = '';
     this.selectedUrgency = '';
+    this.confirmationSearchTerm = '';
     this.applyFilters();
   }
 
@@ -125,6 +143,23 @@ export class AssetRequestsComponent implements OnInit {
       const matchesStatus = !this.selectedStatus || req.status === this.selectedStatus;
       const matchesUrgency = !this.selectedUrgency || req.urgency === this.selectedUrgency;
       return matchesSearch && matchesStatus && matchesUrgency;
+    });
+
+    // Filter confirmation requests by search term
+    this.filteredConfirmationRequests = this.confirmationRequests.filter(req => {
+      return !this.confirmationSearchTerm ||
+        req.requestNumber.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
+        req.requesterName.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
+        req.category.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase());
+    });
+  }
+
+  onConfirmationSearchChange(): void {
+    this.filteredConfirmationRequests = this.confirmationRequests.filter(req => {
+      return !this.confirmationSearchTerm ||
+        req.requestNumber.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
+        req.requesterName.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
+        req.category.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase());
     });
   }
 
@@ -357,6 +392,135 @@ export class AssetRequestsComponent implements OnInit {
       this.loadAllData();
     }
   }
+  // ─── Confirmation Requests Tab — dedicated approve / reject flow ──────────
+
+  /**
+   * Entry point called by the Approve / Reject buttons inside the
+   * Confirmation Requests detail modal.  Keeps the confirmation flow
+   * completely separate from the pending-tab flow.
+   */
+  async directConfirmActionForConfirmation(
+    request: AssetRequest,
+    action: 'approve' | 'reject'
+  ): Promise<void> {
+    this.selectedRequest = request;
+    this.actionType = action;
+    this.actionComments = '';
+    console.log('[Confirmation] Action triggered:', action, ' | Request:', request);
+    await this.confirmActionForConfirmation();
+    this.closeDetailModal();
+  }
+
+  /**
+   * Executes the backend calls for the Confirmation Requests approve / reject flow.
+   *
+   * On APPROVE:
+   *   1. Update the t_request_approvals record → status = 'Approved'
+   *   2. Complete the BPM user task (taskid stored in approval.temp2)
+   *
+   * On REJECT:
+   *   1. Update the t_request_approvals record → status = 'Rejected'
+   *   2. Update the asset request record → status = 'Rejected'
+   */
+  async confirmActionForConfirmation(): Promise<void> {
+    debugger;
+    console.log('[Confirmation] confirmActionForConfirmation called. Request:', this.selectedRequest);
+
+    if (!this.selectedRequest || !this.actionType) return;
+    console.log(this.selectedRequest);
+    const currentUser = this.authService.getCurrentUser();
+    if (!currentUser) return;
+
+    if (this.actionType === 'approve') {
+      console.log(this.selectedRequest.approvalId);
+      // Step 1 — mark the approval record as Approved
+      const approvePayload = {
+        tuple: {
+          old: {
+            t_request_approvals: {
+              approval_id: this.selectedRequest.approvalId
+            }
+          },
+          new: {
+            t_request_approvals: {
+              status: 'Approved',
+              remarks: this.actionComments || ''
+            }
+          }
+        }
+      };
+      console.log('[Confirmation] Approve payload (step 1):', approvePayload);
+      await this.requestService.updateEntryForAssetManager(approvePayload as any);
+
+      const newRequestForUser = {
+        tuple: {
+          new: {
+            t_request_approvals: {
+              approver_id: this.selectedRequest.requesterId,
+              request_id: this.selectedRequest.id,
+
+              status: 'Pending',
+              role: 'Employee'
+            }
+          }
+        }
+      };
+      console.log('[Confirmation] Approve payload (step 1):', newRequestForUser);
+      await this.requestService.createEntryForRequestor(approvePayload as any);
+
+      // Step 2 — complete the BPM task so the workflow advances
+      const taskId = this.selectedRequest.taskid;
+      console.log('[Confirmation] Completing task:', taskId);
+      if (taskId) {
+        const taskPayload = {
+          TaskId: `${taskId}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(taskPayload as any);
+      }
+
+    } else {
+      // Step 1 — mark the approval record as Rejected
+      const rejectApprovalPayload = {
+        tuple: {
+          old: {
+            t_request_approvals: {
+              approval_id: this.selectedRequest.approvalId
+            }
+          },
+          new: {
+            t_request_approvals: {
+              status: 'Rejected',
+              remarks: this.actionComments || ''
+            }
+          }
+        }
+      };
+      console.log('[Confirmation] Reject payload (step 1):', rejectApprovalPayload);
+      await this.requestService.updateEntryForAssetManager(rejectApprovalPayload as any);
+
+      // Step 2 — update the asset_request row status to Rejected
+      const rejectRequestPayload = {
+        tuple: {
+          old: {
+            t_asset_requests: {
+              request_id: this.selectedRequest.id
+            }
+          },
+          new: {
+            t_asset_requests: {
+              status: 'Rejected'
+            }
+          }
+        }
+      };
+      console.log('[Confirmation] Reject payload (step 2):', rejectRequestPayload);
+      await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+    }
+
+    this.loadAllData();
+  }
+
   getTimeSince(dateStr: string): string {
     const date = new Date(dateStr);
     const now = new Date();

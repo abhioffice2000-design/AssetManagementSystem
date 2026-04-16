@@ -35,6 +35,7 @@ export interface AssetRequest {
   requesterProject?: string;
   requesterRole?: string;
   taskid?: string;
+  assetName?: string;
 }
 
 export enum RequestType {
