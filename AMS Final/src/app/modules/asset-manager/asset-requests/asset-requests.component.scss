@@ -1248,3 +1248,166 @@
   color: var(--text-muted);
 }
 
+/* ─────────────────────────────────────────────────────────
+   Confirmation Requests Tab
+───────────────────────────────────────────────────────── */
+
+/* Badge on the Confirmation tab uses a teal tint to stand out */
+.tab-btn.active .confirmation-badge {
+  background: rgba(255, 255, 255, 0.25);
+}
+.tab-btn:not(.active) .confirmation-badge {
+  background: rgba(13, 148, 136, 0.15);
+  color: #0d9488;
+}
+
+/* List wrapper */
+.confirmation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Individual confirmation card */
+.confirmation-card {
+  padding: 0;
+  overflow: hidden;
+  border-left: 4px solid #0d9488;
+  transition: transform 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(13, 148, 136, 0.1);
+  }
+}
+
+/* Card Header — ID + badges on left, status on right */
+.conf-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 12px;
+  background: rgba(13, 148, 136, 0.04);
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.conf-card-id-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.conf-icon {
+  font-size: 20px;
+  color: #0d9488;
+}
+
+/* Card Body */
+.conf-card-body {
+  padding: 16px 20px;
+}
+
+.conf-asset-info {
+  h4 {
+    margin: 0 0 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  p.text-muted {
+    margin: 0;
+    font-size: 0.85rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+.conf-meta-row {
+  display: flex;
+  gap: 20px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Asset Name Row ── */
+.conf-asset-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.conf-asset-icon {
+  font-size: 18px;
+  color: #0d9488;
+  flex-shrink: 0;
+}
+
+.conf-asset-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.conf-asset-type-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(13, 148, 136, 0.1);
+  color: #0d9488;
+  border: 1px solid rgba(13, 148, 136, 0.25);
+  white-space: nowrap;
+}
+
+/* ── Details Grid inside Confirmation Card ── */
+.conf-details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 20px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.conf-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  span {
+    font-size: 0.83rem;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+}
+
+/* Card Footer — action button aligned right */
+.conf-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 20px 14px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-main);
+}
+

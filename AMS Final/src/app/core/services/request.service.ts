@@ -218,8 +218,40 @@ export class RequestService {
   }
 
   /**
-   * Fetches pending return approvals for a manager from Cordys (GetPendingReturnApprovalsForManager).
+   * Fetches pending confirmation requests for the Asset Manager
+   * from the GetallpendingrequestsForAssetManagerConfirmation SOAP service.
+   * Response structure: tuple > old > t_request_approvals
+   *   (which contains nested t_asset_requests, m_assets, m_users, m_asset_types)
    */
+  async fetchConfirmationRequestsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetallpendingrequestsForAssetManagerConfirmation xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </GetallpendingrequestsForAssetManagerConfirmation>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetallpendingrequestsForAssetManagerConfirmation response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      const result = tupleArray.map((tuple: any) => this.mapConfirmationTupleToRequest(tuple));
+
+      console.log(`Fetched ${result.length} confirmation requests from service`);
+      return result;
+    } catch (err) {
+      console.error('Failed to fetch from GetallpendingrequestsForAssetManagerConfirmation:', err);
+      throw err;
+    }
+  }
   async fetchPendingReturnApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -227,7 +259,7 @@ export class RequestService {
     <GetPendingReturnApprovalsForManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
       <Approver_id>${approverId}</Approver_id>
     </GetPendingReturnApprovalsForManager>
-  </SOAP:Body>
+</SOAP:Body>
 </SOAP:Envelope>`.trim();
 
     try {
@@ -238,13 +270,81 @@ export class RequestService {
         console.warn('No tuples found in GetPendingReturnApprovalsForManager response');
         return [];
       }
-
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
       return tupleArray.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
     } catch (err) {
       console.error('Failed to fetch return approvals from GetPendingReturnApprovalsForManager:', err);
       throw err;
     }
+  }
+
+
+  /**
+   * Maps a single tuple from the Confirmation SOAP response to AssetRequest.
+   * Structure: tuple > old > t_request_approvals
+   *   t_request_approvals.t_asset_requests  — the original asset request row
+   *   t_request_approvals.m_assets          — the assigned asset details
+   *   t_request_approvals.m_users           — the requester's user record
+   *   t_request_approvals.m_asset_types     — the asset type metadata
+   *   t_request_approvals.approval_id / status / remarks / temp1 etc. — approval record fields
+   */
+  private mapConfirmationTupleToRequest(tuple: any): AssetRequest {
+    const approval = tuple?.old?.t_request_approvals || tuple?.t_request_approvals || {};
+    const reqData = approval?.t_asset_requests || {};
+    const assetData = approval?.m_assets || {};
+    const userInfo = approval?.m_users || {};
+    const typeInfo = approval?.m_asset_types || {};
+
+    const urgency = this.mapToUrgency(reqData?.urgency || '');
+    const status = this.mapToStatus(approval?.status || reqData?.status || '');
+    const requestType = this.mapToRequestType(reqData?.asset_type || typeInfo?.type_name || '');
+    const currentStage = ApprovalStage.ASSET_MANAGER;
+
+    const hasEmailApproval = reqData?.email_approval === 'true' || reqData?.email_approval === true;
+    const requestDate = reqData?.created_at || approval?.action_date || '';
+
+    return {
+      approvalId: this.getNullableValue(approval?.approval_id) || '',
+      taskid: this.getNullableValue(approval?.temp2) || '',
+      id: reqData?.request_id || approval?.request_id || '',
+      requestNumber: reqData?.request_id || approval?.request_id || '',
+      requesterId: reqData?.user_id || userInfo?.user_id || '',
+      requesterName: userInfo?.name || '',
+      requesterEmail: userInfo?.email || '',
+      requesterDepartment: this.getNullableValue(userInfo?.department) || '',
+      requesterTeam: this.getNullableValue(userInfo?.team) || '',
+      assetType: typeInfo?.type_name || reqData?.asset_type || '',
+      category: typeInfo?.type_name || reqData?.asset_type || '',
+      subCategory: this.getNullableValue(assetData?.sub_category_id),
+      justification: reqData?.reason || '',
+      urgency,
+      status,
+      currentStage,
+      hasEmailApproval,
+      emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
+      document: this.getNullableValue(reqData?.document),
+      requestDate,
+      lastUpdated: approval?.action_date || requestDate,
+      requestType,
+      // Assigned asset details
+      assignedAssetId: assetData?.asset_id || this.getNullableValue(approval?.temp1) || '',
+      assignedTypeId: assetData?.type_id || '',
+      assignedSubCategoryId: assetData?.sub_category_id || '',
+      assignedSerial: this.getNullableValue(assetData?.serial_number) || '',
+      assignedPurchaseDate: this.getNullableValue(assetData?.purchase_date) || '',
+      assignedWarrantyExpiry: this.getNullableValue(assetData?.warranty_expiry) || '',
+      // Extra display fields
+      assetName: assetData?.asset_name || '',
+      approvalChain: [
+        { stage: ApprovalStage.TEAM_LEAD, action: 'Approved' },
+        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
+        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+      ],
+      comments: [],
+      requesterStatus: this.getNullableValue(userInfo?.status),
+      requesterProject: this.getNullableValue(userInfo?.project_id),
+      requesterRole: this.getNullableValue(userInfo?.role_id)
+    };
   }
 
   /**
@@ -765,7 +865,19 @@ export class RequestService {
       return err;
     })
   }
-
+  createEntryForRequestor(request: any) {
+    return this.hs.ajax(
+      'UpdateT_request_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
   updateEntryForAllocationTeamMemberAssetReturn(request: any) {
     return this.hs.ajax(
       'UpdateT_asset_return_approvals',
@@ -779,7 +891,6 @@ export class RequestService {
       return err;
     })
   }
-
   createNewEntryForAssetManagerConfirmationAssetReturn(request: any) {
     return this.hs.ajax(
       'UpdateT_asset_return_approvals',
