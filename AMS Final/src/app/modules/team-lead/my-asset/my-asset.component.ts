@@ -15,9 +15,48 @@ export class MyAssetComponent implements OnInit {
   myAssets: Asset[] = [];
   pendingRequests: AssetRequest[] = [];
   expiringWarrantyCount: number = 0;
+  expiredWarrantyCount: number = 0;
   isLoading = false;
   isLoadingRequests = false;
   activeTab: 'assets' | 'requests' = 'assets';
+
+  // Assets Pagination
+  assetsCurrentPage = 1;
+  assetsPageSize = 5;
+
+  // Requests Pagination
+  requestsCurrentPage = 1;
+  requestsPageSize = 5;
+
+  get paginatedAssets(): Asset[] {
+    const startIndex = (this.assetsCurrentPage - 1) * this.assetsPageSize;
+    return this.myAssets.slice(startIndex, startIndex + this.assetsPageSize);
+  }
+
+  get totalAssetsPages(): number {
+    return Math.ceil(this.myAssets.length / this.assetsPageSize) || 1;
+  }
+
+  changeAssetsPage(page: number): void {
+    if (page >= 1 && page <= this.totalAssetsPages) {
+      this.assetsCurrentPage = page;
+    }
+  }
+
+  get paginatedRequests(): AssetRequest[] {
+    const startIndex = (this.requestsCurrentPage - 1) * this.requestsPageSize;
+    return this.pendingRequests.slice(startIndex, startIndex + this.requestsPageSize);
+  }
+
+  get totalRequestsPages(): number {
+    return Math.ceil(this.pendingRequests.length / this.requestsPageSize) || 1;
+  }
+
+  changeRequestsPage(page: number): void {
+    if (page >= 1 && page <= this.totalRequestsPages) {
+      this.requestsCurrentPage = page;
+    }
+  }
 
   constructor(
     private authService: AuthService,
@@ -55,11 +94,19 @@ export class MyAssetComponent implements OnInit {
     const ninetyDaysFromNow = new Date();
     ninetyDaysFromNow.setDate(now.getDate() + 90);
     
-    this.expiringWarrantyCount = this.myAssets.filter(a => {
-      if (!a.warrantyExpiry) return false;
+    this.expiringWarrantyCount = 0;
+    this.expiredWarrantyCount = 0;
+    
+    this.myAssets.forEach(a => {
+      if (!a.warrantyExpiry) return;
       const expiry = new Date(a.warrantyExpiry);
-      return expiry > now && expiry <= ninetyDaysFromNow;
-    }).length;
+      
+      if (expiry < now) {
+        this.expiredWarrantyCount++;
+      } else if (expiry <= ninetyDaysFromNow) {
+        this.expiringWarrantyCount++;
+      }
+    });
   }
 
   getAssetsByUser(userId?: string): void {
@@ -82,6 +129,7 @@ export class MyAssetComponent implements OnInit {
         assignedTo: item.user_id || userId || ''
       } as any));
 
+      this.assetsCurrentPage = 1; // Reset pagination
       console.log('[MyAsset] My assets from Cordys:', this.myAssets);
       this.calculateExpiringWarranty();
       this.isLoading = false;
@@ -120,12 +168,122 @@ export class MyAssetComponent implements OnInit {
           description: item.reason || ''
         } as any));
 
+      this.requestsCurrentPage = 1; // Reset pagination
       console.log('[MyAsset] Pending requests from Cordys:', this.pendingRequests);
       this.isLoadingRequests = false;
     }).catch((err: any) => {
       console.error('[MyAsset] Error fetching pending requests:', err);
       this.isLoadingRequests = false;
     });
+  }
+
+  async returnAsset(asset: Asset) {
+    if (!confirm(`Are you sure you want to return ${asset.name}?`)) return;
+
+    const user = this.authService.getCurrentUser();
+    if (!user) {
+      alert("User session not found.");
+      return;
+    }
+
+    this.isLoading = true;
+    try {
+      const returnPayload = {
+        tuple: {
+          new: {
+            t_asset_returns: {
+              requested_by: user.id,
+              status: "Pending",
+              remarks: "Returned by user"
+            }
+          }
+        }
+      };
+
+      const res1 = await this.hs.ajax('UpdateT_asset_returns', 'http://schemas.cordys.com/AMS_Database_Metadata', returnPayload);
+      
+      // Attempt to extract the newly generated ID from the first insert, fallback to asset.id if not found
+      const returnData = this.hs.xmltojson(res1, 't_asset_returns');
+      const newReturnId = (returnData && (returnData.id || returnData.return_id)) ? (returnData.id || returnData.return_id) : asset.id;
+      
+      const approvalPayload = {
+        tuple: {
+          new: {
+            t_asset_return_approvals: {
+              request_id: newReturnId,
+              approver_id: 'usr_004',
+              role: 'Asset Manager',
+              status: "Pending"
+            }
+          }
+        }
+      };
+      await this.hs.ajax('UpdateT_asset_return_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalPayload);
+      
+      alert('Asset return requested successfully');
+      
+      this.getAssetsByUser(user.id);
+      this.PendingRequestsForTeamLead(user.id); // Refresh pending requests occasionally
+    } catch (err) {
+      console.error("Return error:", err);
+      alert("Failed to return asset. Please check the network payload.");
+      this.isLoading = false;
+    }
+  }
+
+  async extendWarranty(asset: Asset) {
+    if (!confirm(`Are you sure you want to request a warranty extension for ${asset.name}?`)) return;
+
+    const user = this.authService.getCurrentUser();
+    if (!user) {
+      alert("User session not found.");
+      return;
+    }
+
+    this.isLoading = true;
+    try {
+      const extensionPayload = {
+        tuple: {
+          new: {
+            t_asset_returns: { // Assuming same table based on your instructions, if different update here
+              asset_id: asset.id,
+              requested_by: user.id,
+              status: "Pending",
+              request_type: "Extend Warranty",
+              remarks: "Warranty Extension Requested"
+            }
+          }
+        }
+      };
+      
+      const res1 = await this.hs.ajax('UpdateT_asset_returns', 'http://schemas.cordys.com/AMS_Database_Metadata', extensionPayload);
+      
+      const returnData = this.hs.xmltojson(res1, 't_asset_returns');
+      const newReturnId = (returnData && (returnData.id || returnData.return_id)) ? (returnData.id || returnData.return_id) : asset.id;
+
+      const approvalPayload = {
+        tuple: {
+          new: {
+            t_asset_return_approvals: { 
+              request_id: newReturnId,
+              approver_id: 'usr_004',
+              role: 'Asset Manager',
+              status: "Pending"
+            }
+          }
+        }
+      };
+      await this.hs.ajax('UpdateT_asset_return_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalPayload);
+
+      alert('Warranty extension requested successfully');
+      
+      this.getAssetsByUser(user.id);
+      this.PendingRequestsForTeamLead(user.id);
+    } catch (err) {
+      console.error("Extend Warranty error:", err);
+      alert("Failed to request warranty extension. Please check the network payload.");
+      this.isLoading = false;
+    }
   }
 
 }

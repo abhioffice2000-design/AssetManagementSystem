@@ -80,8 +80,8 @@ export class PendingApprovalsComponent implements OnInit {
             requesterId: reqItem.user_id,
             requesterName: userInfo.name || 'Unknown',
             requesterTeam: userInfo.team || 'General',
-            category: reqItem.asset_type || 'General',
-            assetType: subCategory.name || reqItem.asset_name || '',
+            category: item.asset_type || 'General',
+            assetType: subCategory.name || '',
             description: reqItem.purpose || '',
             urgency: reqItem.urgency || 'Medium',
             status: subCategory.status || 'Pending', // Restored from reqItem

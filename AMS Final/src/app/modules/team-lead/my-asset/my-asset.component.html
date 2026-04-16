@@ -1,6 +1,6 @@
 <div class="dashboard-container">
   <!-- Statistics Section -->
-  <div class="grid grid-3 gap-24 mb-24">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin-bottom: 24px;">
     <app-stat-card 
       label="My Assets" 
       [value]="myAssets.length" 
@@ -17,29 +17,17 @@
       label="Warranty Expiring soon" 
       [value]="expiringWarrantyCount" 
       icon="warning" 
+      color="amber">
+    </app-stat-card>
+    <app-stat-card 
+      label="Warranty Expired" 
+      [value]="expiredWarrantyCount" 
+      icon="gpp_bad" 
       color="red">
     </app-stat-card>
   </div>
 
-  <!-- Quick Actions Section -->
-  <div class="card mb-24 animate-slide-up">
-    <div class="card-header pb-0 border-0">
-      <h3 class="m-0">Quick Actions</h3>
-    </div>
-    <div class="card-body grid grid-3 gap-16">
-      <button class="btn btn-primary w-full" routerLink="/team-lead/request-asset">
-        <span class="material-icons-outlined">add_circle</span> Request New Asset
-      </button>
-      <button class="btn btn-outline w-full" routerLink="/team-lead/return-asset">
-        <span class="material-icons-outlined">assignment_return</span> Return Asset
-      </button>
-      <button class="btn btn-outline w-full" routerLink="/team-lead/extend-warranty">
-        <span class="material-icons-outlined">security</span> Extend Warranty
-      </button>
-    </div>
-  </div>
-
-  <!-- Tabbed Table Section -->
+  <!-- Tabbed Table Section with Actions -->
   <div class="card animate-slide-up">
     <div class="card-header" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
       <button
@@ -58,6 +46,11 @@
         <span class="material-icons-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px;">pending_actions</span>
         My Pending Requests
       </button>
+
+      <!-- Request New Asset Button -->
+      <button class="btn btn-primary" style="display: inline-flex; align-items: center; margin-left: auto;" routerLink="/team-lead/request-asset">
+        <span class="material-icons-outlined" style="margin-right: 8px;">add_circle</span> Request New Asset
+      </button>
     </div>
 
     <div class="card-body">
@@ -74,10 +67,11 @@
                 <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">health_and_safety</span> Condition</th>
                 <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">security</span> Warranty</th>
                 <th><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">circle</span> Status</th>
+                <th class="text-center"><span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;">settings</span> Action</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let asset of myAssets">
+              <tr *ngFor="let asset of paginatedAssets">
                 <td class="text-bold text-primary">{{ asset.assetTag }}</td>
                 <td>{{ asset.name }}</td>
                 <td>{{ asset.category }}</td>
@@ -100,9 +94,19 @@
                     {{ asset.status }}
                   </span>
                 </td>
+                <td class="text-center">
+                  <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button class="btn btn-outline" style="padding: 6px 12px;" (click)="returnAsset(asset)" title="Return Asset">
+                      <span class="material-icons-outlined" style="font-size: 18px;">assignment_return</span>
+                    </button>
+                    <button class="btn btn-outline" style="padding: 6px 12px;" (click)="extendWarranty(asset)" title="Extend Warranty">
+                      <span class="material-icons-outlined" style="font-size: 18px;">security</span>
+                    </button>
+                  </div>
+                </td>
               </tr>
               <tr *ngIf="!isLoading && myAssets.length === 0">
-                <td colspan="6" class="text-center text-muted p-24">
+                <td colspan="7" class="text-center text-muted p-24">
                   <div class="empty-state">
                     <span class="material-icons-outlined" style="font-size: 3rem; display: block; margin-bottom: 12px;">inventory_2</span>
                     No assets currently assigned to you.
@@ -110,12 +114,17 @@
                 </td>
               </tr>
               <tr *ngIf="isLoading">
-                <td colspan="6" class="text-center p-24">
+                <td colspan="7" class="text-center p-24">
                   <div class="spinner-sm"></div> Loading assets...
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+        <div class="pagination-controls" *ngIf="totalAssetsPages > 1">
+          <button [disabled]="assetsCurrentPage === 1" (click)="changeAssetsPage(assetsCurrentPage - 1)">Previous</button>
+          <span>Page {{assetsCurrentPage}} of {{totalAssetsPages}}</span>
+          <button [disabled]="assetsCurrentPage === totalAssetsPages" (click)="changeAssetsPage(assetsCurrentPage + 1)">Next</button>
         </div>
       </div>
 
@@ -134,7 +143,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let req of pendingRequests">
+              <tr *ngFor="let req of paginatedRequests">
                 <td class="text-bold text-primary">{{ req.requestNumber }}</td>
                 <td>{{ req.assetType }}</td>
                 <td>{{ req.category }}</td>
@@ -167,6 +176,11 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div class="pagination-controls" *ngIf="totalRequestsPages > 1">
+          <button [disabled]="requestsCurrentPage === 1" (click)="changeRequestsPage(requestsCurrentPage - 1)">Previous</button>
+          <span>Page {{requestsCurrentPage}} of {{totalRequestsPages}}</span>
+          <button [disabled]="requestsCurrentPage === totalRequestsPages" (click)="changeRequestsPage(requestsCurrentPage + 1)">Next</button>
         </div>
       </div>
 
