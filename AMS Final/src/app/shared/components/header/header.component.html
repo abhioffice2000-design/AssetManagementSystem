@@ -6,7 +6,27 @@
   </div>
   
   <div class="header-right">
-
-
+    <div class="user-corner-menu" *ngIf="currentUser">
+      <div class="user-icon-trigger">
+        <span class="material-icons-outlined">account_circle</span>
+      </div>
+      <div class="user-hover-card">
+        <div class="hover-avatar">
+          <span class="material-icons-outlined">person</span>
+        </div>
+        <h5 style="margin: 8px 0 4px; font-size: 16px; color: #333;">{{currentUser.name || currentUser.firstName}}</h5>
+        <span class="badge badge-info" style="margin-bottom: 12px; font-size: 11px; padding: 4px 8px; background: #e0f2fe; color: #0369a1; border-radius: 12px; border: 1px solid #bae6fd;">
+          {{currentUser.role}}
+        </span>
+        <div class="hover-info-row">
+          <span class="material-icons-outlined" style="font-size: 16px;">badge</span>
+          <span><strong>Emp Code:</strong> {{currentUser.id}}</span>
+        </div>
+        <div class="hover-info-row" *ngIf="currentUser.team">
+          <span class="material-icons-outlined" style="font-size: 16px;">groups</span>
+          <span><strong>Team:</strong> {{currentUser.team}}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </header>

@@ -88,7 +88,7 @@ export class AuthService {
       email: userData.email,
       role: this.mapRoleIdToUserRole(userData.role_id),
       department: userData.department || 'IT',
-      team: userData.team || 'General',
+      team: (userData.m_projects && userData.m_projects.project_name) ? userData.m_projects.project_name : (userData.team || 'General'),
       designation: userData.designation || 'Specialist',
       isActive: userData.status === 'Active',
       joinDate: userData.created_at || new Date().toISOString().split('T')[0]
@@ -132,7 +132,7 @@ export class AuthService {
         email: item.email,
         role: this.mapRoleIdToUserRole(item.role_id),
         department: item.department || 'IT',
-        team: item.team || 'General',
+        team: (item.m_projects && item.m_projects.project_name) ? item.m_projects.project_name : (item.team || 'General'),
         designation: item.designation || 'Specialist',
         isActive: item.status === 'Active',
         joinDate: item.created_at || new Date().toISOString().split('T')[0]
