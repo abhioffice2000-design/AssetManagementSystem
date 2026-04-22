@@ -370,14 +370,91 @@ export class RequestService {
   }
 
   /**
+   * Fetches the real-time progress/approval stages for a request from Cordys.
+   * Uses the GetRequestProgressForEmployee SOAP request.
+   */
+  async getRequestProgress(requestId: string): Promise<any[]> {
+    // Normalize ID to lowercase for the backend service (e.g., AR_072 -> ar_072)
+    const normalizedId = requestId.toLowerCase();
+
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetRequestProgressForEmployee xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <requestId>${normalizedId}</requestId>
+    </GetRequestProgressForEmployee>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(response, 'tuple');
+
+      if (!data) return [];
+      const tupleArray = Array.isArray(data) ? data : [data];
+
+      return tupleArray.map((tuple: any) => {
+        const approvalData = tuple?.old?.t_request_approvals || tuple?.t_request_approvals || tuple;
+        return {
+          stage: approvalData?.role || approvalData?.temp1 || 'Unknown Role/Stage',
+          status: approvalData?.status || 'Pending',
+          approverId: approvalData?.approver_id,
+          approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
+          timestamp: approvalData?.created_at,
+          comments: approvalData?.temp2 // Assuming temp2 stores comments in t_request_approvals
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching request progress:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches all requests for a specific employee from Cordys.
+   * Uses the Getallrequest SOAP service and filters the result by user ID.
+   */
+  async getRequestsByUserIdFromCordys(userId: string): Promise<AssetRequest[]> {
+     const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getallrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 't_asset_requests');
+
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      
+      // Filter by user ID and map to model
+      return tupleArray
+        .filter((tuple: any) => {
+          const reqData = tuple?.old?.t_asset_requests || tuple?.t_asset_requests || tuple;
+          return reqData?.user_id === userId;
+        })
+        .map((tuple: any) => this.mapTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch employee requests from Cordys:', err);
+      return [];
+    }
+  }
+
+  /**
    * Maps a single tuple from the SOAP response to the AssetRequest interface.
    * Response structure: tuple > old > t_asset_requests
    */
   private mapTupleToRequest(tuple: any): AssetRequest {
-    const reqData = tuple?.old?.t_asset_requests || tuple?.t_asset_requests || tuple;
+    const parent = tuple?.old || tuple;
+    const reqData = parent?.t_asset_requests || parent;
 
-    // Extract nested user info
-    const userInfo = reqData?.m_users || {};
+    // Extract joined metadata from peer objects at the tuple level
+    const userInfo = parent?.m_users || reqData?.m_users || {};
+    const assetInfo = parent?.m_assets || reqData?.m_assets || {};
+    const subCatInfo = parent?.m_asset_subcategories || reqData?.m_asset_subcategories || {};
+    const typeInfo = parent?.m_asset_types || reqData?.m_asset_types || {};
 
     // Map urgency string to enum
     const urgency = this.mapToUrgency(reqData?.urgency || '');
@@ -399,8 +476,8 @@ export class RequestService {
     const requestDate = createdAt;
 
     return {
-      taskid: tuple?.old?.t_asset_requests?.t_request_approvals?.temp2 || '',
-      approvalId: tuple?.old?.t_asset_requests?.t_request_approvals?.approval_id || '',
+      taskid: reqData?.t_request_approvals?.temp2 || '',
+      approvalId: reqData?.t_request_approvals?.approval_id || '',
       id: reqData?.request_id || '',
       requestNumber: reqData?.request_id || '',
       requesterId: reqData?.user_id || userInfo?.user_id || '',
@@ -408,9 +485,18 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: reqData?.asset_type || '',
-      category: this.getNullableValue(reqData?.category) || '',
-      subCategory: this.getNullableValue(reqData?.sub_category),
+      assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
+      category: this.normalizeCategory(
+        this.getNullableValue(
+          assetInfo?.asset_name || 
+          subCatInfo?.name || 
+          typeInfo?.type_name || 
+          reqData?.asset_name || 
+          reqData?.temp1 || 
+          ''
+        )
+      ),
+      subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || reqData?.temp2 || ''),
       justification: reqData?.reason || '',
       urgency: urgency,
       status: status,
@@ -529,6 +615,42 @@ export class RequestService {
       case RequestStatus.COMPLETED: return ApprovalStage.COMPLETED;
       default: return ApprovalStage.TEAM_LEAD;
     }
+  }
+
+  private normalizeAssetType(type: string | undefined): string {
+    if (!type) return 'N/A';
+    const t = type.toLowerCase().trim();
+    if (t === 'typ_01' || t === 'software') return 'Software';
+    if (t === 'typ_02' || t === 'hardware') return 'Hardware';
+    if (t === 'typ_03' || t === 'network') return 'Network';
+    if (t === 'typ_04' || t === 'peripheral') return 'Peripheral';
+    
+    // Default: capitalize first letter
+    return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+  }
+
+  private normalizeCategory(value: string | undefined): string {
+    if (!value) return 'Asset Detail';
+    const v = value.toLowerCase().trim();
+    const mappings: { [key: string]: string } = {
+      'cat_001': 'Laptop',
+      'cat_002': 'Software License',
+      'cat_003': 'Monitor',
+      'cat_004': 'Peripheral',
+      'asset_001': 'Dell Latitude 5420',
+      'asset_002': 'Adobe Creative Cloud',
+      'typ_01': 'Software',
+      'typ_02': 'Hardware',
+      'typ_03': 'Network',
+      'typ_04': 'Peripheral'
+    };
+
+    if (mappings[v]) return mappings[v];
+    
+    // If it's still a technical ID but not in list, return generic label
+    if (v.startsWith('cat_') || v.startsWith('typ_') || v.startsWith('asset_')) return 'Asset Detail';
+
+    return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
   }
 
   getRequests(): AssetRequest[] {

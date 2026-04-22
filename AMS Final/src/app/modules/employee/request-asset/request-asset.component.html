@@ -16,32 +16,32 @@
           </select>
         </div>
         <div>
-          <label>Category *</label>
-          <select formControlName="category" class="form-control" (change)="onCategoryChange()">
-            <option value="" disabled>Select Category</option>
-            <option *ngFor="let cat of availableCategories" [value]="cat.asset_id">
-              {{ cat.asset_name }}
-            </option>
+          <label>Urgency *</label>
+          <select formControlName="urgency" class="form-control">
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
           </select>
         </div>
       </div>
 
-      <div class="grid grid-2 gap-20 form-group">
+      <div class="grid grid-1 gap-20 form-group">
         <div>
-          <label>Sub-Category</label>
+          <label>Sub-Category *</label>
           <select formControlName="subCategory" class="form-control">
-            <option value="">Select Sub-Category</option>
+            <option value="" disabled>Select Sub-Category</option>
             <option *ngFor="let sub of availableSubCategories" [value]="sub.sub_category_id">
               {{ sub.name }}
             </option>
           </select>
+          <p class="text-xs text-muted mt-4" *ngIf="availableSubCategories.length === 0">Please select an Asset Type first.</p>
         </div>
       </div>
 
       <div class="form-group mt-24">
         <label>Business Justification *</label>
         <textarea formControlName="justification" class="form-control"
-          placeholder="Please explain why you need this asset..." rows="4"></textarea>
+          placeholder="Please explain why you need this asset..." rows="3"></textarea>
       </div>
 
       <div class="form-group mt-24 bg-gray"
