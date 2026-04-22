@@ -3,7 +3,7 @@ export interface Asset {
   assetId?: string; // optional for backward compatibility with existing static data
   assetTag: string;
   name: string;
-  type: AssetType;
+  type: AssetType | string;
   category: string;
   subCategory: string;
   status: string; // Changed from AssetStatus to string for dynamic values
@@ -50,7 +50,7 @@ export enum AssetCondition {
 export interface AssetCategory {
   id: string;
   name: string;
-  type: AssetType;
+  type: AssetType | string;
   subCategories: string[];
   icon: string;
 }

@@ -441,14 +441,14 @@ export class AssetService {
     return String(value);
   }
 
-  private mapToAssetType(typeName: string): AssetType {
-    const normalized = typeName.toLowerCase();
+  private mapToAssetType(typeName: string): AssetType | string {
+    const normalized = typeName.toLowerCase().trim();
     if (normalized.includes('hardware')) return AssetType.HARDWARE;
     if (normalized.includes('software')) return AssetType.SOFTWARE;
     if (normalized.includes('network')) return AssetType.NETWORK;
     if (normalized.includes('peripheral')) return AssetType.PERIPHERAL;
     if (normalized.includes('furniture')) return AssetType.FURNITURE;
-    return AssetType.HARDWARE; // default fallback
+    return typeName || AssetType.HARDWARE; // Preserve original name if possible
   }
 
   private buildCategoriesFromAssets(assets: Asset[]): AssetCategory[] {
@@ -487,8 +487,8 @@ export class AssetService {
     return normalizedName || `CAT_${String(index).padStart(3, '0')}`;
   }
 
-  private getCategoryIcon(type: AssetType): string {
-    const iconMap: Record<AssetType, string> = {
+  private getCategoryIcon(type: AssetType | string): string {
+    const iconMap: Record<string, string> = {
       [AssetType.HARDWARE]: 'laptop_mac',
       [AssetType.SOFTWARE]: 'apps',
       [AssetType.NETWORK]: 'router',
@@ -794,13 +794,177 @@ export class AssetService {
     this.assets.push(asset);
   }
 
+  async addAssetType(typeId: string, typeName: string): Promise<void> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_asset_types xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_asset_types qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <type_id>${typeId}</type_id>
+            <type_name>${typeName}</type_name>
+          </m_asset_types>
+        </new>
+      </tuple>
+    </UpdateM_asset_types>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapRequest);
+      console.log(`Asset type ${typeName} added successfully.`);
+    } catch (err) {
+      console.error('Failed to add asset type:', err);
+      throw err;
+    }
+  }
+
+  async addAssetSubCategory(subCatId: string, name: string, typeId: string): Promise<void> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_asset_subcategories xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_asset_subcategories qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <sub_category_id>${subCatId}</sub_category_id>
+            <name>${name}</name>
+            <type_id>${typeId}</type_id>
+          </m_asset_subcategories>
+        </new>
+      </tuple>
+    </UpdateM_asset_subcategories>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapRequest);
+      console.log(`Subcategory ${name} added successfully.`);
+    } catch (err) {
+      console.error('Failed to add subcategory:', err);
+      throw err;
+    }
+  }
+
+  async addAssetCordys(asset: Asset, typeId: string, subCatId: string): Promise<void> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <asset_id>${asset.id}</asset_id>
+            <asset_name>${asset.name}</asset_name>
+            <type_id>${typeId}</type_id>
+            <sub_category_id>${subCatId}</sub_category_id>
+            <serial_number>${asset.serialNumber || ''}</serial_number>
+            <purchase_date>${asset.purchaseDate || ''}</purchase_date>
+            <warranty_expiry>${asset.warrantyExpiry || ''}</warranty_expiry>
+            <status>${asset.status || 'Available'}</status>
+            <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp3 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp4 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp5 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp6 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp7 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+          </m_assets>
+        </new>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapRequest);
+      // Remove sync local push as the refresh should fetch the latest from Cordys
+      console.log(`Asset ${asset.name} added successfully.`);
+    } catch (err) {
+      console.error('Failed to add asset:', err);
+      throw err;
+    }
+  }
+
   updateAsset(updated: Asset): void {
     const idx = this.assets.findIndex(a => a.id === updated.id);
     if (idx >= 0) this.assets[idx] = updated;
   }
 
-  deleteAsset(id: string): void {
-    this.assets = this.assets.filter(a => a.id !== id);
+  async deleteAssetTypeCordys(typeId: string): Promise<void> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_asset_types xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_asset_types>
+            <type_id>${typeId}</type_id>
+          </m_asset_types>
+        </old>
+      </tuple>
+    </UpdateM_asset_types>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapRequest);
+      console.log(`Asset type ${typeId} deleted successfully.`);
+    } catch (err) {
+      console.error('Failed to delete asset type:', err);
+      throw err;
+    }
+  }
+
+  async deleteAssetSubCategoryCordys(subCatId: string): Promise<void> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_asset_subcategories xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_asset_subcategories>
+            <sub_category_id>${subCatId}</sub_category_id>
+          </m_asset_subcategories>
+        </old>
+      </tuple>
+    </UpdateM_asset_subcategories>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapRequest);
+      console.log(`Subcategory ${subCatId} deleted successfully.`);
+    } catch (err) {
+      console.error('Failed to delete subcategory:', err);
+      throw err;
+    }
+  }
+
+  async deleteAssetCordys(assetId: string): Promise<void> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_assets>
+            <asset_id>${assetId}</asset_id>
+          </m_assets>
+        </old>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapRequest);
+      console.log(`Asset ${assetId} deleted successfully.`);
+    } catch (err) {
+      console.error('Failed to delete asset:', err);
+      throw err;
+    }
   }
 
   getAssetStats() {
