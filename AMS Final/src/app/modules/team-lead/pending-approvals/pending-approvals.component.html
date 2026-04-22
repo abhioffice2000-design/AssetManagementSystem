@@ -27,6 +27,7 @@
               <th><span class="material-icons-outlined">devices</span> Asset Name</th>
               <th><span class="material-icons-outlined">speed</span> Urgency</th>
               <th><span class="material-icons-outlined">info</span> Status</th>
+              <!-- <th><span class="material-icons-outlined">chat_bubble</span> Approver Remarks</th> -->
               <th><span class="material-icons-outlined">event</span> Date</th>
               <th class="text-center"><span class="material-icons-outlined">settings</span> Action</th>
             </tr>
@@ -38,11 +39,7 @@
               <td><strong>{{req.requestNumber}}</strong></td>
               <td>{{req.requesterName}}</td>
               <td>{{req.category}}</td>
-              <td>
-                <span class="badge badge-info">
-                  {{req.assetType}}
-                </span>
-              </td>
+              <td>{{req.assetType}}</td>
               <td>
                 <span class="badge" 
                       [ngClass]="{
@@ -56,6 +53,7 @@
               <td>
                 <span class="badge badge-warning">{{req.status}}</span>
               </td>
+              <!-- <td>{{req.reason}}</td> -->
               <td>{{req.requestDate | date}}</td>
               <td class="text-center">
                 <button (click)="selectRequest(req)" class="btn btn-icon btn-primary" title="Process Request">
@@ -105,6 +103,11 @@
         <label style="font-size: 13px; font-weight: 500; color: #666;">Urgency</label>
         <input type="text" [value]="selectedRequest.urgency" readonly 
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;">
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Reason</label>
+        <textarea type="text" [value]="selectedRequest.reason" readonly 
+               style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box; resize: vertical;" rows="3"></textarea>
       </div>
       
       <!-- Remarks section -->

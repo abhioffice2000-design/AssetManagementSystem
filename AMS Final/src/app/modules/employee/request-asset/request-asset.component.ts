@@ -218,10 +218,10 @@ export class RequestAssetComponent implements OnInit {
         new: {
           t_asset_requests: {
             user_id: user.id,
-            asset_type: 'Software',
-            reason: 'Need',
-            urgency: 'High',
-            email_approval: 'false',
+            asset_type: formVal.assetType,
+            reason: formVal.justification,
+            urgency: 'Low',
+            email_approval: formVal.hasEmailApproval.toString(),
             status: 'Pending',
             temp1: formVal.subCategory
           }
@@ -245,12 +245,11 @@ export class RequestAssetComponent implements OnInit {
     console.log("newrequestid", newrequestid)
     var request2 = {
       tuple: {
-
         new: {
           t_request_approvals: {
             request_id: `${newrequestid}`,
-            approver_id: 'usr_003',
-            role: 'Team Lead',
+            approver_id: formVal.hasEmailApproval ? 'usr_004' : 'usr_003',
+            role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
             status: 'Pending'
           }
         }
@@ -263,7 +262,7 @@ export class RequestAssetComponent implements OnInit {
     let request3 = {
 
 
-      InputDoc: "false",
+      InputDoc: formVal.hasEmailApproval.toString(),
       Inputusrid: user.id,
       Inputrequestapprovalid: `${newapprovalid}`,
       Inputrequestid: `${newrequestid}`

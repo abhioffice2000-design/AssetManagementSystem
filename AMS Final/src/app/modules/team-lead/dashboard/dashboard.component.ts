@@ -27,6 +27,8 @@ export class LeadDashboardComponent implements OnInit {
   user: any;
   userDetails: any;
   isLoading = false;
+  teamMembers: any[] = [];
+  showTeamModal = false;
 
   constructor(
     private authService: AuthService,
@@ -149,8 +151,8 @@ export class LeadDashboardComponent implements OnInit {
           requesterTeam: userInfo.team || '',
           category: reqItem.asset_type || '',
           assetType: subCategory.name || '', 
-          urgency: reqItem.urgency || 'Medium',
-          status: item.status || 'Pending',
+          urgency: item.urgency,
+          status: item.status,
           requestDate: reqItem.created_at || '',
           currentStage: 'Pending' // Initial default
         } as any;
@@ -169,23 +171,38 @@ export class LeadDashboardComponent implements OnInit {
     });
   }
   getusercount() {
-    this.hs.ajax('GetUserCountByProject', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { project_id: this.userDetails.project_id }
+    this.hs.ajax('GetAllUserRoleProjectDetails', 'http://schemas.cordys.com/AMS_Database_Metadata', {}
     ).then((resp: any) => {
       const result = this.hs.xmltojson(resp, "m_users");
-      // If result is a list of users, use the length; if it's a specific count object, use the value
-      this.teamSize = result ? (Array.isArray(result) ? result.length : (parseInt(result?.count) || parseInt(result) || 0)) : 0;
-      console.log("Team Size updated from API:", this.teamSize);
+      const allUsers = result ? (Array.isArray(result) ? result : [result]) : [];
+      // Filter the users belonging to the team lead's project
+      const users = allUsers.filter((u: any) => u.project_id === this.userDetails.project_id);
+      
+      this.teamSize = users.length;
+      // Store full member details for the modal
+      this.teamMembers = users.map((u: any) => ({
+        name: u.name || 'N/A',
+        user_id: u.user_id || u.email || 'N/A',
+        email: u.email || 'N/A',
+        status: u.status || 'Active',
+        role_id: (u.m_roles && u.m_roles.role_name) ? u.m_roles.role_name : (u.role_id || ''),
+        team_lead: (u.m_projects && u.m_projects.team_lead) ? u.m_projects.team_lead : (this.userDetails.team_lead || this.userDetails.name || 'N/A')
+      }));
+      console.log("Team Size and Details updated from API:", this.teamSize, this.teamMembers);
     }).catch(err => {
-      console.error("Error fetching user count in getusercount:", err);
+      console.error("Error fetching user details in getusercount:", err);
     });
+  }
+ 
+  toggleTeamModal(): void {
+    this.showTeamModal = !this.showTeamModal;
   }
 
   getpendingcount() {
-    this.hs.ajax('GetPendingRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      {}
+    this.hs.ajax('GetallpendingrequestsForParticularTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      {Approver_id: this.userDetails.user_id}
     ).then((resp: any) => {
-      const result = this.hs.xmltojson(resp, "t_request_approvals");
+      const result = this.hs.xmltojson(resp, "t_asset_requests");
       const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
       this.pendingApprovalsCount = rawData.length;
       console.log("Pending Approvals count updated from API:", this.pendingApprovalsCount);

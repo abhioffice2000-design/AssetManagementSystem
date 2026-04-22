@@ -904,4 +904,17 @@ export class RequestService {
       return err;
     })
   }
+  callBPMForwarrantyexpiry(request: any) {
+    return this.hs.ajax(
+      'AMS_warranty_expiry',
+      'http://schemas.cordys.com/default',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
 }

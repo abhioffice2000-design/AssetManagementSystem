@@ -78,13 +78,15 @@ export class PendingApprovalsComponent implements OnInit {
             id: reqItem.request_id || item.request_id,
             requestNumber: reqItem.request_id || item.request_id,
             requesterId: reqItem.user_id,
-            requesterName: userInfo.name || 'Unknown',
-            requesterTeam: userInfo.team || 'General',
-            category: item.asset_type || 'General',
-            assetType: subCategory.name || '',
-            description: reqItem.purpose || '',
-            urgency: reqItem.urgency || 'Medium',
-            status: subCategory.status || 'Pending', // Restored from reqItem
+            requesterName: userInfo.name,
+            requesterTeam: (userInfo.m_projects && userInfo.m_projects.project_name) ? userInfo.m_projects.project_name : (userInfo.team || ''),
+            category: subCategory.sub_category || item.asset_type,
+            assetType: subCategory.name,
+            description: reqItem.purpose,
+            urgency: item.urgency,
+            status: item.t_request_approvals.status || 'Pending',
+            reason: item.reason,
+            remarks: item.t_request_approvals.remarks || 'No remarks',
             requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
             currentStage: ApprovalStage.TEAM_LEAD,
             taskid: item.t_request_approvals.temp2
@@ -154,56 +156,67 @@ export class PendingApprovalsComponent implements OnInit {
       alert("No approval record found for this request");
       return;
     }
-    var req1 = {
-      tuple: {
-        old: {
-          "t_request_approvals": {
-            approval_id: this.selectedRequest.approvalId
-          }
-        },
-        new: {
-          "t_request_approvals": {
-            status: "Approved",
-            remarks: this.tl_remarks || 'Approved by Team Lead'
-          }
-        }
-      }
-    };
 
-    this.isLoading = true;
-    var res2 = await this.requestService.updateEntryForTeamLead(req1 as any);
-
-    var newrequestid = this.selectedRequest.requestNumber
-    console.log("Taskid response is", res2);
-    var taskid = this.selectedRequest?.taskid;
-    console.log("taskid", taskid);
-    var request2 = {
-      tuple: {
-
-        new: {
-          t_request_approvals: {
-            request_id: `${newrequestid}`,
-            approver_id: 'usr_004',
-            role: 'Asset Manager',
-            status: 'Pending'
+    try {
+      this.isLoading = true;
+      var req1 = {
+        tuple: {
+          old: {
+            "t_request_approvals": {
+              approval_id: this.selectedRequest.approvalId
+            }
+          },
+          new: {
+            "t_request_approvals": {
+              status: "Approved",
+              remarks: this.tl_remarks || 'Approved by Team Lead'
+            }
           }
         }
-      }
+      };
+
+      var res2 = await this.requestService.updateEntryForTeamLead(req1 as any);
+      var newrequestid = this.selectedRequest.requestNumber;
+      console.log("Taskid response is", res2);
+      
+      var taskid = this.selectedRequest?.taskid;
+      console.log("taskid", taskid);
+      
+      var request2 = {
+        tuple: {
+          new: {
+            t_request_approvals: {
+              request_id: `${newrequestid}`,
+              approver_id: 'usr_004',
+              role: 'Asset Manager',
+              status: 'Pending'
+            }
+          }
+        }
+      };
+      
+      var res3 = await this.requestService.updateEntryForTeamLead(request2 as any);
+      console.log("res3", res3);
+      
+      var req3 = {
+        TaskId: `${taskid}`,
+        Action: 'COMPLETE'
+      };
+      
+      await this.requestService.completeUserTask(req3 as any);
+
+      alert('Request Approved successfully');
+      this.selectedRequest = null;
+      this.tl_remarks = '';
+      this.getallrequests();
+    } catch (error) {
+      console.error("Approval error:", error);
+      alert("Failed to approve request. Please try again.");
+      this.isLoading = false;
     }
-    var res3 = await this.requestService.updateEntryForTeamLead(request2 as any);
-
-    console.log("res3", res3)
-    var req3 =
-    {
-      TaskId: `${taskid}`,
-      Action: 'COMPLETE'
-    }
-    await this.requestService.completeUserTask(req3 as any);
-
-
   }
 
-  handleReject() {
+  async handleReject() {
     if (!this.selectedRequest?.approvalId) {
       alert("No approval record found for this request");
       return;
@@ -214,31 +227,62 @@ export class PendingApprovalsComponent implements OnInit {
       return;
     }
 
-    this.isLoading = true;
-    this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', {
-      tuple: {
-        old: {
-          "t_request_approvals": {
-            approval_id: this.selectedRequest.approvalId
-          }
-        },
-        new: {
-          "t_request_approvals": {
-            status: "Rejected",
-            remarks: this.tl_remarks || 'Rejected by Team Lead'
+    try {
+      this.isLoading = true;
+      var req1 = {
+        tuple: {
+          old: {
+            "t_request_approvals": {
+              approval_id: this.selectedRequest.approvalId
+            }
+          },
+          new: {
+            "t_request_approvals": {
+              status: "Rejected",
+              remarks: this.tl_remarks
+            }
           }
         }
+      };
+
+      await this.requestService.updateEntryForTeamLead(req1 as any);
+
+      // Update the master asset request status to Rejected
+      var req2 = {
+        tuple: {
+          old: {
+            "t_asset_requests": {
+              request_id: this.selectedRequest.requestNumber
+            }
+          },
+          new: {
+            "t_asset_requests": {
+              status: "Rejected"
+            }
+          }
+        }
+      };
+      await this.requestService.submitNewRequestForm(req2 as any);
+
+      // Complete the BPM task
+      var taskid = this.selectedRequest?.taskid;
+      if (taskid) {
+        var req3 = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(req3 as any);
       }
-    }).then(() => {
+
       alert('Request Rejected successfully');
       this.selectedRequest = null;
       this.tl_remarks = '';
       this.getallrequests();
-    }).catch(err => {
-      console.error("Rejection error:", err);
+    } catch (error) {
+      console.error("Rejection error:", error);
       alert("Failed to reject request. Please try again.");
       this.isLoading = false;
-    });
+    }
   }
 
   onSearch(event: Event) {
