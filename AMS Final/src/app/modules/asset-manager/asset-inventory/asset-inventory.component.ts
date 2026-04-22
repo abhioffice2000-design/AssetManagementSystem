@@ -94,7 +94,7 @@ export class AssetInventoryComponent implements OnInit {
     }
   }
 
-  getTypeIcon(type: AssetType): string {
+  getTypeIcon(type: AssetType | string): string {
     switch (type) {
       case AssetType.HARDWARE: return 'computer';
       case AssetType.SOFTWARE: return 'code';

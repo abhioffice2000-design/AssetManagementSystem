@@ -257,6 +257,47 @@ export class AdminDataService {
       throw new Error('User ID, name, email, and role are required.');
     }
 
+    let cordysRole = 'AMS_Employee';
+    switch (roleId) {
+      case 'rol_01': cordysRole = 'AMS_Admin'; break;
+      case 'rol_02': cordysRole = 'AMS_TeamLead'; break;
+      case 'rol_03': cordysRole = 'AMS_Employee'; break;
+      case 'rol_04': cordysRole = 'AMS_AssetManager'; break;
+      case 'rol_05': cordysRole = 'AMS_AssetAllocationTeam'; break;
+      default: cordysRole = 'AMS_Employee';
+    }
+    const createUserSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName isAnonymous="">${this.xmlEscape(email)}</UserName>
+        <Description>${this.xmlEscape(name)}</Description>
+        <Credentials allowDuplicate="true">
+          <UserIDPassword>
+            <UserID>${this.xmlEscape(email)}</UserID>
+            <Password>Qwerty@1234</Password>
+          </UserIDPassword>
+        </Credentials>
+        <Roles>
+          <Role application="">${this.xmlEscape(cordysRole)}</Role>
+        </Roles>
+      </User>
+    </CreateUserInOrganization>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.heroService.ajax(null, null, {}, createUserSoap);
+    } catch (e: any) {
+      const errorText = e?.responseText || e?.message || String(e) || '';
+      if (errorText.toLowerCase().includes('already') || errorText.toLowerCase().includes('duplicate') || errorText.toLowerCase().includes('exist')) {
+        console.warn('Cordys User already exists, proceeding to DB insertion.');
+      } else {
+        throw new Error('Failed to create user in Cordys: ' + (e?.message || errorText));
+      }
+    }
+
     const addUserSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>

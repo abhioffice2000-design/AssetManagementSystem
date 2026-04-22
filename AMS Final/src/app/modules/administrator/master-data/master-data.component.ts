@@ -8,20 +8,31 @@ Chart.register(...registerables);
 
 type MasterTab = 'types' | 'categories' | 'assets';
 type AddAssetForm = {
-  type: AssetType | '';
+  type: AssetType | string | '';
   category: string;
   name: string;
   serialNumber: string;
   purchaseDate: string;
   warrantyExpiry: string;
-  status: AssetStatus | '';
 };
 type AssetCategoryGroup = {
-  type: AssetType;
+  type: AssetType | string;
   icon: string;
   categories: AssetCategory[];
   assetCount: number;
 };
+export interface EnrichedSubcategory {
+  id: string;
+  name: string;
+  type: AssetType | string;
+  icon: string;
+  totalCount: number;
+  availableCount: number;
+  assignedCount: number;
+  utilizationRate: number;
+  totalValue: number;
+  warrantyHealth: number;
+}
 
 @Component({
   selector: 'app-master-data',
@@ -31,14 +42,14 @@ type AssetCategoryGroup = {
 export class MasterDataComponent implements OnInit {
   activeTab: MasterTab = 'types';
 
-  assetTypes: Array<{ type: AssetType; count: number; value: number }> = [];
+  assetTypes: Array<{ type: AssetType | string; count: number; value: number; id?: string }> = [];
   assetCategories: AssetCategory[] = [];
   assetCategoryGroups: AssetCategoryGroup[] = [];
   assets: Asset[] = [];
   projects: Project[] = [];
   filteredAssets: Asset[] = [];
 
-  assetTypeOptions: AssetType[] = [];
+  assetTypeOptions: (AssetType | string)[] = [];
   assetStatusOptions: string[] = [];
   assetSearchTerm = '';
   selectedAssetType = '';
@@ -48,11 +59,33 @@ export class MasterDataComponent implements OnInit {
   currentPage = 1;
   pageSize = 5;
   showAddAssetModal = false;
+  showAddTypeModal = false;
+  showAddSubCategoryModal = false;
+  newTypeName = '';
+  newSubCategoryName = '';
+  selectedTypeIdForSubCategory = '';
+  isSaving = false;
   selectedCategory = '';
+  selectedSubCategoryTypeFilter = '';
   submittedAssetForm = false;
   newAsset: AddAssetForm = this.createEmptyAsset();
 
+  // Confirmation Modal State
+  showConfirmModal = false;
+  showConfirmAction = true;
+  confirmTitle = '';
+  confirmMessage = '';
+  confirmBtnText = 'Delete';
+  onConfirmCallback: (() => void) | null = null;
+
   summaryCards: Array<{ label: string; value: number | string; icon: string; color: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'teal' }> = [];
+  
+  // Enriched Subcategories for the new dashboard view
+  enrichedSubcategories: EnrichedSubcategory[] = [];
+  filteredEnrichedSubcategories: EnrichedSubcategory[] = [];
+  selectedSubForDetail: EnrichedSubcategory | null = null;
+  showSubDetailModal = false;
+  assetsInSelectedSub: Asset[] = [];
   assetTypeChartData: ChartData<'bar', number[], string> = {
     labels: [],
     datasets: [{ data: [] }]
@@ -130,14 +163,72 @@ export class MasterDataComponent implements OnInit {
 
   async loadData(): Promise<void> {
     await this.loadAssetsFromService();
+    
+    // Fetch raw types and subcategories from DB to ensure empty ones are displayed
+    const dbTypes = await this.assetService.getAllAssetTypesCordys();
+    const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
+    
     const assetStats = this.assetService.getAssetStats();
 
-    this.assetTypes = assetStats.byType;
-    this.assetCategories = this.assetService.getCategories();
+    // Map stats by type name for quick lookup
+    const statsMap = new Map(assetStats.byType.map(s => [s.type, s]));
+
+    // Build the master list of asset types, filling in 0 count for new types
+    this.assetTypes = dbTypes.map(t => {
+      const name = t.type_name || t.name || t.TYPE_NAME || t.Type_name || '';
+      const id = t.type_id || t.Type_id || t.TYPE_ID || t.id || '';
+      if (statsMap.has(name)) {
+        const stats = statsMap.get(name)!;
+        return { ...stats, id };
+      } else {
+        return { type: name as any, count: 0, value: 0, id };
+      }
+    });
+
+    // Ensure types that exist in stats but somehow not in DB are included
+    assetStats.byType.forEach(s => {
+      if (!this.assetTypes.find(t => t.type === s.type)) {
+        this.assetTypes.push(s);
+      }
+    });
+
+    const serviceCategories = this.assetService.getCategories();
+    this.assetCategories = [...serviceCategories];
+    
+    // Augment assetCategories with empty subcategories from DB
+    dbSubCats.forEach(dbCat => {
+      const catName = dbCat.name || dbCat.sub_category_name || dbCat.SUB_CATEGORY_NAME || '';
+      const dbCatTypeId = dbCat.type_id || dbCat.Type_id || dbCat.TYPE_ID || '';
+      const typeObj = dbTypes.find(t => 
+        (t.type_id === dbCatTypeId) || 
+        (t.Type_id === dbCatTypeId) || 
+        (t.TYPE_ID === dbCatTypeId) ||
+        (dbCatTypeId && (t.type_name || t.TYPE_NAME) && dbCatTypeId === 'typ_' + (t.type_name || t.TYPE_NAME).toLowerCase().slice(0, 3)) ||
+        (dbCatTypeId && t.name && dbCatTypeId === 'typ_' + t.name.toLowerCase().slice(0, 3))
+      );
+      const typeName = typeObj ? (typeObj.type_name || typeObj.name || typeObj.TYPE_NAME) : dbCatTypeId;
+
+      let existingCategory = this.assetCategories.find(c => c.type === typeName && (c.name === catName || c.subCategories.includes(catName)));
+      if (!existingCategory) {
+         this.assetCategories.push({
+           id: dbCat.sub_category_id || `cat_db_${Math.random()}`,
+           name: catName,
+           type: typeName as any,
+           subCategories: [catName],
+           icon: 'category'
+         });
+      }
+    });
+
     this.assets = this.assetService.getAssets();
     this.assetCategoryGroups = this.buildAssetCategoryGroups();
+    this.enrichedSubcategories = this.buildEnrichedSubcategories();
+    this.filterSubcategories();
     this.assetTypeOptions = this.assetTypes.map(item => item.type);
-    this.assetSubCategoryOptions = Array.from(new Set(this.assets.map(a => a.subCategory))).filter(Boolean).sort();
+    this.assetSubCategoryOptions = Array.from(new Set([
+      ...this.assets.map(a => a.subCategory),
+      ...dbSubCats.map(c => c.name)
+    ])).filter(Boolean).sort();
     this.assetStatusOptions = Array.from(new Set(this.assets.map(a => a.status))).filter(Boolean).sort();
     this.projects = await this.getResolvedProjects();
     this.filterAssets();
@@ -194,16 +285,39 @@ export class MasterDataComponent implements OnInit {
     this.activeTab = tab;
   }
 
-  openAddAssetModal(): void {
-    this.showAddAssetModal = true;
-    this.newAsset = this.createEmptyAsset();
-    this.selectedCategory = '';
-    this.submittedAssetForm = false;
+  openAddModal(): void {
+    if (this.activeTab === 'types') {
+      this.newTypeName = '';
+      this.showAddTypeModal = true;
+    } else if (this.activeTab === 'categories') {
+      this.newSubCategoryName = '';
+      this.selectedTypeIdForSubCategory = '';
+      this.showAddSubCategoryModal = true;
+    } else {
+      this.showAddAssetModal = true;
+      this.newAsset = this.createEmptyAsset();
+      this.selectedCategory = '';
+      this.submittedAssetForm = false;
+    }
   }
 
   closeAddAssetModal(): void {
     this.showAddAssetModal = false;
     this.submittedAssetForm = false;
+  }
+
+  closeAddTypeModal(): void {
+    this.showAddTypeModal = false;
+  }
+
+  closeAddSubCategoryModal(): void {
+    this.showAddSubCategoryModal = false;
+  }
+
+  get addButtonText(): string {
+    if (this.activeTab === 'types') return 'Add Asset Type';
+    if (this.activeTab === 'categories') return 'Add Subcategory';
+    return 'Add Asset';
   }
 
   onAssetTypeChange(type: AssetType | ''): void {
@@ -235,37 +349,209 @@ export class MasterDataComponent implements OnInit {
     this.selectedCategory = categoryName;
   }
 
-  saveAsset(): void {
+  async saveAssetType(): Promise<void> {
+    if (!this.newTypeName.trim() || this.isSaving) return;
+    this.isSaving = true;
+    try {
+      // Simulate/Generate ID (e.g. typ_01, typ_06)
+      const nextId = `typ_${String(this.assetTypes.length + 1).padStart(2, '0')}`;
+      await this.assetService.addAssetType(nextId, this.newTypeName.trim());
+      this.closeAddTypeModal();
+      await this.loadData();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.isSaving = false;
+    }
+  }
+
+  async saveSubCategory(): Promise<void> {
+    if (!this.newSubCategoryName.trim() || !this.selectedTypeIdForSubCategory || this.isSaving) return;
+    this.isSaving = true;
+    try {
+      const nextId = `cat_${String(this.assetCategories.length + 1).padStart(3, '0')}`;
+      await this.assetService.addAssetSubCategory(nextId, this.newSubCategoryName.trim(), this.selectedTypeIdForSubCategory);
+      this.closeAddSubCategoryModal();
+      await this.loadData();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.isSaving = false;
+    }
+  }
+
+  async saveAsset(): Promise<void> {
     this.submittedAssetForm = true;
-    if (!this.newAsset.type || !this.newAsset.category || !this.newAsset.name || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || !this.newAsset.status) {
+    if (!this.newAsset.type || !this.newAsset.category || !this.newAsset.name || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || this.isSaving) {
       return;
     }
 
-    const selectedCategory = this.assetCategories.find(category => category.name === this.newAsset.category);
-    const nextId = `AST${String(this.assets.length + 1).padStart(3, '0')}`;
-    const nextTag = `${this.newAsset.type.slice(0, 2).toUpperCase()}-${this.newAsset.name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(this.assets.length + 1).padStart(3, '0')}`;
+    this.isSaving = true;
 
-    const asset: Asset = {
-      id: nextId,
-      assetTag: nextTag,
-      name: this.newAsset.name,
-      type: this.newAsset.type,
-      category: this.newAsset.category,
-      subCategory: selectedCategory?.subCategories[0] || 'Standard',
-      status: this.newAsset.status,
-      location: 'To Be Assigned',
-      purchaseDate: this.newAsset.purchaseDate,
-      warrantyExpiry: this.newAsset.warrantyExpiry,
-      vendor: 'Internal',
-      serialNumber: this.newAsset.serialNumber,
-      cost: 0,
-      condition: AssetCondition.GOOD
-    };
+    try {
+      const selectedCategory = this.assetCategories.find(category => category.name === this.newAsset.category);
+      const nextId = `asset_${String(this.assets.length + 1).padStart(3, '0')}`;
+      const nextTag = `${this.newAsset.type.slice(0, 2).toUpperCase()}-${this.newAsset.name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(this.assets.length + 1).padStart(3, '0')}`;
 
-    this.assetService.addAsset(asset);
-    this.closeAddAssetModal();
-    void this.loadData();
-    this.activeTab = 'assets';
+      const asset: Asset = {
+        id: nextId,
+        assetTag: nextTag,
+        name: this.newAsset.name,
+        type: this.newAsset.type,
+        category: this.newAsset.category,
+        subCategory: selectedCategory?.subCategories[0] || 'Standard',
+        status: 'Available',
+        location: 'To Be Assigned',
+        purchaseDate: this.newAsset.purchaseDate,
+        warrantyExpiry: this.newAsset.warrantyExpiry,
+        vendor: 'Internal',
+        serialNumber: this.newAsset.serialNumber,
+        cost: 0,
+        condition: AssetCondition.GOOD
+      };
+
+      // Securely fetch exact IDs from DB based on mapped name
+      const dbTypes = await this.assetService.getAllAssetTypesCordys();
+      const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
+      
+      const matchedType = dbTypes.find(t => (t.type_name === this.newAsset.type || t.TYPE_NAME === this.newAsset.type || t.name === this.newAsset.type));
+      const realTypeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.TYPE_ID || matchedType.id) : `typ_${this.newAsset.type.toLowerCase().slice(0, 3)}`;
+
+      const matchedSubCat = dbSubCats.find(c => (c.name === selectedCategory?.name || c.sub_category_name === selectedCategory?.name || c.SUB_CATEGORY_NAME === selectedCategory?.name));
+      const realSubCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : (selectedCategory?.id || `cat_999`);
+
+      await this.assetService.addAssetCordys(asset, realTypeId, realSubCatId);
+
+      this.closeAddAssetModal();
+      await this.loadData();
+      this.activeTab = 'assets';
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.isSaving = false;
+    }
+  }
+
+  async deleteAssetType(typeId: string | undefined): Promise<void> {
+    if (!typeId) return;
+    
+    // Find the type object to get its name
+    const typeObj = this.assetTypes.find(t => t.id === typeId);
+    if (typeObj) {
+      // Check if any subcategories belong to this type string
+      const hasSubCategories = this.assetCategories.some(cat => cat.type === typeObj.type);
+      if (hasSubCategories) {
+        this.openConfirmModal(
+          'Cannot Delete Type',
+          `This Asset Type ('${typeObj.type}') has active Subcategories mapped to it. Please delete all related subcategories first.`,
+          () => {},
+          true // isWarning only
+        );
+        return;
+      }
+    }
+
+    this.openConfirmModal(
+      'Delete Asset Type',
+      'Are you sure you want to delete this Asset Type? This action cannot be undone.',
+      async () => {
+        this.isSaving = true;
+        try {
+          await this.assetService.deleteAssetTypeCordys(typeId);
+          await this.loadData();
+        } catch (e: any) {
+          if (e?.message?.includes('foreign key constraint') || e?.message?.includes('Constraint')) {
+            alert('Integrity Error: Cannot delete Asset Type because there are dependent records in the database.');
+          } else {
+            alert('Failed to delete Asset Type.');
+          }
+          console.error(e);
+        } finally {
+          this.isSaving = false;
+        }
+      }
+    );
+  }
+
+  async deleteSubCategory(subCatId: string): Promise<void> {
+    const subCat = this.assetCategories.find(c => c.id === subCatId);
+    if (subCat) {
+      // Check if any assets belong to this subcategory (matches name and type)
+      const hasAssets = this.assets.some(a => 
+        (String(a.category || a.subCategory).toLowerCase() === subCat.name.toLowerCase()) && 
+        a.type === subCat.type
+      );
+
+      if (hasAssets) {
+        this.openConfirmModal(
+          'Cannot Delete Subcategory',
+          `The subcategory '${subCat.name}' contains active Assets. Please delete or re-assign all assets belonging to this category first.`,
+          () => {},
+          true // isWarning only
+        );
+        return;
+      }
+    }
+
+    this.openConfirmModal(
+      'Delete Subcategory',
+      'Are you sure you want to delete this subcategory?',
+      async () => {
+        this.isSaving = true;
+        try {
+          await this.assetService.deleteAssetSubCategoryCordys(subCatId);
+          await this.loadData();
+        } catch (e: any) {
+          if (e?.message?.includes('foreign key constraint') || e?.message?.includes('Constraint')) {
+            alert('Integrity Error: Cannot delete Subcategory because there are assets attached to it in the system.');
+          } else {
+            alert('Failed to delete Subcategory.');
+          }
+          console.error(e);
+        } finally {
+          this.isSaving = false;
+        }
+      }
+    );
+  }
+
+  async deleteAsset(assetId: string): Promise<void> {
+    this.openConfirmModal(
+      'Delete Asset',
+      'Are you sure you want to permanently delete this asset record?',
+      async () => {
+        this.isSaving = true;
+        try {
+          await this.assetService.deleteAssetCordys(assetId);
+          await this.loadData();
+        } catch (e: any) {
+          alert('Failed to delete Asset.');
+          console.error(e);
+        } finally {
+          this.isSaving = false;
+        }
+      }
+    );
+  }
+
+  openConfirmModal(title: string, message: string, callback: () => void, isWarning: boolean = false) {
+    this.confirmTitle = title;
+    this.confirmMessage = message;
+    this.onConfirmCallback = callback;
+    this.showConfirmAction = !isWarning;
+    this.showConfirmModal = true;
+  }
+
+  closeConfirmModal() {
+    this.showConfirmModal = false;
+    this.onConfirmCallback = null;
+  }
+
+  handleConfirm() {
+    if (this.onConfirmCallback) {
+      this.onConfirmCallback();
+    }
+    this.closeConfirmModal();
   }
 
   isFieldInvalid(field: keyof typeof this.newAsset): boolean {
@@ -316,7 +602,7 @@ export class MasterDataComponent implements OnInit {
     this.currentPage--;
   }
 
-  getAssetTypeIcon(type: AssetType): string {
+  getAssetTypeIcon(type: AssetType | string): string {
     const icons: Record<string, string> = {
       [AssetType.HARDWARE]: 'laptop',
       [AssetType.SOFTWARE]: 'code',
@@ -327,7 +613,7 @@ export class MasterDataComponent implements OnInit {
     return icons[type] || 'category';
   }
 
-  getAssetTypeColor(type: AssetType): string {
+  getAssetTypeColor(type: AssetType | string): string {
     const colors: Record<string, string> = {
       [AssetType.HARDWARE]: '#3b82f6',
       [AssetType.SOFTWARE]: '#8b5cf6',
@@ -338,7 +624,7 @@ export class MasterDataComponent implements OnInit {
     return colors[type] || '#94a3b8';
   }
 
-  getTypeBadgeClass(type: AssetType): string {
+  getTypeBadgeClass(type: AssetType | string): string {
     const map: Record<string, string> = {
       [AssetType.HARDWARE]: 'badge-blue',
       [AssetType.SOFTWARE]: 'badge-green',
@@ -403,7 +689,7 @@ export class MasterDataComponent implements OnInit {
   }
 
   private buildAssetCategoryGroups(): AssetCategoryGroup[] {
-    const categoryMap = new Map<AssetType, AssetCategory[]>();
+    const categoryMap = new Map<AssetType | string, AssetCategory[]>();
 
     this.assetCategories.forEach(category => {
       const categories = categoryMap.get(category.type) || [];
@@ -412,13 +698,77 @@ export class MasterDataComponent implements OnInit {
     });
 
     return this.assetTypes
-      .filter(item => categoryMap.has(item.type))
       .map(item => ({
         type: item.type,
-        icon: categoryMap.get(item.type)?.[0]?.icon || 'category',
+        icon: categoryMap.get(item.type)?.[0]?.icon || this.getAssetTypeIcon(item.type),
         categories: categoryMap.get(item.type) || [],
         assetCount: item.count
       }));
+  }
+
+  private buildEnrichedSubcategories(): EnrichedSubcategory[] {
+    return this.assetCategories.map(cat => {
+      const subAssets = this.assets.filter(a => {
+        const assetCatName = String(a.category || a.subCategory || '').trim().toLowerCase();
+        const catSearchName = String(cat.name || '').trim().toLowerCase();
+        const assetTypeName = String(a.type || '').trim().toLowerCase();
+        const catTypeName = String(cat.type || '').trim().toLowerCase();
+        
+        return assetCatName === catSearchName && assetTypeName === catTypeName;
+      });
+      
+      const total = subAssets.length;
+      const available = subAssets.filter(a => String(a.status).toLowerCase().includes('available')).length;
+      const assigned = subAssets.filter(a => String(a.status).toLowerCase() === 'allocated').length;
+      const utilization = total > 0 ? Math.round((assigned / total) * 100) : 0;
+      const value = subAssets.reduce((sum, a) => sum + (Number(a.cost) || 0), 0);
+      
+      // Calculate warranty health (active vs expired)
+      const now = new Date();
+      const healthy = subAssets.filter(a => {
+        if (!a.warrantyExpiry) return false;
+        return new Date(a.warrantyExpiry) > now;
+      }).length;
+      const warrantyHealth = total > 0 ? Math.round((healthy / total) * 100) : 100;
+
+      return {
+        id: cat.id,
+        name: cat.name,
+        type: cat.type,
+        icon: cat.icon || this.getAssetTypeIcon(cat.type),
+        totalCount: total,
+        availableCount: available,
+        assignedCount: assigned,
+        utilizationRate: utilization,
+        totalValue: value,
+        warrantyHealth: warrantyHealth
+      };
+    }).sort((a, b) => b.totalCount - a.totalCount);
+  }
+
+  filterSubcategories() {
+    if (!this.selectedSubCategoryTypeFilter) {
+      this.filteredEnrichedSubcategories = [...this.enrichedSubcategories];
+    } else {
+      this.filteredEnrichedSubcategories = this.enrichedSubcategories.filter(sub => 
+        String(sub.type).trim().toLowerCase() === String(this.selectedSubCategoryTypeFilter).trim().toLowerCase()
+      );
+    }
+  }
+
+  openSubDetails(sub: EnrichedSubcategory) {
+    this.selectedSubForDetail = sub;
+    this.assetsInSelectedSub = this.assets.filter(a => 
+      String(a.category || a.subCategory).toLowerCase() === String(sub.name).toLowerCase() && 
+      a.type === sub.type
+    );
+    this.showSubDetailModal = true;
+  }
+
+  closeSubDetails() {
+    this.showSubDetailModal = false;
+    this.selectedSubForDetail = null;
+    this.assetsInSelectedSub = [];
   }
 
   private createEmptyAsset(): AddAssetForm {
@@ -428,8 +778,7 @@ export class MasterDataComponent implements OnInit {
       name: '',
       serialNumber: '',
       purchaseDate: '',
-      warrantyExpiry: '',
-      status: ''
+      warrantyExpiry: ''
     };
   }
 }

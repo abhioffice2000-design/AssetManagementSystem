@@ -4,13 +4,6 @@
       <h2 class="page-title">Master Data</h2>
       <p class="page-subtitle">Manage asset types, categories, assets and project masters</p>
     </div>
-    <div class="master-actions">
-
-      <button *ngIf="false" class="btn btn-primary add-asset-btn" (click)="openAddAssetModal()">
-        <span class="material-icons-outlined">add</span>
-        Add Asset
-      </button>
-    </div>
   </div>
 
   <div class="grid grid-3 gap-16 mb-24">
@@ -24,17 +17,23 @@
   </div>
 
   <div class="tab-bar mb-24">
-    <button class="tab-btn" [class.active]="activeTab === 'types'" (click)="setTab('types')">
-      <span class="material-icons-outlined">category</span>
-      Asset Types ({{ assetTypes.length }})
-    </button>
-    <button class="tab-btn" [class.active]="activeTab === 'categories'" (click)="setTab('categories')">
-      <span class="material-icons-outlined">dashboard</span>
-      Subcategories ({{ assetCategories.length }})
-    </button>
-    <button class="tab-btn" [class.active]="activeTab === 'assets'" (click)="setTab('assets')">
-      <span class="material-icons-outlined">inventory_2</span>
-      Assets ({{ assets.length }})
+    <div class="flex gap-8">
+      <button class="tab-btn" [class.active]="activeTab === 'types'" (click)="setTab('types')">
+        <span class="material-icons-outlined">category</span>
+        Asset Types ({{ assetTypes.length }})
+      </button>
+      <button class="tab-btn" [class.active]="activeTab === 'categories'" (click)="setTab('categories')">
+        <span class="material-icons-outlined">dashboard</span>
+        Subcategories ({{ assetCategories.length }})
+      </button>
+      <button class="tab-btn" [class.active]="activeTab === 'assets'" (click)="setTab('assets')">
+        <span class="material-icons-outlined">inventory_2</span>
+        Assets ({{ assets.length }})
+      </button>
+    </div>
+    <button class="btn btn-primary add-asset-btn" (click)="openAddModal()">
+      <span class="material-icons-outlined">add</span>
+      {{ addButtonText }}
     </button>
   </div>
 
@@ -83,8 +82,12 @@
                 <div class="progress-bar" [style.width.%]="getAssetTypeShare(item.count)" [style.background-color]="getAssetTypeColor(item.type)"></div>
               </div>
               
-              <div class="item-footer">
+              <div class="item-footer" style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="item-count">{{ item.count }} assets</span>
+                <button class="btn btn-sm btn-outline-danger" (click)="deleteAssetType(item.id)">
+                  <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                  Delete
+                </button>
               </div>
             </div>
           </div>
@@ -94,28 +97,54 @@
   </div>
 
   <div *ngIf="activeTab === 'categories'" class="animate-slide-up">
+    <div class="tab-header-actions mb-16">
+      <div class="filter-group">
+        <label class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">Filter by Asset Type</label>
+        <select class="form-control asset-filter" [(ngModel)]="selectedSubCategoryTypeFilter" (ngModelChange)="filterSubcategories()">
+          <option value="">All Types</option>
+          <option *ngFor="let type of assetTypeOptions" [value]="type">{{ type }}</option>
+        </select>
+      </div>
+    </div>
+
     <div class="grid grid-3 gap-16">
-      <div class="card category-card" *ngFor="let group of assetCategoryGroups">
+      <div class="card category-card enriched-card" *ngFor="let sub of filteredEnrichedSubcategories" (click)="openSubDetails(sub)">
         <div class="card-body">
           <div class="master-card-head">
-            <div class="master-icon purple">
-              <span class="material-icons-outlined">{{ group.icon }}</span>
+            <div class="master-icon" [style.background-color]="getAssetTypeColor(sub.type) + '15'" [style.color]="getAssetTypeColor(sub.type)">
+              <span class="material-icons-outlined">{{ sub.icon }}</span>
             </div>
-            <span class="badge" [ngClass]="getTypeBadgeClass(group.type)">{{ group.type }}</span>
+            <div class="actions-group">
+               <span class="badge" [ngClass]="getTypeBadgeClass(sub.type)">{{ sub.type }}</span>
+               <button class="btn-icon-sm ml-8" (click)="$event.stopPropagation(); deleteSubCategory(sub.id)" title="Delete Subcategory">
+                  <span class="material-icons-outlined">delete</span>
+               </button>
+            </div>
           </div>
-          <h4 class="category-name">{{ group.type }}</h4>
-          <p class="category-meta">{{ group.categories.length }} subcategories | {{ group.assetCount }} assets</p>
-          <div class="chip-list">
-            <span class="chip" *ngFor="let category of group.categories">
-              {{ category.name }} ({{ getCategoryAssetCount(category) }})
-            </span>
+          <h4 class="category-name">{{ sub.name }}</h4>
+          
+          <div class="stats-row mt-16 mb-16">
+            <div class="stat-mini">
+              <span class="stat-val">{{ sub.totalCount }}</span>
+              <span class="stat-lab">Total</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-mini">
+              <span class="stat-val text-primary">{{ sub.assignedCount }}</span>
+              <span class="stat-lab">Assigned</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-mini">
+              <span class="stat-val text-success">{{ sub.availableCount }}</span>
+              <span class="stat-lab">Available</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div class="empty-state" *ngIf="assetCategoryGroups.length === 0">
+    <div class="empty-state" *ngIf="filteredEnrichedSubcategories.length === 0">
       <span class="material-icons-outlined">dashboard</span>
-      No subcategories found
+      No subcategories found for the selected type
     </div>
   </div>
 
@@ -149,6 +178,7 @@
                 <th>Status</th>
                 <th>Warranty Expiry</th>
                 <th>Purchase Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -166,9 +196,15 @@
                 <td><span class="badge" [ngClass]="getStatusBadgeClass(asset.status)">{{ formatAssetStatus(asset.status) }}</span></td>
                 <td>{{ asset.warrantyExpiry | date:'mediumDate' }}</td>
                 <td>{{ asset.purchaseDate | date:'mediumDate' }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-danger" (click)="deleteAsset(asset.id)">
+                    <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                    Delete
+                  </button>
+                </td>
               </tr>
               <tr *ngIf="filteredAssets.length === 0">
-                <td colspan="6" class="empty-state">
+                <td colspan="7" class="empty-state">
                   <span class="material-icons-outlined">search_off</span>
                   No assets found
                 </td>
@@ -261,20 +297,141 @@
           <div class="field-error" *ngIf="isFieldInvalid('warrantyExpiry')">Warranty expiry is required.</div>
         </div>
 
-        <div class="form-group">
-          <label>Status</label>
-          <select class="form-control" [(ngModel)]="newAsset.status">
-            <option value="">Select status</option>
-            <option *ngFor="let status of assetStatusOptions" [value]="status">{{ formatAssetStatus(status) }}</option>
-          </select>
-          <div class="field-error" *ngIf="isFieldInvalid('status')">Please select a status.</div>
-        </div>
       </div>
     </div>
 
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeAddAssetModal()">Cancel</button>
-      <button class="btn btn-primary" (click)="saveAsset()">Save Asset</button>
+      <button class="btn btn-primary" (click)="saveAsset()">{{ isSaving ? 'Saving...' : 'Save Asset' }}</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="showAddTypeModal">
+  <div class="modal-container animate-slide-up asset-modal" style="max-width: 500px;">
+    <div class="modal-header">
+      <h3>Add Asset Type</h3>
+      <button class="btn-icon" (click)="closeAddTypeModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-16">
+        <label>Type Name</label>
+        <input type="text" class="form-control" [(ngModel)]="newTypeName" placeholder="Enter asset type name (e.g. Hardware)">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeAddTypeModal()">Cancel</button>
+      <button class="btn btn-primary" [disabled]="!newTypeName.trim() || isSaving" (click)="saveAssetType()">
+        {{ isSaving ? 'Saving...' : 'Save Asset Type' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" *ngIf="showAddSubCategoryModal">
+  <div class="modal-container animate-slide-up asset-modal" style="max-width: 500px;">
+    <div class="modal-header">
+      <h3>Add Subcategory</h3>
+      <button class="btn-icon" (click)="closeAddSubCategoryModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-16">
+        <label>Asset Type</label>
+        <select class="form-control" [(ngModel)]="selectedTypeIdForSubCategory">
+          <option value="">Select Asset Type</option>
+          <option *ngFor="let bt of assetTypes" [value]="bt.id || 'typ_' + bt.type.toLowerCase().slice(0, 3)">{{ bt.type }}</option>
+        </select>
+      </div>
+      <div class="form-group mb-16">
+        <label>Subcategory Name</label>
+        <input type="text" class="form-control" [(ngModel)]="newSubCategoryName" placeholder="Enter subcategory name (e.g. Laptops)">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeAddSubCategoryModal()">Cancel</button>
+      <button class="btn btn-primary" [disabled]="!newSubCategoryName.trim() || !selectedTypeIdForSubCategory || isSaving" (click)="saveSubCategory()">
+        {{ isSaving ? 'Saving...' : 'Save Subcategory' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Subcategory Detail Modal (Drill-down) -->
+<div class="modal-overlay" *ngIf="showSubDetailModal && selectedSubForDetail">
+  <div class="modal-container animate-slide-up detail-modal" style="max-width: 1100px;">
+    <div class="modal-header enterprise-header">
+      <div class="flex items-center gap-16">
+         <div class="detail-type-icon" [style.background-color]="getAssetTypeColor(selectedSubForDetail.type)">
+            <span class="material-icons-outlined text-white">{{ selectedSubForDetail.icon }}</span>
+         </div>
+         <div>
+            <h3 class="m-0">{{ selectedSubForDetail.name }}</h3>
+            <span class="enterprise-badge">Enterprise Insights</span>
+         </div>
+      </div>
+      <button class="btn-icon" (click)="closeSubDetails()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body p-0">
+      <!-- Asset List -->
+      <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+        <table class="table table-hover mb-0">
+          <thead class="sticky-top">
+            <tr>
+              <th>Asset Tag</th>
+              <th>Name</th>
+              <th>Serial Number</th>
+              <th>Status</th>
+              <th>Warranty</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let asset of assetsInSelectedSub">
+              <td><span class="tag-label">{{ asset.assetTag }}</span></td>
+              <td><strong>{{ asset.name }}</strong></td>
+              <td><code class="text-xs">{{ asset.serialNumber }}</code></td>
+              <td><span class="badge" [ngClass]="getStatusBadgeClass(asset.status)">{{ formatAssetStatus(asset.status) }}</span></td>
+              <td>
+                <span class="text-xs" [class.text-danger]="selectedSubForDetail.warrantyHealth < 100">
+                   {{ asset.warrantyExpiry | date:'mediumDate' }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-primary" (click)="closeSubDetails()">Done</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" *ngIf="showConfirmModal">
+  <div class="modal-container animate-slide-up confirmation-modal" style="max-width: 450px;">
+    <div class="modal-header">
+      <div class="header-icon-danger">
+        <span class="material-icons-outlined">warning</span>
+      </div>
+      <h3>{{ confirmTitle }}</h3>
+      <button class="btn-icon" (click)="closeConfirmModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body text-center py-24">
+      <p class="confirm-message" style="margin: 0; color: #64748b; font-size: 1.1rem; line-height: 1.5;">{{ confirmMessage }}</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeConfirmModal()">{{ showConfirmAction ? 'Cancel' : 'Close' }}</button>
+      <button class="btn btn-danger" (click)="handleConfirm()" *ngIf="showConfirmAction">
+        {{ isSaving ? 'Processing...' : confirmBtnText }}
+      </button>
     </div>
   </div>
 </div>
