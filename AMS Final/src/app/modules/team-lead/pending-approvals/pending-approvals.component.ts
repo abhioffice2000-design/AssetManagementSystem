@@ -88,7 +88,7 @@ export class PendingApprovalsComponent implements OnInit {
             requesterId: reqItem.user_id || userInfo.user_id || '',
             requesterName: userInfo.name || '',
             requesterTeam: (userInfo.m_projects && userInfo.m_projects.project_name) ? userInfo.m_projects.project_name : (userInfo.team || ''),
-            category: subCategory.sub_category || reqItem.asset_name || assetTypeInfo.type_name || reqItem.asset_type || '',
+            category: reqItem.temp1,
             assetType: this.getAssetType(reqItem, assetTypeInfo) || subCategory.name || reqItem.asset_type || '',
             description: reqItem.purpose || reqItem.reason || '',
             urgency: reqItem.urgency || '',

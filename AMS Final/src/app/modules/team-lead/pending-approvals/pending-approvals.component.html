@@ -38,8 +38,8 @@
                 [class.selected]="selectedRequest?.id === req.id">
               <td><strong>{{req.requestNumber}}</strong></td>
               <td>{{req.requesterName}}</td>
-              <td>{{req.category}}</td>
               <td>{{req.assetType}}</td>
+              <td>{{req.category}}</td>
               <td>
                 <span class="badge" 
                       [ngClass]="{
@@ -119,12 +119,12 @@
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <label style="font-size: 13px; font-weight: 500; color: #666;">Asset Type</label>
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Category</label>
         <input type="text" [value]="selectedRequest.assetType" readonly 
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <label style="font-size: 13px; font-weight: 500; color: #666;">Category</label>
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Asset Name</label>
         <input type="text" [value]="selectedRequest.category" readonly 
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box;">
       </div>

@@ -307,7 +307,6 @@ export class AssetRequestsComponent implements OnInit {
               t_request_approvals: {
                 status: "Approved",
                 remarks: this.actionComments,
-                reason: this.actionComments,
               }
 
             }
@@ -346,7 +345,6 @@ export class AssetRequestsComponent implements OnInit {
                 role: "Asset Allocation Team",
                 status: "Pending",
                 remarks: this.actionComments,
-                reason: this.actionComments,
                 temp1: this.selectedRequest.assignedAssetId,
 
               }
@@ -390,7 +388,6 @@ export class AssetRequestsComponent implements OnInit {
                 t_asset_return_approvals: {
                   status: "Approved",
                   remarks: this.actionComments,
-                  reason: this.actionComments,
                 }
               }
             }
@@ -411,7 +408,6 @@ export class AssetRequestsComponent implements OnInit {
                     role: "Allocation Team Member",
                     status: "Pending",
                     remarks: this.actionComments,
-                    reason: this.actionComments,
                   }
                 }
               }
@@ -528,8 +524,7 @@ export class AssetRequestsComponent implements OnInit {
           new: {
             t_request_approvals: {
               status: 'Approved',
-              remarks: this.actionComments || '',
-              reason: this.actionComments || ''
+              remarks: this.actionComments || ''
             }
           }
         }
@@ -578,8 +573,7 @@ export class AssetRequestsComponent implements OnInit {
           new: {
             t_request_approvals: {
               status: 'Rejected',
-              remarks: this.actionComments || '',
-              reason: this.actionComments || ''
+              remarks: this.actionComments || ''
             }
           }
         }
