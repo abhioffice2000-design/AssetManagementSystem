@@ -5,6 +5,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
+
 
 
 @Component({
@@ -55,8 +57,10 @@ export class AssetRequestsComponent implements OnInit {
     private authService: AuthService,
     private userService: UserService,
     private assetService: AssetService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private mailService: MailService
   ) { }
+
 
   ngOnInit(): void {
     this.loadAllData();
@@ -360,6 +364,20 @@ export class AssetRequestsComponent implements OnInit {
           Action: 'COMPLETE'
         }
         await this.requestService.completeUserTask(req4 as any)
+        
+        // Find allocation team member name
+        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
+        const memberName = member ? member.name : 'Allocation Team';
+
+        this.mailService.sendAssetManagerStatusUpdate({
+          requestId: this.selectedRequest.id,
+          employeeName: this.selectedRequest.requesterName,
+          status: 'Approved',
+          managerName: currentUser.name,
+          remarks: this.actionComments,
+          allocationMemberName: memberName,
+          assetName: this.selectedRequest.assetType
+        });
 
         this.notificationService.showToast(`Request ${this.selectedRequest.id} approved and routed for allocation.`, 'success');
 
@@ -459,7 +477,16 @@ export class AssetRequestsComponent implements OnInit {
             ApprovalStage.ASSET_MANAGER
           );
           this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
+          
+          this.mailService.sendAssetManagerStatusUpdate({
+            requestId: this.selectedRequest.id,
+            employeeName: this.selectedRequest.requesterName,
+            status: 'Rejected',
+            managerName: currentUser.name,
+            remarks: this.actionComments
+          });
         }
+
 
       }
 
@@ -558,7 +585,16 @@ export class AssetRequestsComponent implements OnInit {
         };
         await this.requestService.completeUserTask(taskPayload as any);
       }
+      
+      this.mailService.sendFinalManagerConfirmationNotification({
+        requestId: this.selectedRequest.id,
+        employeeName: this.selectedRequest.requesterName,
+        managerName: currentUser.name,
+        assetName: this.selectedRequest.assetType
+      });
+
       this.notificationService.showToast(`Request ${this.selectedRequest.id} confirmed successfully.`, 'success');
+
 
 
     } else {
@@ -599,6 +635,15 @@ export class AssetRequestsComponent implements OnInit {
       console.log('[Confirmation] Reject payload (step 2):', rejectRequestPayload);
       await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
       this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
+      
+      this.mailService.sendAssetManagerStatusUpdate({
+        requestId: this.selectedRequest.id,
+        employeeName: this.selectedRequest.requesterName,
+        status: 'Rejected',
+        managerName: currentUser.name,
+        remarks: this.actionComments || 'Rejected by Asset Manager'
+      });
+
     }
 
 

@@ -53,11 +53,14 @@ export class MyAssetsComponent implements OnInit {
     try {
       // Fetch asset types first to build the lookup map
       const types = await this.assetService.getAllAssetTypesCordys();
-      this.assetTypes = types.map((t: any) => ({
-        type_id: t.type_id || '',
-        type_name: t.type_name || t.name || t.type_id || ''
-      }));
+      this.assetTypes = types
+        .map((t: any) => ({
+          type_id: t.type_id || '',
+          type_name: t.type_name || t.name || t.type_id || ''
+        }))
+        .filter(t => t.type_name && t.type_name.toLowerCase() !== 'infrastructure');
       this.assetTypes.forEach(t => this.typeMap[t.type_id] = t.type_name);
+
 
       this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
       

@@ -29,7 +29,7 @@
         (ngModelChange)="onTypeFilterChange()"
       >
         <option value="">All Types</option>
-        <option *ngFor="let typeName of uniqueAssetTypes" [value]="typeName">{{ typeName }}</option>
+        <option *ngFor="let type of assetTypes" [value]="type.type_name">{{ type.type_name }}</option>
       </select>
     </div>
     <button class="btn btn-sm btn-clear-filters" *ngIf="searchText || selectedTypeFilter" (click)="clearFilters()">
@@ -46,7 +46,7 @@
       <thead>
         <tr>
           <th>Type</th>
-          <th>Name</th>
+          <th>Subcategory Name</th>
           <th>Assigned Date</th>
           <th>Warranty Expiry</th>
           <th>Action</th>
