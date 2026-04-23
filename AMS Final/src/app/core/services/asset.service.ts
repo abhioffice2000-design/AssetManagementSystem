@@ -568,12 +568,22 @@ export class AssetService {
 
         console.log('[AssetService Debug] Processing allocation item:', actualItem);
 
-        // If the allocation entry is missing basic details, fetch the full asset object from m_assets
-        if ((!actualItem.Asset_name && !actualItem.asset_name && !actualItem.name) && assetId) {
-          console.log(`[AssetService Debug] Fetching details for Asset ID: ${assetId}`);
-          const detailedAsset = await this.getAssetDetails(assetId);
+        const isMissingName = !actualItem.Asset_name && !actualItem.asset_name && !actualItem.name;
+        const isMissingType = !actualItem.Asset_type && !actualItem.asset_type && !actualItem.type;
+        const isMissingCategory = !actualItem.Category && !actualItem.category && !actualItem.Sub_category && !actualItem.sub_category && !actualItem.subCategory;
+
+        // If the allocation entry is missing basic details, type, or category, fetch the full asset object
+        if ((isMissingName || isMissingType || isMissingCategory) && assetId) {
+          console.log(`[AssetService Debug] Fetching details for Asset ID: ${assetId} because core fields are missing`);
+          // Fast lookup in memory first if available
+          let detailedAsset = this.assets.find(a => a.id === assetId || a.assetId === assetId);
+          
+          if (!detailedAsset) {
+             detailedAsset = await this.getAssetDetails(assetId) || undefined;
+          }
+
           if (detailedAsset) {
-            console.log('[AssetService Debug] Detailed asset fetched:', detailedAsset);
+            console.log('[AssetService Debug] Detailed asset fetched/found:', detailedAsset);
             // Merge allocation info with asset details, ensuring allocation date wins
             return {
               ...detailedAsset,
@@ -629,15 +639,15 @@ export class AssetService {
       const row = data.new ? data.new : (data.old ? data.old : data);
       const item = row.m_assets || row;
 
-      let typeName = item.Asset_type || item.asset_type || item.type || 'Hardware';
+      let typeName = item.type_id || item.Type_id || item.Asset_type || item.asset_type || item.type || 'Hardware';
 
       return {
         id: item.Asset_id || item.asset_id || item.id,
         assetTag: item.Asset_tag || item.asset_tag || item.assetTag || 'N/A',
         name: item.Asset_name || item.asset_name || item.name || 'Unknown Asset',
         type: typeName as AssetType,
-        category: item.Category || item.category || 'N/A',
-        subCategory: item.Sub_category || item.sub_category || item.subCategory || 'N/A',
+        category: item.sub_category_id || item.Sub_category_id || item.Category || item.category || 'N/A',
+        subCategory: item.sub_category_id || item.Sub_category_id || item.Sub_category || item.sub_category || 'N/A',
         status: (item.Status || item.status) as AssetStatus || AssetStatus.ALLOCATED,
         location: item.Location || item.location || 'N/A',
         purchaseDate: item.Purchase_date || item.purchase_date || item.purchaseDate || '',

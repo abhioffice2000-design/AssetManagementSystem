@@ -1,9 +1,13 @@
 <div class="page-container">
-  <div class="page-header mb-24">
+  <div class="page-header mb-24" style="display: flex; justify-content: space-between; align-items: center;">
     <div class="header-content">
       <h1 class="page-title">My Requests</h1>
       <p class="page-subtitle">Track the status of your asset allocations, returns, and warranty requests.</p>
     </div>
+    <button class="btn btn-primary" routerLink="/employee/request-asset" style="display: flex; align-items: center; gap: 8px;">
+      <span class="material-icons-outlined">add_circle_outline</span>
+      New Asset Request
+    </button>
   </div>
 
   <div class="card p-0 overflow-hidden">
@@ -12,7 +16,7 @@
         <tr>
           <th>Request ID</th>
           <th>Type</th>
-          <th>Asset Detail</th>
+          <th>Subcategory</th>
           <th>Date</th>
           <th>Urgency</th>
           <th>Status</th>
@@ -31,7 +35,6 @@
           <td>
             <div class="asset-cell">
               <span class="asset-cat">{{ req.category }}</span>
-              <span class="asset-sub" *ngIf="req.subCategory && req.subCategory !== req.category">{{ req.subCategory }}</span>
             </div>
           </td>
           <td>{{ req.requestDate | date:'mediumDate' }}</td>
@@ -95,7 +98,7 @@
           <span class="value">{{ selectedRequest.requestNumber }}</span>
         </div>
         <div class="summary-item">
-          <label>ASSET DETAIL</label>
+          <label>SUBCATEGORY</label>
           <span class="value">{{ selectedRequest.category }}</span>
         </div>
         <div class="summary-item">
@@ -131,17 +134,13 @@
 
           <div class="step-content">
             <div class="step-header">
-              <h4 class="step-name">{{ step.name }}</h4>
+              <h4 class="step-name highlighted" style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ step.name }}</h4>
               <span class="step-status">{{ step.status }}</span>
             </div>
             
             <div class="step-details card-sub p-12 mt-8">
-              <div class="detail-row">
-                <span class="material-icons-outlined">person</span>
-                <span class="detail-text">{{ step.approverName }}</span>
-              </div>
-              <div class="detail-row mt-4" *ngIf="step.timestamp">
-                <span class="material-icons-outlined">schedule</span>
+              <div class="detail-row" *ngIf="step.timestamp">
+                <span class="material-icons-outlined" style="font-size: 16px;">schedule</span>
                 <span class="detail-text">{{ step.timestamp | date:'medium' }}</span>
                 <span class="time-ago ml-8" *ngIf="step.isCompleted">{{ step.timestamp | date:'hh:mm a' }}</span>
               </div>

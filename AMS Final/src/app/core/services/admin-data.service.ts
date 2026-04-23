@@ -112,6 +112,7 @@ export interface AssetRequest {
   emailApproval: boolean;
   document: string;
   createdAt: string;
+  subCategory: string;
 }
 
 interface UserMasterRecord {
@@ -238,6 +239,30 @@ export class AdminDataService {
     await this.heroService.ajax(null, null, {}, addProjectSoap);
   }
 
+  async updateProjectStatus(projectId: string, status: string): Promise<void> {
+    const updateProjectSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_projects xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_projects qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <project_id>${this.xmlEscape(projectId)}</project_id>
+          </m_projects>
+        </old>
+        <new>
+          <m_projects qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <temp1>${this.xmlEscape(status)}</temp1>
+          </m_projects>
+        </new>
+      </tuple>
+    </UpdateM_projects>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, updateProjectSoap);
+  }
+
   async addUser(user: {
     userId: string;
     name: string;
@@ -257,15 +282,7 @@ export class AdminDataService {
       throw new Error('User ID, name, email, and role are required.');
     }
 
-    let cordysRole = 'AMS_Employee';
-    switch (roleId) {
-      case 'rol_01': cordysRole = 'AMS_Admin'; break;
-      case 'rol_02': cordysRole = 'AMS_TeamLead'; break;
-      case 'rol_03': cordysRole = 'AMS_Employee'; break;
-      case 'rol_04': cordysRole = 'AMS_AssetManager'; break;
-      case 'rol_05': cordysRole = 'AMS_AssetAllocationTeam'; break;
-      default: cordysRole = 'AMS_Employee';
-    }
+    const cordysRole = this.mapRoleIdToCordysRole(roleId);
     const createUserSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -348,6 +365,38 @@ export class AdminDataService {
       assetManager: this.normalizeSoapNullable(assetTypeData.asset_manager, ''),
       teamMembers: this.normalizeSoapNullable(assetTypeData.team_members, '')
     })) as AssetTypeAssignment[];
+  }
+
+  async getProjectById(projectId: string): Promise<Project | undefined> {
+    const projects = await this.getProjectsFromDB();
+    const pid = (projectId || '').toLowerCase().trim();
+    return projects.find(p => 
+      (p.id || '').toLowerCase().trim() === pid || 
+      (p.projectCode || '').toLowerCase().trim() === pid
+    );
+  }
+
+  async getAssignmentByAssetType(assetType: string): Promise<AssetTypeAssignment | undefined> {
+    const assignments = await this.getAssetTypeAssignmentDetails();
+    const normalizedType = (assetType || '').toLowerCase().trim();
+    
+    // 1. Try exact or ID match
+    let found = assignments.find(a => 
+      a.name.toLowerCase() === normalizedType || 
+      a.id.toLowerCase() === normalizedType ||
+      normalizedType.includes(a.name.toLowerCase()) ||
+      a.name.toLowerCase().includes(normalizedType)
+    );
+
+    // 2. If no match, try keyword matching for Software/Hardware
+    if (!found) {
+       found = assignments.find(a => 
+         (normalizedType.includes('soft') && a.name.toLowerCase().includes('soft')) ||
+         (normalizedType.includes('hard') && a.name.toLowerCase().includes('hard'))
+       );
+    }
+
+    return found;
   }
 
   async assignTeamLeadToProject(projectId: string, teamLeadUserId: string): Promise<void> {
@@ -468,7 +517,9 @@ export class AdminDataService {
         team: '',
         designation: '',
         isActive: masterRecord.status.toLowerCase() === 'active',
-        joinDate: masterRecord.createdAt.split('T')[0]
+        joinDate: masterRecord.createdAt.split('T')[0],
+        projectId: masterRecord.projectId !== 'null' ? masterRecord.projectId : undefined,
+        projectName: this.normalizeSoapNullable(userData.m_projects?.project_name, '') || undefined
       };
     }) as User[];
   }
@@ -500,6 +551,145 @@ export class AdminDataService {
     const cachedRecord = this.userMasterCache.get(userId);
     if (cachedRecord) {
       this.userMasterCache.set(userId, { ...cachedRecord, status: newStatus });
+    }
+  }
+
+  async updateUserDetails(userId: string, updates: {
+    email?: string;
+    roleId?: string;
+    projectId?: string;
+    assetTypeId?: string;
+  }): Promise<void> {
+    const normalizedUserId = this.normalizeNullable(userId, '');
+    if (!normalizedUserId) {
+      throw new Error('User ID is required.');
+    }
+
+    // If role is changing, update in Cordys platform first
+    if (updates.roleId) {
+      const cached = this.userMasterCache.get(userId);
+      const userEmail = updates.email || cached?.email || '';
+      if (userEmail) {
+        await this.updateUserRoleInCordys(userEmail, updates.roleId);
+      }
+    }
+
+    // Build only the fields that are provided
+    let updateFields = '';
+    if (updates.email) {
+      updateFields += `<email>${this.xmlEscape(updates.email)}</email>`;
+    }
+    if (updates.roleId) {
+      updateFields += `<role_id>${this.xmlEscape(updates.roleId)}</role_id>`;
+    }
+    if (updates.projectId !== undefined) {
+      updateFields += `<project_id>${this.xmlEscape(updates.projectId)}</project_id>`;
+    }
+    if (updates.assetTypeId !== undefined) {
+      updateFields += `<asset_type_id>${this.xmlEscape(updates.assetTypeId)}</asset_type_id>`;
+    }
+
+    if (!updateFields) {
+      return; // Nothing to update
+    }
+
+    const updateUserSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_users xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_users qConstraint="0">
+            <user_id>${this.xmlEscape(normalizedUserId)}</user_id>
+          </m_users>
+        </old>
+        <new>
+          <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
+            ${updateFields}
+          </m_users>
+        </new>
+      </tuple>
+    </UpdateM_users>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, updateUserSoap);
+
+    // Update cache
+    const cached = this.userMasterCache.get(userId);
+    if (cached) {
+      this.userMasterCache.set(userId, {
+        ...cached,
+        ...(updates.email ? { email: updates.email } : {}),
+        ...(updates.roleId ? { roleId: updates.roleId } : {}),
+        ...(updates.projectId !== undefined ? { projectId: updates.projectId } : {}),
+        ...(updates.assetTypeId !== undefined ? { assetTypeId: updates.assetTypeId } : {})
+      });
+    }
+  }
+
+  private mapRoleIdToCordysRole(roleId: string): string {
+    switch (roleId) {
+      case 'rol_01': return 'AMS_Admin';
+      case 'rol_02': return 'AMS_TeamLead';
+      case 'rol_03': return 'AMS_Employee';
+      case 'rol_04': return 'AMS_AssetManager';
+      case 'rol_05': return 'AMS_AssetAllocationTeam';
+      default: return 'AMS_Employee';
+    }
+  }
+
+  private async updateUserRoleInCordys(userEmail: string, newRoleId: string): Promise<void> {
+    const cordysRole = this.mapRoleIdToCordysRole(newRoleId);
+
+    // Remove all existing AMS roles first, then assign new one
+    const allAmsRoles = ['AMS_Admin', 'AMS_TeamLead', 'AMS_Employee', 'AMS_AssetManager', 'AMS_AssetAllocationTeam'];
+
+    // Remove existing AMS roles
+    for (const oldRole of allAmsRoles) {
+      if (oldRole === cordysRole) continue; // Skip the new role
+
+      const removeRoleSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <RemoveRolesFromUser xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${this.xmlEscape(userEmail)}</UserName>
+        <Roles>
+          <Role application="">${this.xmlEscape(oldRole)}</Role>
+        </Roles>
+      </User>
+    </RemoveRolesFromUser>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+      try {
+        await this.heroService.ajax(null, null, {}, removeRoleSoap);
+      } catch {
+        // Ignore errors — role might not be assigned
+      }
+    }
+
+    // Assign new Cordys role
+    const assignRoleSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <AssignRolesToUser xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${this.xmlEscape(userEmail)}</UserName>
+        <Roles>
+          <Role application="">${this.xmlEscape(cordysRole)}</Role>
+        </Roles>
+      </User>
+    </AssignRolesToUser>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.heroService.ajax(null, null, {}, assignRoleSoap);
+    } catch (e: any) {
+      console.error('Failed to assign Cordys role:', e);
+      throw new Error('Failed to assign user role in Cordys: ' + (e?.message || String(e)));
     }
   }
 
@@ -585,8 +775,9 @@ export class AdminDataService {
         urgency: this.normalizeNullable(requestData.urgency, '-'),
         status: this.normalizeNullable(requestData.status, 'Pending'),
         emailApproval: emailApprovalRaw === 'true' || emailApprovalRaw === '1' || emailApprovalRaw === 'yes',
-        document: this.normalizeSoapNullable(requestData.document, ''),
-        createdAt: this.normalizeNullable(requestData.created_at, '')
+        document: this.normalizeSoapNullable(requestData.temp2, '') || this.normalizeSoapNullable(requestData.document, ''),
+        createdAt: this.normalizeNullable(requestData.created_at, ''),
+        subCategory: this.normalizeNullable(requestData.temp1, '-')
       };
     }) as AssetRequest[];
   }

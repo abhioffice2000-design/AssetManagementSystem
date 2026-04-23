@@ -1,7 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { AssetRequest, RequestStatus } from '../../../core/models/request.model';
+import { AdminDataService } from '../../../core/services/admin-data.service';
+import { AssetRequest, RequestStatus, RequestType } from '../../../core/models/request.model';
 
 @Component({
   selector: 'app-my-requests',
@@ -27,7 +28,8 @@ export class MyRequestsComponent implements OnInit {
 
   constructor(
     private requestService: RequestService,
-    private authService: AuthService
+    private authService: AuthService,
+    private adminService: AdminDataService
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -69,31 +71,58 @@ export class MyRequestsComponent implements OnInit {
     }
   }
 
+  private getStagesForRequest(request: AssetRequest): Array<{name: string, roles: string[]}> {
+    const type = request.requestType;
+    const isSkippedTl = request.hasEmailApproval || request.requesterRole?.toLowerCase().includes('lead') || request.requesterRole?.toLowerCase().includes('manager');
+
+    switch (type) {
+      case RequestType.RETURN_ASSET:
+        return [
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+        ];
+
+      case RequestType.EXTEND_WARRANTY:
+        return [
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+        ];
+
+      default: // NEW_ASSET
+        const newAssetStages = [
+          { name: 'Team Lead', roles: ['team lead', 'approver'] },
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+        ];
+
+        return isSkippedTl ? newAssetStages.slice(1) : newAssetStages;
+    }
+  }
+
   async trackRequest(request: AssetRequest): Promise<void> {
     this.selectedRequest = request;
     this.showTrackingModal = true;
     this.loadingProgress = true;
     this.trackingSteps = [];
     this.overallProgress = 0;
-
+    
     try {
       const progressData = await this.requestService.getRequestProgress(request.id);
       
       // Sort to ensure chronological order for multi-stage roles like Asset Manager
       progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       
-      const stages = [
-        { name: 'Team Lead', roles: ['team lead', 'approver'] },
-        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
-        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
-        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
-      ];
+      const stages = this.getStagesForRequest(request);
       
       let availableProgress = [...progressData];
+      const resolvedNames = await this.resolveApproverNames(request);
 
       this.trackingSteps = stages.map((stage, index) => {
+        const isDistributionStep = index === (stages.length - 1) && stage.name === 'Asset Manager' && stages.length > 2;
+
         const foundIndex = availableProgress.findIndex(p => 
-          stage.roles.some(role => p.stage.toLowerCase().includes(role))
+          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
         );
         
         let data = null;
@@ -114,10 +143,22 @@ export class MyRequestsComponent implements OnInit {
           isCompleted = request.status === 'Completed' || request.status === 'Approved';
         }
         
+        // Correctly handle 'Assigned Approver' or empty placeholders from the DB and lookups
+        const dbName = data?.approverName?.trim();
+        const genericPlaceholders = ['assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
+        const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
+        
+        let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[stage.name];
+        
+        // Final sanity check on resolved name
+        if (isPlaceholder(resolvedName)) {
+           resolvedName = undefined;
+        }
+
         return {
-          name: stage.name + (index === 3 ? ' (Distribution)' : ''),
+          name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
+          roleName: stage.name + (isDistributionStep ? ' (Distribution)' : ''),
           status: data ? data.status : (isCompleted ? 'Approved' : 'Pending'),
-          approverName: data?.approverName || 'Assigned Approver',
           timestamp: data?.timestamp,
           isCompleted: isCompleted,
           isCurrent: isCurrent,
@@ -125,18 +166,19 @@ export class MyRequestsComponent implements OnInit {
         };
       });
 
-      // Special pass to handle pending states based on the previous step
+      // 4. Special pass to handle pending states based on the previous step
+      let currentStepFound = false;
       for (let i = 0; i < this.trackingSteps.length; i++) {
-        if (!this.trackingSteps[i].isCompleted && !this.trackingSteps[i].isCurrent) {
-          // If the previous step is completed, this one is likely current
-          if (i > 0 && this.trackingSteps[i-1].isCompleted) {
-             this.trackingSteps[i].isCurrent = true;
-             break; // only one current step
-          } else if (i === 0) {
-             this.trackingSteps[0].isCurrent = true;
-          }
-        } else if (this.trackingSteps[i].isCurrent) {
-          break; // Stop at the first current step
+        const step = this.trackingSteps[i];
+        
+        // Reset flags that might have been guessed in the map pass
+        if (step.status === 'Pending') {
+          step.isCurrent = false;
+        }
+
+        if (!currentStepFound && !step.isCompleted) {
+          step.isCurrent = true;
+          currentStepFound = true;
         }
       }
 
@@ -146,6 +188,42 @@ export class MyRequestsComponent implements OnInit {
     } finally {
       this.loadingProgress = false;
     }
+  }
+
+  private async resolveApproverNames(request: AssetRequest): Promise<Record<string, string>> {
+    const resolvedNames: Record<string, string> = {};
+    let user = this.authService.getCurrentUser();
+    
+    try {
+      // 1. Force refresh user details if projectId is missing to ensure fresh data
+      if (user && !user.projectId) {
+         const freshUser = await this.authService.getUserDetails(user.id);
+         if (freshUser) {
+           user = freshUser;
+         }
+      }
+
+      // 2. Resolve Team Lead from current user's project
+      if (user?.projectId && user.projectId !== 'null') {
+        const project = await this.adminService.getProjectById(user.projectId);
+        if (project?.teamLead) {
+          resolvedNames['Team Lead'] = project.teamLead;
+        }
+      }
+
+      // 3. Resolve Asset Manager & Allocation Team for this Asset Type
+      if (request.assetType) {
+        const assignment = await this.adminService.getAssignmentByAssetType(request.assetType);
+        if (assignment) {
+          resolvedNames['Asset Manager'] = assignment.assetManager;
+          resolvedNames['Asset Allocation Team'] = assignment.teamMembers;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve approver names:', err);
+    }
+
+    return resolvedNames;
   }
 
   calculateOverallProgress(requestStatus: string): number {

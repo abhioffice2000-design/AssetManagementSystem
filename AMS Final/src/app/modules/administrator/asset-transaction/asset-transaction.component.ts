@@ -195,7 +195,7 @@ export class AssetTransactionComponent implements OnInit {
         request.requestId.toLowerCase().includes(search) ||
         request.userName.toLowerCase().includes(search) ||
         request.userEmail.toLowerCase().includes(search) ||
-        request.assetType.toLowerCase().includes(search) ||
+        request.subCategory.toLowerCase().includes(search) ||
         request.reason.toLowerCase().includes(search) ||
         request.urgency.toLowerCase().includes(search)
       );
@@ -302,6 +302,39 @@ export class AssetTransactionComponent implements OnInit {
     return 'Pending';
   }
 
+  downloadDocument(doc: string): void {
+    if (!doc || !doc.includes('|')) {
+      alert('The attached document was not successfully stored by the backend database. This is a known database configuration limitation where document fields are unmapped or restricted by length.');
+      return;
+    }
+    const parts = doc.split('|');
+    const fileName = parts.shift() || 'document.bin';
+    const base64Data = parts.join('|'); // Rejoin in case base64 happened to have a pipe character
+    
+    // Create an invisible link to trigger the download
+    const link = document.createElement('a');
+    link.href = base64Data;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  formatSubcategory(subCatId: string): string {
+    if (!subCatId || subCatId === '-') return '-';
+    
+    const subCatMap: { [key: string]: string } = {
+      'cat_001': 'Laptop',
+      'cat_002': 'Software License',
+      'cat_003': 'Monitor',
+      'cat_004': 'Peripheral'
+    };
+    
+    // Return mapped name if exists, otherwise return the id itself (in case it's already a name).
+    return subCatMap[subCatId.toLowerCase()] || subCatId;
+  }
+
+  // Keeping this just in case other parts of the component still depend on it
   formatAssetType(type: string): string {
     if (!type) {
       return '-';

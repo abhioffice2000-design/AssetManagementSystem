@@ -97,54 +97,64 @@
   </div>
 
   <div *ngIf="activeTab === 'categories'" class="animate-slide-up">
-    <div class="tab-header-actions mb-16">
-      <div class="filter-group">
-        <label class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 block">Filter by Asset Type</label>
-        <select class="form-control asset-filter" [(ngModel)]="selectedSubCategoryTypeFilter" (ngModelChange)="filterSubcategories()">
-          <option value="">All Types</option>
-          <option *ngFor="let type of assetTypeOptions" [value]="type">{{ type }}</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="grid grid-3 gap-16">
-      <div class="card category-card enriched-card" *ngFor="let sub of filteredEnrichedSubcategories" (click)="openSubDetails(sub)">
-        <div class="card-body">
-          <div class="master-card-head">
-            <div class="master-icon" [style.background-color]="getAssetTypeColor(sub.type) + '15'" [style.color]="getAssetTypeColor(sub.type)">
-              <span class="material-icons-outlined">{{ sub.icon }}</span>
-            </div>
-            <div class="actions-group">
-               <span class="badge" [ngClass]="getTypeBadgeClass(sub.type)">{{ sub.type }}</span>
-               <button class="btn-icon-sm ml-8" (click)="$event.stopPropagation(); deleteSubCategory(sub.id)" title="Delete Subcategory">
-                  <span class="material-icons-outlined">delete</span>
-               </button>
-            </div>
-          </div>
-          <h4 class="category-name">{{ sub.name }}</h4>
-          
-          <div class="stats-row mt-16 mb-16">
-            <div class="stat-mini">
-              <span class="stat-val">{{ sub.totalCount }}</span>
-              <span class="stat-lab">Total</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-mini">
-              <span class="stat-val text-primary">{{ sub.assignedCount }}</span>
-              <span class="stat-lab">Assigned</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-mini">
-              <span class="stat-val text-success">{{ sub.availableCount }}</span>
-              <span class="stat-lab">Available</span>
-            </div>
-          </div>
+    <div class="card">
+      <div class="card-header">
+        <h3>Subcategory Master <span class="badge badge-blue" style="margin-left: 8px;">{{ filteredEnrichedSubcategories.length }}</span></h3>
+        <div class="flex gap-12 items-center">
+          <select class="form-control asset-filter" [(ngModel)]="selectedSubCategoryTypeFilter" (ngModelChange)="filterSubcategories()">
+            <option value="">All Types</option>
+            <option *ngFor="let type of assetTypeOptions" [value]="type">{{ type }}</option>
+          </select>
         </div>
       </div>
-    </div>
-    <div class="empty-state" *ngIf="filteredEnrichedSubcategories.length === 0">
-      <span class="material-icons-outlined">dashboard</span>
-      No subcategories found for the selected type
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Subcategory</th>
+                <th>Asset Type</th>
+                <th>Total</th>
+                <th>Assigned</th>
+                <th>Available</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let sub of filteredEnrichedSubcategories" class="subcat-row" (click)="openSubDetails(sub)">
+                <td>
+                  <div class="subcat-cell">
+                    <div class="subcat-icon" [style.background-color]="getAssetTypeColor(sub.type) + '12'" [style.color]="getAssetTypeColor(sub.type)">
+                      <span class="material-icons-outlined">{{ sub.icon }}</span>
+                    </div>
+                    <span class="subcat-name">{{ sub.name }}</span>
+                  </div>
+                </td>
+                <td><span class="badge" [ngClass]="getTypeBadgeClass(sub.type)">{{ sub.type }}</span></td>
+                <td><span class="count-total">{{ sub.totalCount }}</span></td>
+                <td><span class="count-assigned">{{ sub.assignedCount }}</span></td>
+                <td><span class="count-available">{{ sub.availableCount }}</span></td>
+                <td>
+                  <div class="flex gap-8">
+                    <button class="btn btn-sm btn-outline" title="View Assets" (click)="$event.stopPropagation(); openSubDetails(sub)">
+                      <span class="material-icons-outlined" style="font-size: 16px;">visibility</span>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" title="Delete" (click)="$event.stopPropagation(); deleteSubCategory(sub.id)">
+                      <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="filteredEnrichedSubcategories.length === 0">
+                <td colspan="6" class="empty-state">
+                  <span class="material-icons-outlined">dashboard</span>
+                  No subcategories found for the selected type
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 

@@ -13,6 +13,9 @@ export interface User {
   isActive: boolean;
   joinDate: string;
   managerId?: string;
+  projectId?: string;
+  projectName?: string;
+  teamLeadName?: string;
 }
 
 export enum UserRole {

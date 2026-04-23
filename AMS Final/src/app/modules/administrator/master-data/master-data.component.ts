@@ -718,8 +718,8 @@ export class MasterDataComponent implements OnInit {
       });
       
       const total = subAssets.length;
-      const available = subAssets.filter(a => String(a.status).toLowerCase().includes('available')).length;
       const assigned = subAssets.filter(a => String(a.status).toLowerCase() === 'allocated').length;
+      const available = total - assigned;
       const utilization = total > 0 ? Math.round((assigned / total) * 100) : 0;
       const value = subAssets.reduce((sum, a) => sum + (Number(a.cost) || 0), 0);
       

@@ -7,8 +7,14 @@
   
   <div class="header-right">
     <div class="user-corner-menu" *ngIf="currentUser">
-      <div class="user-icon-trigger">
-        <span class="material-icons-outlined">account_circle</span>
+      <div class="user-profile-trigger">
+        <div class="user-info-display">
+          <span class="profile-name">{{currentUser.name}}</span>
+          <span class="profile-role">{{currentUser.role}}</span>
+        </div>
+        <div class="user-avatar-circle">
+          <span class="material-icons-outlined">account_circle</span>
+        </div>
       </div>
       <div class="user-hover-card">
         <div class="hover-avatar">
@@ -22,7 +28,15 @@
           <span class="material-icons-outlined" style="font-size: 16px;">badge</span>
           <span><strong>Emp Code:</strong> {{currentUser.id}}</span>
         </div>
-        <div class="hover-info-row" *ngIf="currentUser.team">
+        <div class="hover-info-row" *ngIf="currentUser.projectName">
+          <span class="material-icons-outlined" style="font-size: 16px;">work</span>
+          <span><strong>Project:</strong> {{currentUser.projectName}}</span>
+        </div>
+        <div class="hover-info-row" *ngIf="currentUser.teamLeadName">
+          <span class="material-icons-outlined" style="font-size: 16px;">supervisor_account</span>
+          <span><strong>Lead:</strong> {{currentUser.teamLeadName}}</span>
+        </div>
+        <div class="hover-info-row" *ngIf="currentUser.team && currentUser.team !== 'General' && currentUser.team !== currentUser.projectName">
           <span class="material-icons-outlined" style="font-size: 16px;">groups</span>
           <span><strong>Team:</strong> {{currentUser.team}}</span>
         </div>

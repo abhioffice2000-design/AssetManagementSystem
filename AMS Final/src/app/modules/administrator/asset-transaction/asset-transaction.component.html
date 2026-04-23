@@ -66,12 +66,12 @@
         <thead>
           <tr>
             <th class="col-requester">Requester</th>
-            <th class="col-type">Asset Type</th>
+            <th class="col-type">Subcategory</th>
             <th class="col-reason">Reason</th>
             <th class="col-urgency">Urgency</th>
             <th class="col-date">Request Date</th>
             <th class="col-status">Status</th>
-            <th class="col-approval">Email Approval</th>
+            <th class="col-approval">Attachment</th>
           </tr>
         </thead>
         <tbody>
@@ -85,7 +85,7 @@
                 </div>
               </div>
             </td>
-            <td class="col-type">{{ formatAssetType(request.assetType) }}</td>
+            <td class="col-type">{{ formatSubcategory(request.subCategory) }}</td>
             <td class="reason-cell col-reason" [title]="request.reason">{{ request.reason }}</td>
             <td class="col-urgency"><span class="urgency-text">{{ request.urgency || '-' }}</span></td>
             <td class="col-date">{{ request.createdAt | date:'mediumDate' }}</td>
@@ -95,9 +95,19 @@
               </span>
             </td>
             <td class="col-approval">
-              <span class="approval-chip" [class.approval-yes]="request.emailApproval" [class.approval-no]="!request.emailApproval">
-                {{ request.emailApproval ? 'Yes' : 'No' }}
-              </span>
+              <button *ngIf="request.emailApproval"
+                      class="btn btn-sm"
+                      (click)="downloadDocument(request.document)"
+                      style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-weight: 500; font-size: 12px; border-radius: 6px; background: rgba(59,130,246,0.08); color: #3b82f6; border: 1px solid rgba(59,130,246,0.2); cursor: pointer; width: fit-content; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 14px;">attach_file</span>
+                View Attachment
+              </button>
+              <div *ngIf="!request.emailApproval" 
+                   class="text-muted" 
+                   style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; opacity: 0.6; width: fit-content; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 14px;">hide_source</span>
+                No Attachment
+              </div>
             </td>
           </tr>
           <tr *ngIf="!isLoading && !errorMessage && pagedRequests.length === 0">

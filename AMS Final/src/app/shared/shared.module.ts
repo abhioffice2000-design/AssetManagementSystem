@@ -31,3 +31,5 @@ import { ModalComponent } from './components/modal/modal.component';
   ]
 })
 export class SharedModule { }
+// Force re-compilation of SharedModule components
+

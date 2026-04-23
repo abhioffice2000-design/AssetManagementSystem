@@ -496,7 +496,7 @@ export class RequestService {
           ''
         )
       ),
-      subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || reqData?.temp2 || ''),
+      subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || ''),
       justification: reqData?.reason || '',
       urgency: urgency,
       status: status,
@@ -620,9 +620,9 @@ export class RequestService {
   private normalizeAssetType(type: string | undefined): string {
     if (!type) return 'N/A';
     const t = type.toLowerCase().trim();
-    if (t === 'typ_01' || t === 'software') return 'Software';
-    if (t === 'typ_02' || t === 'hardware') return 'Hardware';
-    if (t === 'typ_03' || t === 'network') return 'Network';
+    if (t === 'typ_01' || t === 'software' || t.includes('license') || t.includes('anti') || t.includes('security')) return 'Software';
+    if (t === 'typ_02' || t === 'hardware' || t.includes('laptop') || t.includes('hard') || t.includes('comp')) return 'Hardware';
+    if (t === 'typ_03' || t === 'network' || t.includes('wifi') || t.includes('router')) return 'Network';
     if (t === 'typ_04' || t === 'peripheral') return 'Peripheral';
     
     // Default: capitalize first letter
