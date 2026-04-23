@@ -34,10 +34,14 @@ export interface AssetRequest {
   requesterStatus?: string;
   requesterProject?: string;
   requesterRole?: string;
+  requesterProjectName?: string;
+  requesterRoleName?: string;
+  teamLeadJustification?: string;
   taskid?: string;
   assetName?: string;
   reason?: string;
   remarks?: string;
+  reqStatus?: string;
 }
 
 export enum RequestType {

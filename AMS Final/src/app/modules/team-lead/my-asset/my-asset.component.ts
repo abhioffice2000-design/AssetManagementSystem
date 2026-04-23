@@ -19,6 +19,24 @@ export class MyAssetComponent implements OnInit {
   isLoading = false;
   isLoadingRequests = false;
   activeTab: 'assets' | 'requests' = 'assets';
+  selectedRequest: AssetRequest | null = null;
+  approvalChain: any[] = [];
+  loadingProgress = false;
+  showTrackingModal = false;
+  showConfirmModal = false;
+  confirmationRemarks = '';
+  selectedConfirmRequest: AssetRequest | null = null;
+  
+  // Re-edit Rejected Requests
+  showEditModal = false;
+  isSubmittingEdit = false;
+  editForm = {
+    urgency: '',
+    justification: '',
+    assetType: '',
+    category: '',
+    requestId: ''
+  };
 
   // Assets Pagination
   assetsCurrentPage = 1;
@@ -146,35 +164,20 @@ export class MyAssetComponent implements OnInit {
   }
 
   PendingRequestsForTeamLead(userId?: string): void {
+    if (!userId) return;
     this.isLoadingRequests = true;
-    this.hs.ajax('GetPendinRequestForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { project_id: userId || '' }
-    ).then((resp: any) => {
-      // Extract from t_asset_requests (or the expected returning XML tag)
-      const result = this.hs.xmltojson(resp, 't_asset_requests');
-      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
-
-      // Map to AssetRequest interface for the pending requests array
-      this.pendingRequests = rawData
-        .filter((item: any) => item.status === 'Pending')
-        .map((item: any) => ({
-          id: item.request_id || '',
-          requestNumber: item.request_id || '',
-          assetType: item.asset_type || '',
-          category: item.temp1 || '',
-          urgency: item.urgency || 'Low',
-          status: item.status || 'Pending',
-          requestDate: item.created_at || new Date().toISOString(),
-          description: item.reason || ''
-        } as any));
-
-      this.requestsCurrentPage = 1; // Reset pagination
-      console.log('[MyAsset] Pending requests from Cordys:', this.pendingRequests);
-      this.isLoadingRequests = false;
-    }).catch((err: any) => {
-      console.error('[MyAsset] Error fetching pending requests:', err);
-      this.isLoadingRequests = false;
-    });
+    this.requestService.getRequestsByUserIdFromCordys(userId)
+      .then((requests: AssetRequest[]) => {
+        // Include 'Approved' status as well, as these are ready for confirmation
+        this.pendingRequests = requests.filter(req => 
+          req.status === 'Pending' || 
+          req.status === 'In Progress' || 
+          req.status === 'Approved'
+        );
+        this.requestsCurrentPage = 1;
+        this.isLoadingRequests = false;
+      })
+      .catch(() => this.isLoadingRequests = false);
   }
 
   async returnAsset(asset: Asset) {
@@ -283,6 +286,257 @@ export class MyAssetComponent implements OnInit {
       console.error("Extend Warranty error:", err);
       alert("Failed to request warranty extension. Please check the network payload.");
       this.isLoading = false;
+    }
+  }
+
+  // --- Tracking Logic ---
+  async trackRequest(req: AssetRequest) {
+    this.selectedRequest = req;
+    this.showTrackingModal = true;
+    this.loadingProgress = true;
+    this.approvalChain = [];
+    
+    try {
+      const progressData = await this.requestService.getRequestProgress(req.id);
+      
+      // Sort to ensure chronological order
+      progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      
+      const stages = [
+        { name: 'Team Lead Approval', roles: ['team lead', 'approver'] },
+        { name: 'Asset Manager Approval', roles: ['asset manager', 'mgr'] },
+        { name: 'Asset Allocation', roles: ['asset allocation', 'allocation', 'team'] }
+      ];
+      
+      let availableProgress = [...progressData];
+
+      this.approvalChain = stages.map((stage, index) => {
+        const foundIndex = availableProgress.findIndex(p => 
+          stage.roles.some(role => p.stage.toLowerCase().includes(role))
+        );
+        
+        let data = null;
+        if (foundIndex !== -1) {
+          data = availableProgress[foundIndex];
+          availableProgress.splice(foundIndex, 1);
+        }
+        
+        let isCompleted = false;
+        let isCurrent = false;
+
+        if (data) {
+          isCompleted = data.status === 'Approved' || data.status === 'Completed';
+          isCurrent = data.status === 'Pending';
+        } else {
+          isCompleted = false;
+        }
+        
+        return {
+          stage: stage.name,
+          status: data ? data.status : (isCompleted ? 'Approved' : 'Pending'),
+          approverName: data?.approverName || 'Assigned Approver',
+          timestamp: data?.timestamp,
+          isCompleted: isCompleted,
+          isCurrent: isCurrent,
+          comments: data?.comments
+        };
+      });
+
+      // Handle current stage logic
+      for (let i = 0; i < this.approvalChain.length; i++) {
+        if (!this.approvalChain[i].isCompleted && !this.approvalChain[i].isCurrent) {
+          if (i > 0 && this.approvalChain[i-1].isCompleted) {
+             this.approvalChain[i].isCurrent = true;
+             break;
+          } else if (i === 0) {
+             this.approvalChain[0].isCurrent = true;
+             break;
+          }
+        }
+      }
+
+    } catch (err) {
+      console.error('[MyAsset] Failed to load progress:', err);
+    } finally {
+      this.loadingProgress = false;
+    }
+  }
+
+  closeTrackingModal() {
+    this.showTrackingModal = false;
+    this.selectedRequest = null;
+  }
+
+  getApprovalStageClass(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'stage-approved';
+      case 'Rejected': return 'stage-rejected';
+      case 'Pending': return 'stage-pending';
+      case 'Skipped': return 'stage-skipped';
+      default: return '';
+    }
+  }
+
+  getApprovalIcon(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'check_circle';
+      case 'Rejected': return 'cancel';
+      case 'Pending': return 'radio_button_unchecked';
+      case 'Skipped': return 'remove_circle_outline';
+      default: return 'help_outline';
+    }
+  }
+
+  // --- Confirmation Logic ---
+  openConfirmModal(req: AssetRequest) {
+    this.selectedConfirmRequest = req;
+    this.showConfirmModal = true;
+  }
+
+  closeConfirmModal() {
+    this.showConfirmModal = false;
+    this.selectedConfirmRequest = null;
+    this.confirmationRemarks = '';
+  }
+
+  async submitConfirmation() {
+    if (!this.selectedConfirmRequest) return;
+    
+    this.isLoading = true;
+    try {
+      const requestId = this.selectedConfirmRequest.requestNumber;
+      
+      const updateReq = {
+        tuple: {
+          old: { t_asset_requests: { request_id: requestId } },
+          new: { t_asset_requests: { status: 'Completed' } }
+        }
+      };
+
+      await this.requestService.submitNewRequestForm(updateReq);
+      
+      // Update the approval record if a confirmation step exists
+      if (this.selectedConfirmRequest.approvalId) {
+        const approvalUpdate = {
+          tuple: {
+            old: { t_request_approvals: { approval_id: this.selectedConfirmRequest.approvalId } },
+            new: { t_request_approvals: { status: 'Completed', remarks: this.confirmationRemarks || 'Asset received by Team Lead' } }
+          }
+        };
+        await this.requestService.updateEntryForTeamLead(approvalUpdate);
+      }
+
+      // Update the master asset status to Allocated if available
+      if (this.selectedConfirmRequest.allocatedAssetId) {
+        const assetUpdateReq = {
+          tuple: {
+            old: { m_assets: { asset_id: this.selectedConfirmRequest.allocatedAssetId } },
+            new: { m_assets: { status: 'Allocated' } }
+          }
+        };
+        await this.requestService.updateAssetStatus(assetUpdateReq);
+      }
+
+      // Complete the BPM task
+      var taskid = this.selectedRequest?.taskid;
+      if (taskid) {
+        var req3 = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(req3 as any);
+      }
+
+      alert('Asset receipt confirmed successfully!');
+      this.closeConfirmModal();
+      this.closeTrackingModal();
+      
+      // Refresh list
+      const user = this.authService.getCurrentUser();
+      if (user) {
+        this.PendingRequestsForTeamLead(user.id);
+      }
+    } catch (err) {
+      console.error('[MyAsset] Confirmation error:', err);
+      alert('Failed to confirm asset receipt. Please try again.');
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  // --- Re-Edit / Resubmit Logic ---
+  openEditModal(req: AssetRequest) {
+    this.selectedRequest = req;
+    this.editForm = {
+      urgency: req.urgency,
+      justification: req.justification || '',
+      assetType: req.assetType,
+      category: req.category,
+      requestId: req.requestNumber
+    };
+    this.showEditModal = true;
+  }
+
+  closeEditModal() {
+    this.showEditModal = false;
+  }
+
+  async resubmitRequest() {
+    if (!this.selectedRequest) return;
+    
+    this.isSubmittingEdit = true;
+    try {
+      const updatePayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: this.editForm.requestId } },
+          new: { 
+            t_asset_requests: { 
+              status: 'Pending', // Reset to pending for re-approval
+              urgency: this.editForm.urgency,
+              justification: this.editForm.justification,
+              asset_type: this.editForm.assetType,
+              category: this.editForm.category,
+              updated_at: new Date().toISOString()
+            } 
+          }
+        }
+      };
+
+      await this.requestService.submitNewRequestForm(updatePayload);
+      
+      alert('Request resubmitted successfully! It will now go through the approval process again.');
+      this.closeEditModal();
+      this.PendingRequestsForTeamLead(this.authService.getCurrentUser()?.id);
+    } catch (err) {
+      console.error('[MyAsset] Resubmit error:', err);
+      alert('Failed to resubmit request.');
+    } finally {
+      this.isSubmittingEdit = false;
+    }
+  }
+
+  async withdrawRequest() {
+    if (!this.selectedRequest || !confirm('Are you sure you want to withdraw this request? This action cannot be undone.')) return;
+    
+    this.isSubmittingEdit = true;
+    try {
+      const updatePayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: this.selectedRequest.requestNumber } },
+          new: { t_asset_requests: { status: 'Cancelled' } }
+        }
+      };
+
+      await this.requestService.submitNewRequestForm(updatePayload);
+      
+      alert('Request withdrawn successfully.');
+      this.closeEditModal();
+      this.PendingRequestsForTeamLead(this.authService.getCurrentUser()?.id);
+    } catch (err) {
+      console.error('[MyAsset] Withdraw error:', err);
+      alert('Failed to withdraw request.');
+    } finally {
+      this.isSubmittingEdit = false;
     }
   }
 

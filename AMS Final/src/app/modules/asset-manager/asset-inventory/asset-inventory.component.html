@@ -77,7 +77,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let asset of filteredAssets" class="table-row-hover" (click)="viewAssetDetail(asset)">
+          <tr *ngFor="let asset of paginatedAssets" class="table-row-hover" (click)="viewAssetDetail(asset)">
             <td>
               <span class="asset-tag">{{ asset.id }}</span>
             </td>
@@ -97,6 +97,26 @@
           </tr>
         </tbody>
       </table>
+    </div>
+    
+    <!-- Table Pagination -->
+    <div class="table-pagination" *ngIf="filteredAssets.length > 0">
+      <div class="pagination-info">
+        Showing <strong>{{ paginationDisplayRange }}</strong> assets
+      </div>
+      <div class="pagination-actions">
+        <button class="btn-page" [disabled]="currentPage === 1" (click)="setPage(currentPage - 1)">
+          <span class="material-icons-outlined">chevron_left</span>
+          Previous
+        </button>
+        <div class="page-numbers">
+          <span class="page-indicator">Page {{ currentPage }} of {{ totalPages }}</span>
+        </div>
+        <button class="btn-page" [disabled]="currentPage === totalPages" (click)="setPage(currentPage + 1)">
+          Next
+          <span class="material-icons-outlined">chevron_right</span>
+        </button>
+      </div>
     </div>
 
     <!-- Empty State -->

@@ -20,12 +20,10 @@ export class RequestAssetComponent implements OnInit {
   
   // Master data from Cordys
   masterAssetTypes: any[] = [];
-  masterCategories: any[] = [];
   masterSubCategories: any[] = [];
 
   // Currently filtered lists for dropdowns
   availableTypes: any[] = [];
-  availableCategories: any[] = [];
   availableSubCategories: any[] = [];
   selectedTypeName = ''; // Stores the type_name of the selected asset type
 
@@ -42,8 +40,7 @@ export class RequestAssetComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.requestForm = this.fb.group({
       assetType: ['', Validators.required],
-      category: ['', Validators.required],
-      subCategory: [''],
+      subCategory: ['', Validators.required],
       urgency: ['Low', Validators.required],
       justification: ['', [Validators.required, Validators.minLength(10)]]
     });
@@ -71,29 +68,13 @@ export class RequestAssetComponent implements OnInit {
 
   async loadMasterData(): Promise<void> {
     try {
-      const [types, categories, subCats] = await Promise.all([
+      const [types, subCats] = await Promise.all([
         this.assetService.getAllAssetTypesCordys(),
-        this.assetService.getAllCategoriesCordys(),
         this.assetService.getAllSubcategoriesCordys()
       ]);
 
       this.masterAssetTypes = types || [];
-      this.masterCategories = categories || [];
       this.masterSubCategories = subCats || [];
-
-      // Fallback logic if Cordys returns nothing
-      if (this.masterAssetTypes.length === 0) {
-        this.masterAssetTypes = [
-          { type_id: 'typ_01', type_name: 'Software' },
-          { type_id: 'typ_02', type_name: 'Hardware' }
-        ];
-      }
-      if (this.masterCategories.length === 0) {
-        this.masterCategories = [
-          { asset_id: 'asset_001', asset_name: 'Dell Latitude 5420', type_id: 'typ_02', sub_category_id: 'cat_001' },
-          { asset_id: 'asset_002', asset_name: 'Adobe Creative Cloud', type_id: 'typ_01', sub_category_id: 'cat_002' }
-        ];
-      }
 
       this.availableTypes = this.masterAssetTypes;
     } catch (error) {
@@ -119,53 +100,24 @@ export class RequestAssetComponent implements OnInit {
 
   onTypeChange(): void {
     const selectedType = this.requestForm.get('assetType')?.value;
-    this.requestForm.patchValue({ category: '', subCategory: '' });
-    this.availableSubCategories = [];
-
+    this.requestForm.patchValue({ subCategory: '' });
+    
     // Capture the type_name for the SOAP payload
     const selectedTypeObj = this.masterAssetTypes.find(t => this.getObjectId(t, 'type') === selectedType);
     this.selectedTypeName = selectedTypeObj ? (this.getObjectName(selectedTypeObj, 'type') || '') : '';
 
-    this.availableCategories = this.masterCategories.filter(cat => {
-      const typeRef = this.getVal(cat, ['type_id', 'Type_id', 'id']);
+    // Filter sub-categories DIRECTLY based on Asset Type
+    this.availableSubCategories = this.masterSubCategories.filter(sub => {
+      const typeRef = this.getVal(sub, ['type_id', 'Type_id', 'id']);
       return String(typeRef) === String(selectedType);
     });
 
-    if (this.availableCategories.length === 0 && this.masterCategories.length > 0) {
-      this.availableCategories = this.masterCategories;
-    }
-    
-    // Deduplicate categories by name for cleaner UI
-    const uniqueCats = new Map();
-    this.availableCategories.forEach(c => {
-      const name = this.getObjectName(c, 'category');
-      if (name && !uniqueCats.has(name)) {
-        uniqueCats.set(name, c);
-      }
-    });
-    this.availableCategories = Array.from(uniqueCats.values());
-  }
-
-  onCategoryChange(): void {
-    const selectedCatId = this.requestForm.get('category')?.value;
-    const selectedCatObj = this.availableCategories.find(c => 
-      this.getObjectId(c, 'category') === selectedCatId || this.getObjectName(c, 'category') === selectedCatId
-    );
-    
-    this.requestForm.patchValue({ subCategory: '' });
-
-    if (selectedCatObj) {
-      const targetSubId = this.getVal(selectedCatObj, ['sub_category_id', 'id']);
-      this.availableSubCategories = this.masterSubCategories.filter(sub => 
-        String(this.getObjectId(sub, 'subcategory')) === String(targetSubId)
-      );
-    } else {
-      this.availableSubCategories = this.masterSubCategories.filter(sub => {
-        const catRef = this.getVal(sub, ['category_id', 'Category_id', 'id']);
-        return String(catRef) === String(selectedCatId);
-      });
+    if (this.availableSubCategories.length === 0 && this.masterSubCategories.length > 0) {
+      this.availableSubCategories = this.masterSubCategories;
     }
   }
+
+
 
   onSubmit(): void {
     if (this.requestForm.invalid) {
@@ -188,7 +140,7 @@ export class RequestAssetComponent implements OnInit {
           t_asset_requests: {
             user_id: user.id,
             asset_type: this.selectedTypeName, // type_name from m_asset_types
-            temp1: formVal.category,
+            temp1: formVal.subCategory,
             reason: formVal.justification,
             urgency: formVal.urgency,
             status: "Pending",
@@ -200,14 +152,16 @@ export class RequestAssetComponent implements OnInit {
 
     console.log('[RequestAsset] Submitting to Cordys:', soapData);
 
+    let requestId: any;
+
     this.hs.ajax('UpdateT_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData)
       .then((resp: any) => {
         console.log('[RequestAsset] t_asset_requests insert response:', resp);
 
         // Extract the new request_id from the Cordys response
         const responseData = this.hs.xmltojson(resp, 't_asset_requests');
-        const requestId = responseData?.request_id ||
-                          (Array.isArray(responseData) ? responseData[0]?.request_id : undefined);
+        requestId = responseData?.request_id ||
+                    (Array.isArray(responseData) ? responseData[0]?.request_id : undefined);
 
         console.log('[RequestAsset] New request_id:', requestId);
 
@@ -228,7 +182,7 @@ export class RequestAssetComponent implements OnInit {
                 approver_id: 'usr_004',
                 role: 'Asset Manager',
                 status: 'Pending',
-                temp1: formVal.category  // asset_name
+                temp1: formVal.subCategory  // asset_name/subcat_id
               }
             }
           }
@@ -239,15 +193,24 @@ export class RequestAssetComponent implements OnInit {
         return this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalData);
       })
       .then((approvalResp: any) => {
-        if (approvalResp) {
-          console.log('[RequestAsset] t_request_approvals insert response:', approvalResp);
+        const approvalData = this.hs.xmltojson(approvalResp, 't_request_approvals');
+        const approvalId = approvalData?.approval_id || 
+                           (Array.isArray(approvalData) ? approvalData[0]?.approval_id : undefined);
+
+        console.log('[RequestAsset] New approval_id:', approvalId);
+
+        if (requestId && approvalId) {
+          const bpmReq = {
+            InputDoc: 'false', // Team Leads always follow standard approval for themselves
+            Inputusrid: user.id,
+            Inputrequestapprovalid: `${approvalId}`,
+            Inputrequestid: `${requestId}`
+          };
+          this.requestService.callBPMForRequest(bpmReq);
         }
+
         this.notificationService.showToast('Asset request submitted successfully!', 'success');
         this.notificationService.addNotification('Request Submitted', 'Your request has been saved and sent for approval.', 'info');
-
-        // Also update local array for current session consistency
-        const newReq = { ...this.requestForm.value, id: `REQ${Date.now()}`, requesterId: this.authService.getCurrentUser()?.id, status: RequestStatus.PENDING };
-        this.requestService.addRequest(newReq as any);
 
         this.isSubmitting = false;
         this.router.navigate(['/team-lead/my-asset']);

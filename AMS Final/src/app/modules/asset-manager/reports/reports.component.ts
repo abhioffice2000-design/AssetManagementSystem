@@ -39,6 +39,13 @@ export class ReportsComponent implements OnInit {
   typeBreakdown: TypeBreakdownItem[] = [];
   grandTotal = 0;
   isLoadingPieChart = true;
+  
+  // Pagination
+  currentPageHoldings = 1;
+  currentPageWarranty = 1;
+  currentPageTeams = 1;
+  pageSize = 5;
+  protected readonly Math = Math;
 
   // Icon & color mapping for known types
   private typeStyleMap: Record<string, { icon: string; color: string; bgColor: string }> = {
@@ -103,7 +110,8 @@ export class ReportsComponent implements OnInit {
          inProgress: 2
        };
     }
-    this.teamHoldings = this.assetService.getTeamWiseHolding();
+    this.teamHoldings = this.assetService.getTeamWiseHolding()
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
     this.buildReportData();
     this.loadMonthlyYearlyData();
     this.loadTeamAssetHoldings();
@@ -283,7 +291,6 @@ export class ReportsComponent implements OnInit {
     return Math.round((approved / requested) * 100);
   }
 
-  // ===== Team-wise Asset Holding — Hardcoded Data =====
   loadTeamAssetHoldings(): void {
     this.teamAssetHoldings = [
       {
@@ -316,7 +323,7 @@ export class ReportsComponent implements OnInit {
         totalAssets: 4, hardware: 2, software: 1, peripheral: 1,
         totalValue: 150000, members: 3
       }
-    ];
+    ].sort((a, b) => b.totalAssets - a.totalAssets);
 
     this.teamHoldingTotal = {
       assets: this.teamAssetHoldings.reduce((s, t) => s + t.totalAssets, 0),
@@ -332,6 +339,37 @@ export class ReportsComponent implements OnInit {
   getAssetsPerMember(totalAssets: number, members: number): string {
     if (members === 0) return '0';
     return (totalAssets / members).toFixed(1);
+  }
+
+  // Pagination Getters
+  get paginatedTeamHoldings(): any[] {
+    const start = (this.currentPageHoldings - 1) * this.pageSize;
+    return this.teamHoldings.slice(start, start + this.pageSize);
+  }
+
+  get paginatedWarrantyAlerts(): Asset[] {
+    const start = (this.currentPageWarranty - 1) * this.pageSize;
+    return this.warrantyAlerts.slice(start, start + this.pageSize);
+  }
+
+  get paginatedTeamAssetHoldings(): TeamAssetHolding[] {
+    const start = (this.currentPageTeams - 1) * this.pageSize;
+    return this.teamAssetHoldings.slice(start, start + this.pageSize);
+  }
+
+  get totalHoldingsPages(): number { return Math.ceil(this.teamHoldings.length / this.pageSize); }
+  get totalWarrantyPages(): number { return Math.ceil(this.warrantyAlerts.length / this.pageSize); }
+  get totalTeamsPages(): number { return Math.ceil(this.teamAssetHoldings.length / this.pageSize); }
+
+  setHoldingsPage(page: number): void { if (page >= 1 && page <= this.totalHoldingsPages) this.currentPageHoldings = page; }
+  setWarrantyPage(page: number): void { if (page >= 1 && page <= this.totalWarrantyPages) this.currentPageWarranty = page; }
+  setTeamsPage(page: number): void { if (page >= 1 && page <= this.totalTeamsPages) this.currentPageTeams = page; }
+
+  getPaginationRange(curr: number, total: number, listLen: number): string {
+    if (listLen === 0) return '0 - 0 of 0';
+    const start = (curr - 1) * this.pageSize + 1;
+    const end = Math.min(curr * this.pageSize, listLen);
+    return `${start} - ${end} of ${listLen}`;
   }
 
   // ===== Existing Helper Methods =====

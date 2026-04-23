@@ -43,6 +43,11 @@ export class AssetRequestsComponent implements OnInit {
   isLoading = true;
   loadError = '';
 
+  // Pagination
+  currentPage = 1;
+  pageSize = 5;
+  protected readonly Math = Math;
+
   constructor(
     private requestService: RequestService,
     private authService: AuthService,
@@ -86,8 +91,17 @@ export class AssetRequestsComponent implements OnInit {
       this.returnRequests = returnReqs;
       console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
-      // Stats from all requests (total count across all statuses)
-      this.requestStats = this.requestService.getAllRequestStats();
+      // Stats from all requests (ensure total reflects live data)
+      this.requestStats = this.requestService.getAllRequestStats(this.allRequests);
+      
+      // If pending count in stats is less than actual pending list (mismatch), fix it
+      if (this.requestStats.pending < this.pendingRequests.length) {
+        this.requestStats.pending = this.pendingRequests.length;
+        // Total should at least be what's in awaiting action if they are disjoint
+        if (this.requestStats.total < this.pendingRequests.length) {
+          this.requestStats.total = this.pendingRequests.length;
+        }
+      }
 
       this.applyFilters();
     } catch (err: any) {
@@ -115,13 +129,13 @@ export class AssetRequestsComponent implements OnInit {
     }
   }
 
-  //switchTab(tab: 'pending' | 'all' | 'return'): void {
   switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
     this.activeTab = tab;
     this.searchTerm = '';
     this.selectedStatus = '';
     this.selectedUrgency = '';
     this.confirmationSearchTerm = '';
+    this.currentPage = 1; // Reset page on tab switch
     this.applyFilters();
   }
 
@@ -143,15 +157,45 @@ export class AssetRequestsComponent implements OnInit {
       const matchesStatus = !this.selectedStatus || req.status === this.selectedStatus;
       const matchesUrgency = !this.selectedUrgency || req.urgency === this.selectedUrgency;
       return matchesSearch && matchesStatus && matchesUrgency;
-    });
+    }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
-    // Filter confirmation requests by search term
     this.filteredConfirmationRequests = this.confirmationRequests.filter(req => {
       return !this.confirmationSearchTerm ||
-        req.requestNumber.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
+        req.id.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.requesterName.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase());
-    });
+    }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    
+    this.currentPage = 1; // Reset page on filter change
+  }
+
+  get paginatedRequests(): AssetRequest[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredRequests.slice(start, start + this.pageSize);
+  }
+
+  get paginatedConfirmationRequests(): AssetRequest[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredConfirmationRequests.slice(start, start + this.pageSize);
+  }
+
+  get totalPages(): number {
+    const source = this.activeTab === 'confirmation' ? this.filteredConfirmationRequests : this.filteredRequests;
+    return Math.ceil(source.length / this.pageSize);
+  }
+
+  setPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
+  }
+
+  get paginationDisplayRange(): string {
+    const source = this.activeTab === 'confirmation' ? this.filteredConfirmationRequests : this.filteredRequests;
+    if (source.length === 0) return '0 - 0 of 0';
+    const start = (this.currentPage - 1) * this.pageSize + 1;
+    const end = Math.min(this.currentPage * this.pageSize, source.length);
+    return `${start} - ${end} of ${source.length}`;
   }
 
   onConfirmationSearchChange(): void {
@@ -197,9 +241,27 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   async directConfirmAction(request: AssetRequest, action: 'approve' | 'reject'): Promise<void> {
+    if (!this.actionComments || this.actionComments.trim() === '') {
+      alert('Approver remarks are required.');
+      return;
+    }
+
+    if (action === 'approve') {
+      if (request.requestType !== RequestType.RETURN_ASSET) {
+        if (!this.selectedAssetId) {
+          alert('Please select an asset to allocate before approving.');
+          return;
+        }
+        if (!this.selectedAllocationMemberId) {
+          alert('Please assign an Allocation Team Member before approving.');
+          return;
+        }
+      }
+    }
+
     this.selectedRequest = request;
     this.actionType = action;
-    this.actionComments = '';
+    // this.actionComments = ''; // DO NOT RESET HERE, we need the value from UI
     console.log('Selected Allocation Member ID:', this.selectedAllocationMemberId);
     await this.confirmAction();
     this.closeDetailModal();
@@ -242,6 +304,7 @@ export class AssetRequestsComponent implements OnInit {
               t_request_approvals: {
                 status: "Approved",
                 remarks: this.actionComments,
+                reason: this.actionComments,
               }
 
             }
@@ -280,6 +343,7 @@ export class AssetRequestsComponent implements OnInit {
                 role: "Asset Allocation Team",
                 status: "Pending",
                 remarks: this.actionComments,
+                reason: this.actionComments,
                 temp1: this.selectedRequest.assignedAssetId,
 
               }
@@ -320,6 +384,7 @@ export class AssetRequestsComponent implements OnInit {
                 t_asset_return_approvals: {
                   status: "Approved",
                   remarks: this.actionComments,
+                  reason: this.actionComments,
                 }
               }
             }
@@ -340,6 +405,7 @@ export class AssetRequestsComponent implements OnInit {
                     role: "Allocation Team Member",
                     status: "Pending",
                     remarks: this.actionComments,
+                    reason: this.actionComments,
                   }
                 }
               }
@@ -403,9 +469,14 @@ export class AssetRequestsComponent implements OnInit {
     request: AssetRequest,
     action: 'approve' | 'reject'
   ): Promise<void> {
+    if (!this.actionComments || this.actionComments.trim() === '') {
+      alert('Approver remarks are required.');
+      return;
+    }
+
     this.selectedRequest = request;
     this.actionType = action;
-    this.actionComments = '';
+    // this.actionComments = ''; // Keep the value given by the user in the UI
     console.log('[Confirmation] Action triggered:', action, ' | Request:', request);
     await this.confirmActionForConfirmation();
     this.closeDetailModal();
@@ -444,7 +515,8 @@ export class AssetRequestsComponent implements OnInit {
           new: {
             t_request_approvals: {
               status: 'Approved',
-              remarks: this.actionComments || ''
+              remarks: this.actionComments || '',
+              reason: this.actionComments || ''
             }
           }
         }
@@ -491,7 +563,8 @@ export class AssetRequestsComponent implements OnInit {
           new: {
             t_request_approvals: {
               status: 'Rejected',
-              remarks: this.actionComments || ''
+              remarks: this.actionComments || '',
+              reason: this.actionComments || ''
             }
           }
         }
@@ -538,9 +611,50 @@ export class AssetRequestsComponent implements OnInit {
     return user ? user.email : '—';
   }
 
-  openDetailModal(request: AssetRequest): void {
-    this.detailRequest = request;
+  async openDetailModal(request: AssetRequest): Promise<void> {
+    this.detailRequest = { ...request };
+    this.actionComments = ''; // Reset remarks for this specific request
     this.showDetailModal = true;
+
+    // Fetch real-time progress to get actual names and statuses for the tracker
+    try {
+      const progress = await this.requestService.getRequestProgress(request.id);
+      if (progress && progress.length > 0) {
+        // Find the Team Lead approval in the history
+        const tlApproval = progress.find(p => 
+          p.stage.toLowerCase().includes('team lead') || 
+          p.stage.toLowerCase().includes('manager') // Sometimes Team Lead is called Manager in DB
+        );
+
+        // Update the detail request's approval chain
+        this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
+          if (entry.stage === ApprovalStage.TEAM_LEAD) {
+            return {
+              ...entry,
+              action: 'Approved' as any,
+              approverName: tlApproval?.approverName || entry.approverName || 'Team Lead',
+              timestamp: tlApproval?.timestamp || entry.timestamp
+            };
+          }
+          return entry;
+        });
+      } else {
+        // Fallback: If no progress history found, but Manager is seeing it, TL must have approved
+        this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
+          if (entry.stage === ApprovalStage.TEAM_LEAD) {
+            return { ...entry, action: 'Approved' as any };
+          }
+          return entry;
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to load dynamic progress for tracker:', err);
+      // Basic fallback
+      this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
+        if (entry.stage === ApprovalStage.TEAM_LEAD) return { ...entry, action: 'Approved' as any };
+        return entry;
+      });
+    }
   }
 
   closeDetailModal(): void {
@@ -598,12 +712,21 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   viewDocument(docName: string): void {
-    // Mock implementation for viewing document
-    alert(`Viewing document: ${docName}`);
+    if (!docName) return;
+    // In a real implementation, this would be a full URL to the file storage
+    // For now, we'll try to open it in a new tab
+    const fileUrl = `assets/documents/${docName}`; 
+    window.open(fileUrl, '_blank');
   }
 
   downloadDocument(docName: string): void {
-    // Mock implementation for downloading document
-    alert(`Downloading document: ${docName}`);
+    if (!docName) return;
+    const fileUrl = `assets/documents/${docName}`;
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.download = docName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 }

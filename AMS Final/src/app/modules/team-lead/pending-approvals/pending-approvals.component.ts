@@ -13,6 +13,8 @@ export class PendingApprovalsComponent implements OnInit {
   user: any;
   userDetails: any;
   isLoading = false;
+  approvalChain: any[] = [];
+  loadingProgress = false;
 
   // Pagination & Filtering
   currentPage = 1;
@@ -59,37 +61,40 @@ export class PendingApprovalsComponent implements OnInit {
     this.hs.ajax('GetallpendingrequestsForParticularTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
       { Approver_id: this.userDetails.user_id }
     ).then((resp: any) => {
-      const result = this.hs.xmltojson(resp, "t_asset_requests");
-      const rawData = Array.isArray(result) ? result : [result];
-
-
+      // Cordys joins typically return tuples
+      const result = this.hs.xmltojson(resp, "tuple") || this.hs.xmltojson(resp, "t_asset_requests");
+      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
       // Map database fields to the AssetRequest interface
       this.pendingRequests = rawData
-        .map((item: any) => {
-          console.log("Item is ", item);
-          // Based on API response: t_request_approvals contains joined objects
-          const reqItem = item.t_asset_requests || {};
-          const userInfo = item.m_users || {};
-          const subCategory = item.m_asset_subcategories || {};
-          console.log("Username is ", userInfo.name);
+        .map((tuple: any) => {
+          // If tuple has "old", it's a join; otherwise it might be a flat object
+          const parent = tuple.old || tuple;
+          
+          // Data is either inside t_asset_requests or flat in parent
+          const reqItem = parent.t_asset_requests || parent;
+          const userInfo = parent.m_users || reqItem.m_users || {};
+          const subCategory = parent.m_asset_subcategories || reqItem.m_asset_subcategories || {};
+          const approvalInfo = parent.t_request_approvals || reqItem.t_request_approvals || {};
+          const assetTypeInfo = parent.m_asset_types || reqItem.m_asset_types || {};
+
           return {
-            approvalId: item.t_request_approvals.approval_id || '',
-            id: reqItem.request_id || item.request_id,
-            requestNumber: reqItem.request_id || item.request_id,
-            requesterId: reqItem.user_id,
-            requesterName: userInfo.name,
+            approvalId: approvalInfo.approval_id || '',
+            id: reqItem.request_id || '',
+            requestNumber: reqItem.request_id || '',
+            requesterId: reqItem.user_id || userInfo.user_id || '',
+            requesterName: userInfo.name || '',
             requesterTeam: (userInfo.m_projects && userInfo.m_projects.project_name) ? userInfo.m_projects.project_name : (userInfo.team || ''),
-            category: subCategory.sub_category || item.asset_type,
-            assetType: subCategory.name,
-            description: reqItem.purpose,
-            urgency: item.urgency,
-            status: item.t_request_approvals.status || 'Pending',
-            reason: item.reason,
-            remarks: item.t_request_approvals.remarks || 'No remarks',
+            category: subCategory.sub_category || reqItem.asset_name || assetTypeInfo.type_name || reqItem.asset_type || '',
+            assetType: this.getAssetType(reqItem, assetTypeInfo) || subCategory.name || reqItem.asset_type || '',
+            description: reqItem.purpose || reqItem.reason || '',
+            urgency: reqItem.urgency || '',
+            status: approvalInfo.status || reqItem.status || 'Pending',
+            reason: reqItem.reason || reqItem.purpose || '',
+            remarks: approvalInfo.remarks || 'No remarks',
             requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
             currentStage: ApprovalStage.TEAM_LEAD,
-            taskid: item.t_request_approvals.temp2
+            taskid: approvalInfo.temp2 || ''
           } as unknown as AssetRequest;
         }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
 
@@ -98,6 +103,14 @@ export class PendingApprovalsComponent implements OnInit {
       console.error("Error fetching requests:", err);
       this.isLoading = false;
     });
+  }
+
+  // Helper method for cleanly mapping asset type
+  private getAssetType(reqItem: any, assetTypeInfo: any): string {
+    const type = assetTypeInfo.type_name || reqItem.asset_type || '';
+    if (type.toLowerCase() === 'typ_01') return 'Software';
+    if (type.toLowerCase() === 'typ_02') return 'Hardware';
+    return type;
   }
 
 
@@ -132,7 +145,69 @@ export class PendingApprovalsComponent implements OnInit {
 
   selectRequest(req: AssetRequest): void {
     this.selectedRequest = req;
-    console.log(this.selectedRequest);
+    this.tl_remarks = '';
+    this.fetchApprovalProgress(req.id);
+  }
+
+  async fetchApprovalProgress(requestId: string) {
+    this.loadingProgress = true;
+    
+    // Standard template for employee requests seen by Team Lead
+    const standardChain = [
+      { stage: 'Team Lead Approval', stageKey: 'Team Lead', status: 'Pending', approverName: '' },
+      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending', approverName: '' },
+      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending', approverName: '' }
+    ];
+
+    try {
+      const progress = await this.requestService.getRequestProgress(requestId);
+      console.log('[PendingApprovals] Raw progress:', progress);
+
+      // Merge real progress into template
+      this.approvalChain = standardChain.map(step => {
+        // Try to find matching progress entry
+        const match = progress.find(p => 
+          p.stage.toLowerCase().includes(step.stageKey.toLowerCase()) || 
+          step.stage.toLowerCase().includes(p.stage.toLowerCase())
+        );
+
+        if (match) {
+          return {
+            ...step,
+            status: match.status,
+            approverName: match.approverName,
+            timestamp: match.timestamp
+          };
+        }
+        return step;
+      });
+      
+    } catch (err) {
+      console.error('[PendingApprovals] Failed to fetch progress:', err);
+      this.approvalChain = standardChain;
+    } finally {
+      this.loadingProgress = false;
+    }
+  }
+
+  getApprovalStageClass(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'stage-approved';
+      case 'Rejected': return 'stage-rejected';
+      case 'Pending': return 'stage-pending';
+      case 'Skipped': return 'stage-skipped';
+      default: return '';
+    }
+  }
+
+  getApprovalIcon(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'check_circle';
+      case 'Rejected': return 'cancel';
+      case 'Pending': return 'radio_button_unchecked';
+      case 'Skipped': return 'remove_circle_outline';
+      default: return 'help_outline';
+    }
   }
 
   cancelSelection(): void {

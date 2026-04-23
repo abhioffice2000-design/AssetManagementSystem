@@ -257,16 +257,70 @@ export class MyRequestsComponent implements OnInit {
     if (!this.selectedRequest) return;
     
     try {
-      // Assuming a method like confirmAssetReceipt exists or could be added
-      // await this.requestService.confirmAssetReceipt(this.selectedRequest.id, this.confirmationRemarks);
-      console.log('Sending Confirmation for:', this.selectedRequest.id, 'with remarks:', this.confirmationRemarks);
+      this.loading = true;
+      const requestId = this.selectedRequest.requestNumber;
       
-      // Update UI optimistically
+      const updateReq = {
+        tuple: {
+          old: {
+            t_asset_requests: {
+              request_id: requestId
+            }
+          },
+          new: {
+            t_asset_requests: {
+              status: 'Completed'
+            }
+          }
+        }
+      };
+
+      await this.requestService.submitNewRequestForm(updateReq);
+      
+      // Update the master asset status to Allocated
+      if (this.selectedRequest.allocatedAssetId) {
+        const assetUpdateReq = {
+          tuple: {
+            old: {
+              m_assets: {
+                asset_id: this.selectedRequest.allocatedAssetId
+              }
+            },
+            new: {
+              m_assets: {
+                status: 'Allocated'
+              }
+            }
+          }
+        };
+        await this.requestService.updateAssetStatus(assetUpdateReq);
+      }
+
+      // Complete the BPM task
+      if (this.selectedRequest.taskid) {
+        const taskReq = {
+          TaskId: `${this.selectedRequest.taskid}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(taskReq);
+      }
+
+      console.log('Confirmation submitted for:', requestId);
+      
+      // Update UI
       this.selectedRequest.status = RequestStatus.COMPLETED;
       this.closeConfirmForm();
       this.closeTrackingModal();
+      
+      // Reload to ensure data consistency
+      await this.loadRequests();
+      
+      alert('Asset receipt confirmed successfully. The request is now marked as Completed.');
     } catch (error) {
       console.error('Error submitting confirmation:', error);
+      alert('Failed to confirm asset receipt. Please try again.');
+    } finally {
+      this.loading = false;
     }
   }
 
