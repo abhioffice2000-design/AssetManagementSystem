@@ -104,20 +104,15 @@
                   </button>
                 </td>
                 <td>
-                  <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-sm btn-outline" title="Edit User" (click)="openEditModal(user)">
-                      <span class="material-icons-outlined" style="font-size: 16px;">edit</span>
+                  <div style="display: flex; flex-direction: column; gap: 6px; min-width: 90px;">
+                    <button class="btn btn-sm btn-outline action-btn-wide" (click)="openEditModal(user)">
+                      Edit
                     </button>
-                    <button class="btn btn-sm btn-outline" title="Change Password" (click)="openChangePasswordModal(user)">
-                      <span class="material-icons-outlined" style="font-size: 16px;">lock_reset</span>
-                    </button>
-                    <button class="btn btn-sm btn-outline" 
-                            [title]="user.isActive ? 'Make Inactive' : 'Activate'" 
-                            [style.color]="user.isActive ? '#ef4444' : '#10b981'"
+                    <button class="btn btn-sm btn-outline action-btn-wide" 
+                            [class.btn-status-inactive]="user.isActive"
+                            [class.btn-status-active]="!user.isActive"
                             (click)="user.isActive ? openInactiveModal(user) : toggleUserActive(user)">
-                      <span class="material-icons-outlined" style="font-size: 16px;">
-                        {{ user.isActive ? 'block' : 'check_circle' }}
-                      </span>
+                      {{ user.isActive ? 'Inactive' : 'Active' }}
                     </button>
                   </div>
                 </td>
