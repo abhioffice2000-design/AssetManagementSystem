@@ -1118,3 +1118,37 @@ textarea.form-control {
 .toast-item.info .toast-icon {
   color: var(--primary);
 }
+
+.action-btn-wide {
+  width: 100%;
+  justify-content: center;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-status-active {
+  color: #10b981 !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.btn-status-active:hover {
+  background: #10b981 !important;
+  color: white !important;
+  border-color: #10b981 !important;
+}
+
+.btn-status-inactive {
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.btn-status-inactive:hover {
+  background: #ef4444 !important;
+  color: white !important;
+  border-color: #ef4444 !important;
+}
