@@ -5,11 +5,46 @@
       <p class="subtitle mt-8">View and manage all hardware and software assigned to you.</p>
     </div>
   </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <div class="search-wrapper">
+      <span class="material-icons-outlined search-icon">search</span>
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search by name, type, or asset tag..."
+        [(ngModel)]="searchText"
+        (ngModelChange)="onSearchChange()"
+      />
+      <button class="clear-search-btn" *ngIf="searchText" (click)="searchText = ''; onSearchChange()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="type-filter-wrapper">
+      <span class="material-icons-outlined filter-icon">filter_list</span>
+      <select
+        class="type-filter-select"
+        [(ngModel)]="selectedTypeFilter"
+        (ngModelChange)="onTypeFilterChange()"
+      >
+        <option value="">All Types</option>
+        <option *ngFor="let typeName of uniqueAssetTypes" [value]="typeName">{{ typeName }}</option>
+      </select>
+    </div>
+    <button class="btn btn-sm btn-clear-filters" *ngIf="searchText || selectedTypeFilter" (click)="clearFilters()">
+      <span class="material-icons-outlined">filter_list_off</span>
+      Clear Filters
+    </button>
+    <div class="filter-results-count" *ngIf="searchText || selectedTypeFilter">
+      Showing {{ filteredAssets.length }} of {{ myAssets.length }} assets
+    </div>
+  </div>
+
   <div class="card-body">
     <table class="data-table">
       <thead>
         <tr>
-          <!-- <th>Asset Tag</th> -->
           <th>Type</th>
           <th>Name</th>
           <th>Assigned Date</th>
@@ -18,10 +53,11 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let asset of myAssets">
-          <!-- <td class="text-bold text-primary">{{ asset.assetTag }}</td> -->
-          <td>{{ asset.type }}</td>
-          <td>{{ asset.name }}</td>
+        <tr *ngFor="let asset of filteredAssets">
+          <td>
+            <span class="type-badge">{{ asset.type }}</span>
+          </td>
+          <td class="asset-name-cell">{{ asset.name }}</td>
           <td>{{ asset.purchaseDate | date }}</td>
           <td>
             <span [class.text-danger]="isExpiringSoon(asset.warrantyExpiry)">
@@ -38,6 +74,15 @@
                 <span class="material-icons-outlined">security</span>
                 Extend Warranty
               </button>
+            </div>
+          </td>
+        </tr>
+        <tr *ngIf="filteredAssets.length === 0 && myAssets.length > 0">
+          <td colspan="5" class="text-center text-muted p-24">
+            <div class="empty-filter-state">
+              <span class="material-icons-outlined empty-icon">search_off</span>
+              <p>No assets match your filters.</p>
+              <button class="btn btn-sm btn-outline-primary" (click)="clearFilters()">Clear Filters</button>
             </div>
           </td>
         </tr>

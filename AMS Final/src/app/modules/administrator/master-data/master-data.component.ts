@@ -2,7 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { Asset, AssetCategory, AssetCondition, AssetStatus, AssetType } from '../../../core/models/asset.model';
 import { AdminDataService, Project } from '../../../core/services/admin-data.service';
 import { AssetService } from '../../../core/services/asset.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { Chart, ChartData, ChartOptions, registerables } from 'chart.js';
+
 
 Chart.register(...registerables);
 
@@ -154,7 +156,8 @@ export class MasterDataComponent implements OnInit {
 
   constructor(
     private assetService: AssetService,
-    private adminDataService: AdminDataService
+    private adminDataService: AdminDataService,
+    private notificationService: NotificationService
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -349,15 +352,28 @@ export class MasterDataComponent implements OnInit {
     this.selectedCategory = categoryName;
   }
 
+  onAssetNameChange(name: string): void {
+    if (name) {
+      const uniqueSuffix = Math.floor(1000 + Math.random() * 9000); // 4-digit unique number
+      const sanitizedName = name.replace(/\s+/g, '').toUpperCase();
+      this.newAsset.serialNumber = `${sanitizedName}-${uniqueSuffix}`;
+    } else {
+      this.newAsset.serialNumber = '';
+    }
+  }
+
   async saveAssetType(): Promise<void> {
+
     if (!this.newTypeName.trim() || this.isSaving) return;
     this.isSaving = true;
     try {
       // Simulate/Generate ID (e.g. typ_01, typ_06)
       const nextId = `typ_${String(this.assetTypes.length + 1).padStart(2, '0')}`;
       await this.assetService.addAssetType(nextId, this.newTypeName.trim());
+      this.notificationService.showToast(`Asset Type '${this.newTypeName}' created successfully!`, 'success');
       this.closeAddTypeModal();
       await this.loadData();
+
     } catch (e) {
       console.error(e);
     } finally {
@@ -371,8 +387,10 @@ export class MasterDataComponent implements OnInit {
     try {
       const nextId = `cat_${String(this.assetCategories.length + 1).padStart(3, '0')}`;
       await this.assetService.addAssetSubCategory(nextId, this.newSubCategoryName.trim(), this.selectedTypeIdForSubCategory);
+      this.notificationService.showToast(`Subcategory '${this.newSubCategoryName}' added successfully!`, 'success');
       this.closeAddSubCategoryModal();
       await this.loadData();
+
     } catch (e) {
       console.error(e);
     } finally {
@@ -422,9 +440,11 @@ export class MasterDataComponent implements OnInit {
 
       await this.assetService.addAssetCordys(asset, realTypeId, realSubCatId);
 
+      this.notificationService.showToast(`Asset '${asset.name}' registered successfully!`, 'success');
       this.closeAddAssetModal();
       await this.loadData();
       this.activeTab = 'assets';
+
     } catch (e) {
       console.error(e);
     } finally {
@@ -458,6 +478,7 @@ export class MasterDataComponent implements OnInit {
         this.isSaving = true;
         try {
           await this.assetService.deleteAssetTypeCordys(typeId);
+          this.notificationService.showToast('Asset Type deleted successfully.', 'success');
           await this.loadData();
         } catch (e: any) {
           if (e?.message?.includes('foreign key constraint') || e?.message?.includes('Constraint')) {
@@ -500,6 +521,7 @@ export class MasterDataComponent implements OnInit {
         this.isSaving = true;
         try {
           await this.assetService.deleteAssetSubCategoryCordys(subCatId);
+          this.notificationService.showToast('Subcategory deleted successfully.', 'success');
           await this.loadData();
         } catch (e: any) {
           if (e?.message?.includes('foreign key constraint') || e?.message?.includes('Constraint')) {
@@ -523,6 +545,7 @@ export class MasterDataComponent implements OnInit {
         this.isSaving = true;
         try {
           await this.assetService.deleteAssetCordys(assetId);
+          this.notificationService.showToast('Asset record deleted successfully.', 'success');
           await this.loadData();
         } catch (e: any) {
           alert('Failed to delete Asset.');

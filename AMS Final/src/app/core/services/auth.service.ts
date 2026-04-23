@@ -6,6 +6,8 @@ import { of, throwError, from } from 'rxjs';
 import { delay, tap } from 'rxjs/operators';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { HeroService } from './hero.service';
+import { MailService } from './mail.service';
+
 
 declare var $: any;
 
@@ -18,9 +20,22 @@ export class AuthService {
 
 
 
-  constructor(private router: Router, private http: HttpClient, private hs: HeroService) {
+  constructor(
+    private router: Router, 
+    private http: HttpClient, 
+    private hs: HeroService,
+    private mailService: MailService
+  ) {
     const savedUser = localStorage.getItem('currentUser');
-    this.currentUserSubject = new BehaviorSubject<User | null>(savedUser ? JSON.parse(savedUser) : null);
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      this.currentUserSubject = new BehaviorSubject<User | null>(user);
+      if (user.projectId && (!user.projectName || !user.teamLeadName)) {
+        this.resolveProjectDetailsInBackground(user);
+      }
+    } else {
+      this.currentUserSubject = new BehaviorSubject<User | null>(null);
+    }
     this.currentUser$ = this.currentUserSubject.asObservable();
   }
 
@@ -94,12 +109,17 @@ export class AuthService {
       isActive: userData.status === 'Active',
       joinDate: userData.created_at || new Date().toISOString().split('T')[0],
       projectId: userData.project_id,
-      projectName: (userData.m_projects && userData.m_projects.project_name) ? userData.m_projects.project_name : undefined
+      projectName: (userData.m_projects && userData.m_projects.project_name && typeof userData.m_projects.project_name === 'string') ? userData.m_projects.project_name : undefined,
+      teamLeadName: (userData.m_projects && (userData.m_projects.team_lead || userData.m_projects.tl_id) && typeof (userData.m_projects.team_lead || userData.m_projects.tl_id) === 'string') ? (userData.m_projects.team_lead || userData.m_projects.tl_id) : undefined
     };
 
     // Block login if user account is inactive
     if (!finalUser.isActive) {
       throw new Error('Your account has been deactivated. Please contact the administrator.');
+    }
+
+    if (finalUser.projectId && (!finalUser.projectName || !finalUser.teamLeadName)) {
+      this.resolveProjectDetailsInBackground(finalUser);
     }
 
     return finalUser;
@@ -142,8 +162,8 @@ export class AuthService {
         department: item.department || 'IT',
         team: (item.m_projects && item.m_projects.project_name) ? item.m_projects.project_name : (item.team || 'General'),
         projectId: item.project_id,
-        projectName: (item.m_projects && item.m_projects.project_name) ? item.m_projects.project_name : (item.projectName || item.team),
-        teamLeadName: (item.m_projects && (item.m_projects.team_lead || item.m_projects.tl_id)) ? (item.m_projects.team_lead || item.m_projects.tl_id) : undefined,
+        projectName: (item.m_projects && item.m_projects.project_name && typeof item.m_projects.project_name === 'string') ? item.m_projects.project_name : (item.projectName || item.team),
+        teamLeadName: (item.m_projects && (item.m_projects.team_lead || item.m_projects.tl_id) && typeof (item.m_projects.team_lead || item.m_projects.tl_id) === 'string') ? (item.m_projects.team_lead || item.m_projects.tl_id) : undefined,
         designation: item.designation || 'Specialist',
         isActive: item.status === 'Active',
         joinDate: item.created_at || new Date().toISOString().split('T')[0]
@@ -167,25 +187,43 @@ export class AuthService {
     const getProjectSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <GetM_projectsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
-      <Project_id>${user.projectId}</Project_id>
-    </GetM_projectsObject>
+    <GetAllProjectsDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
     try {
       const resp = await this.hs.ajax(null, null, {}, getProjectSoap);
-      const projData = this.hs.xmltojson(resp, 'm_projects');
-      if (projData) {
-        const p = projData.new ? projData.new : (projData.old ? projData.old : projData);
-        const item = p.m_projects || p;
-        user.projectName = item.project_name;
-        user.teamLeadName = item.team_lead || item.tl_id;
-        
-        // Update subject if this is the current user
-        const current = this.currentUserSubject.value;
-        if (current && current.id === user.id) {
-          this.currentUserSubject.next({...current, projectName: user.projectName, teamLeadName: user.teamLeadName});
+      let projectsData = this.hs.xmltojson(resp, 'm_projects');
+
+      if (projectsData) {
+        if (!Array.isArray(projectsData)) {
+          projectsData = [projectsData];
+        }
+
+        // Find the specific project that matches the user's projectId (or projectCode)
+        const matchingProject = projectsData.find((p: any) => 
+          p.project_id === user.projectId || p.project_code === user.projectId
+        );
+
+        if (matchingProject) {
+          user.projectName = matchingProject.project_name || user.projectName;
+          
+          // Resolve teamLeadName. Cordys might return an object for nulls. 
+          // We check if it's a string, otherwise fallback to undefined.
+          let resolvedTeamLead = matchingProject.team_lead || matchingProject.tl_id;
+          if (resolvedTeamLead && typeof resolvedTeamLead === 'object') {
+            resolvedTeamLead = undefined;
+          }
+
+          user.teamLeadName = resolvedTeamLead;
+          
+          // Update subject if this is the current user
+          const current = this.currentUserSubject.value;
+          if (current && current.id === user.id) {
+            const updatedUser = {...current, projectName: user.projectName, teamLeadName: user.teamLeadName};
+            this.currentUserSubject.next(updatedUser);
+            localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+          }
         }
       }
     } catch (e) {
@@ -313,24 +351,53 @@ export class AuthService {
     // AMS_AssetManager = Asset Manager
     // AMS_TeamLead = Team Lead
     // AMS_AssetAllocationTeam = Asset Allocation Team
+    // Role mapping:
     const cordysRole = 'AMS_Employee';
     const dbRoleId = 'rol_03';
+
+    // Step 0: Resolve unique User ID from DB
+    const getAllUsersSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllUserRoleProjectDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    let nextUserId = 'usr_001';
+    try {
+      const usersResp = await this.hs.ajax(null, null, {}, getAllUsersSoap);
+      let usersData = this.hs.xmltojson(usersResp, 'm_users');
+      if (usersData) {
+        if (!Array.isArray(usersData)) usersData = [usersData];
+        const nextNumber = usersData
+          .map((u: any) => {
+            const id = u.user_id || '';
+            const match = id.match(/(\d+)$/);
+            return match ? Number(match[1]) : 0;
+          })
+          .reduce((max: number, value: number) => Math.max(max, value), 0) + 1;
+        nextUserId = `usr_${String(nextNumber).padStart(3, '0')}`;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch existing users for ID generation, defaulting logic to usr_001', e);
+    }
+
 
     const createUserSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
     <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
       <User>
-        <UserName isAnonymous="">${email}</UserName>
-        <Description>${userName}</Description>
+        <UserName isAnonymous="">${this.xmlEscape(email)}</UserName>
+        <Description>${this.xmlEscape(userName)}</Description>
         <Credentials allowDuplicate="true">
           <UserIDPassword>
-            <UserID>${email}</UserID>
-            <Password>${userData.password}</Password>
+            <UserID>${this.xmlEscape(email)}</UserID>
+            <Password>${this.xmlEscape(userData.password)}</Password>
           </UserIDPassword>
         </Credentials>
         <Roles>
-          <Role application="">${cordysRole}</Role>
+          <Role application="">${this.xmlEscape(cordysRole)}</Role>
         </Roles>
       </User>
     </CreateUserInOrganization>
@@ -344,20 +411,15 @@ export class AuthService {
       <tuple>
         <new>
           <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
-            <name>${userName}</name>
-            <email>${email}</email>
-            <role_id>${dbRoleId}</role_id>
+            <user_id>${this.xmlEscape(nextUserId)}</user_id>
+            <name>${this.xmlEscape(userName)}</name>
+            <email>${this.xmlEscape(email)}</email>
+            <role_id>${this.xmlEscape(dbRoleId)}</role_id>
             <status>Active</status>
             <project_id>null</project_id>
             <asset_type_id>null</asset_type_id>
             <created_at>${new Date().toISOString()}</created_at>
-            <temp1>null</temp1>
-            <temp2>null</temp2>
-            <temp3>null</temp3>
-            <temp4>null</temp4>
-            <temp5>null</temp5>
-            <temp6>null</temp6>
-            <temp7>null</temp7>
+            <temp1>${this.xmlEscape(userData.password)}</temp1>
           </m_users>
         </new>
       </tuple>
@@ -367,10 +429,9 @@ export class AuthService {
 
     try {
       // Step 1: SSO authenticate as admin
-      debugger;
       console.log('Step 1: SSO authenticating as admin (sourabhs)...');
       await this.ssoAuthenticate('sourabhs', 'sourabhs');
-      debugger;
+
       // Step 2: Create new user in Cordys
       console.log('Step 2: Creating user in Cordys...');
       const createResp = await this.hs.ajax(null, null, {}, createUserSoap);
@@ -379,19 +440,19 @@ export class AuthService {
       // Step 3: SSO logout
       console.log('Step 3: Logging out admin session...');
       //   await this.ssoLogout();
-      debugger;
+
       // Step 4: SSO authenticate as the new user
       console.log('Step 4: SSO authenticating as new user...');
       // await this.ssoAuthenticate(email, userData.password);
-      debugger;
+
       // Step 5: Save user details in DB
-      console.log('Step 5: Saving user to database...');
+      console.log('Step 5: Saving user to database with ID:', nextUserId);
       const dbResp = await this.hs.ajax(null, null, {}, updateUsersSoap);
       console.log('Step 5 result:', this.hs.xmltojson(dbResp, 'm_users'));
 
       // Build and return the local user object
       const newUser: User = {
-        id: email,
+        id: nextUserId,
         firstName: userData.firstName,
         lastName: userData.lastName,
         name: userName,
@@ -408,6 +469,11 @@ export class AuthService {
        localStorage.setItem('currentUser', JSON.stringify(newUser));
        localStorage.setItem('userId', newUser.id);
        this.currentUserSubject.next(newUser);
+
+      // Step 6: Send Welcome Email
+      console.log('Step 6: Sending welcome email via Cordys BPM...');
+      // We don't await this to keep the registration UI snappy
+      this.mailService.sendWelcomeEmail(email, userName, userData.password);
 
       return newUser;
 
@@ -483,5 +549,15 @@ export class AuthService {
       case UserRole.EMPLOYEE: return '/employee';
       default: return '/employee';
     }
+  }
+
+  private xmlEscape(value: string): string {
+    if (!value) return '';
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
   }
 }

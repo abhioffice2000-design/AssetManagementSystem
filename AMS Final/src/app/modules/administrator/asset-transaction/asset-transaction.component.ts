@@ -1,6 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { Chart, ChartData, ChartOptions, registerables } from 'chart.js';
 import { AdminDataService, AssetRequest } from 'src/app/core/services/admin-data.service';
+import { RequestService } from 'src/app/core/services/request.service';
+import { AuthService } from 'src/app/core/services/auth.service';
+import { NotificationService } from 'src/app/core/services/notification.service';
+
 
 Chart.register(...registerables);
 
@@ -73,7 +77,12 @@ export class AssetTransactionComponent implements OnInit {
 
   statusOptions: string[] = ['All', 'Pending', 'Approved', 'Rejected', 'Completed'];
 
-  constructor(private adminDataService: AdminDataService) { }
+  constructor(
+    private adminDataService: AdminDataService,
+    private requestService: RequestService,
+    private authService: AuthService,
+    private notificationService: NotificationService
+  ) { }
 
   ngOnInit(): void {
     this.loadRequests();
@@ -304,9 +313,10 @@ export class AssetTransactionComponent implements OnInit {
 
   downloadDocument(doc: string): void {
     if (!doc || !doc.includes('|')) {
-      alert('The attached document was not successfully stored by the backend database. This is a known database configuration limitation where document fields are unmapped or restricted by length.');
+      this.notificationService.showToast('The attached document was not successfully stored by the backend database.', 'error');
       return;
     }
+
     const parts = doc.split('|');
     const fileName = parts.shift() || 'document.bin';
     const base64Data = parts.join('|'); // Rejoin in case base64 happened to have a pipe character
@@ -379,5 +389,162 @@ export class AssetTransactionComponent implements OnInit {
 
   trackByRequestId(index: number, request: AssetRequest): string {
     return request.requestId || `${index}`;
+  }
+
+  // ===== Progress Tracking Modal =====
+  showTrackingModal = false;
+  selectedTrackRequest: AssetRequest | null = null;
+  loadingProgress = false;
+  trackingSteps: any[] = [];
+  overallProgress = 0;
+
+  async trackRequest(request: AssetRequest): Promise<void> {
+    this.selectedTrackRequest = request;
+    this.showTrackingModal = true;
+    this.loadingProgress = true;
+    this.trackingSteps = [];
+    this.overallProgress = 0;
+
+    try {
+      const progressData = await this.requestService.getRequestProgress(request.requestId);
+
+      // Sort chronologically
+      progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      // Define standard stages for a new asset request
+      const stages = [
+        { name: 'Team Lead', roles: ['team lead', 'approver'] },
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+      ];
+
+      let availableProgress = [...progressData];
+
+      // Resolve actual approver names from the DB
+      const resolvedNames = await this.resolveApproverNamesForAdmin(request);
+
+      this.trackingSteps = stages.map((stage, index) => {
+        const isDistributionStep = index === (stages.length - 1) && stage.name === 'Asset Manager' && stages.length > 2;
+
+        const foundIndex = availableProgress.findIndex(p =>
+          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+        );
+
+        let data = null;
+        if (foundIndex !== -1) {
+          data = availableProgress[foundIndex];
+          availableProgress.splice(foundIndex, 1);
+        }
+
+        let isCompleted = false;
+        let isCurrent = false;
+
+        if (data) {
+          isCompleted = data.status === 'Approved' || data.status === 'Completed';
+          isCurrent = data.status === 'Pending';
+        } else {
+          isCompleted = request.status.toLowerCase() === 'completed' || request.status.toLowerCase() === 'approved';
+        }
+
+        // Resolve names: prefer DB name > resolved lookup name > fallback
+        const dbName = data?.approverName?.trim();
+        const genericPlaceholders = ['assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
+        const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
+
+        let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[stage.name];
+        if (isPlaceholder(resolvedName)) {
+          resolvedName = undefined;
+        }
+
+        return {
+          name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
+          roleName: stage.name + (isDistributionStep ? ' (Distribution)' : ''),
+          status: data ? data.status : (isCompleted ? 'Approved' : 'Pending'),
+          timestamp: data?.timestamp,
+          isCompleted: isCompleted,
+          isCurrent: isCurrent,
+          comments: data?.comments
+        };
+      });
+
+      // Fix pending states: only the first non-completed step is "current"
+      let currentStepFound = false;
+      for (let i = 0; i < this.trackingSteps.length; i++) {
+        const step = this.trackingSteps[i];
+        if (step.status === 'Pending') {
+          step.isCurrent = false;
+        }
+        if (!currentStepFound && !step.isCompleted) {
+          step.isCurrent = true;
+          currentStepFound = true;
+        }
+      }
+
+      // Remove steps that have no approver assigned (not part of the actual flow)
+      this.trackingSteps = this.trackingSteps.filter(step =>
+        step.name !== 'To be Assigned'
+      );
+
+      this.overallProgress = this.calculateOverallProgress(request.status);
+    } catch (error) {
+      console.error('Error tracking request:', error);
+    } finally {
+      this.loadingProgress = false;
+    }
+  }
+
+  /**
+   * Resolves actual approver names by looking up the requester's project (for Team Lead)
+   * and the asset type assignment (for Asset Manager & Allocation Team).
+   */
+  private async resolveApproverNamesForAdmin(request: AssetRequest): Promise<Record<string, string>> {
+    const resolvedNames: Record<string, string> = {};
+
+    try {
+      // 1. Resolve Team Lead from the requester's project
+      if (request.userId) {
+        const userDetails = await this.authService.getUserDetails(request.userId);
+        if (userDetails?.projectId && userDetails.projectId !== 'null') {
+          const project = await this.adminDataService.getProjectById(userDetails.projectId);
+          if (project?.teamLead) {
+            resolvedNames['Team Lead'] = project.teamLead;
+          }
+        }
+      }
+
+      // 2. Resolve Asset Manager & Allocation Team from asset type
+      if (request.assetType) {
+        const assignment = await this.adminDataService.getAssignmentByAssetType(request.assetType);
+        if (assignment) {
+          if (assignment.assetManager) resolvedNames['Asset Manager'] = assignment.assetManager;
+          if (assignment.teamMembers) resolvedNames['Asset Allocation Team'] = assignment.teamMembers;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve approver names for admin tracking:', err);
+    }
+
+    return resolvedNames;
+  }
+
+  calculateOverallProgress(requestStatus: string): number {
+    const status = requestStatus.toLowerCase();
+    if (status === 'completed') return 100;
+    if (status === 'rejected') return 0;
+
+    const completedCount = this.trackingSteps.filter(s => s.isCompleted).length;
+    if (completedCount === 0) return 10;
+    if (completedCount === 1) return 33;
+    if (completedCount === 2) return 66;
+    if (completedCount === 3) return 90;
+    return 100;
+  }
+
+  closeTrackingModal(): void {
+    this.showTrackingModal = false;
+    this.selectedTrackRequest = null;
+    this.trackingSteps = [];
+    this.overallProgress = 0;
   }
 }

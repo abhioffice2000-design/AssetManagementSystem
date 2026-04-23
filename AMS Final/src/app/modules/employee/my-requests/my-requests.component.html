@@ -67,15 +67,34 @@
         Showing {{ (currentPage - 1) * pageSize + 1 }} to {{ Math.min(currentPage * pageSize, totalRequests) }} of {{ totalRequests }} requests
       </div>
       <div class="pagination-controls">
-        <button class="page-btn" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)">
+        <!-- First page arrow -->
+        <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(1)" title="First page">
+          <span class="material-icons-outlined">first_page</span>
+        </button>
+        <!-- Previous arrow -->
+        <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)" title="Previous page">
           <span class="material-icons-outlined">chevron_left</span>
         </button>
-        <button *ngFor="let p of pageNumbers" class="page-btn" [class.active]="currentPage === p" (click)="goToPage(p)">
-          {{ p }}
-        </button>
-        <button class="page-btn" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)">
+
+        <!-- Page numbers with ellipsis -->
+        <ng-container *ngFor="let p of visiblePages">
+          <span class="page-ellipsis" *ngIf="p === '...'">…</span>
+          <button *ngIf="p !== '...'" class="page-btn" [class.active]="currentPage === p" (click)="goToPage(+p)">
+            {{ p }}
+          </button>
+        </ng-container>
+
+        <!-- Next arrow -->
+        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)" title="Next page">
           <span class="material-icons-outlined">chevron_right</span>
         </button>
+        <!-- Last page arrow -->
+        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)" title="Last page">
+          <span class="material-icons-outlined">last_page</span>
+        </button>
+      </div>
+      <div class="pagination-page-indicator">
+        Page {{ currentPage }} of {{ totalPages }}
       </div>
     </div>
   </div>
@@ -134,7 +153,10 @@
 
           <div class="step-content">
             <div class="step-header">
-              <h4 class="step-name highlighted" style="font-weight: 700; color: var(--primary); font-size: 1.1rem;">{{ step.name }}</h4>
+              <div class="step-name-block">
+                <h4 class="step-name highlighted" style="font-weight: 700; color: var(--primary); font-size: 1.1rem; margin: 0;">{{ step.name }}</h4>
+                <span class="step-role-label" style="font-size: 0.72rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em;">{{ step.roleName }}</span>
+              </div>
               <span class="step-status">{{ step.status }}</span>
             </div>
             

@@ -61,8 +61,58 @@ export class MyRequestsComponent implements OnInit {
     return Math.ceil(this.totalRequests / this.pageSize);
   }
 
-  get pageNumbers(): number[] {
-    return Array.from({ length: this.totalPages }, (_, i) => i + 1);
+  /**
+   * Returns a windowed set of page numbers for professional pagination.
+   * Shows at most 5 page buttons, with ellipsis ('...') for gaps and always
+   * shows the first and last page.
+   */
+  get visiblePages(): (number | string)[] {
+    const total = this.totalPages;
+    const current = this.currentPage;
+    const maxVisible = 5;
+
+    if (total <= maxVisible + 2) {
+      // If total pages fit without needing ellipsis, show all
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    const pages: (number | string)[] = [];
+
+    // Always include first page
+    pages.push(1);
+
+    // Calculate the window around current page
+    let start = Math.max(2, current - 1);
+    let end = Math.min(total - 1, current + 1);
+
+    // Ensure we show at least 3 middle pages
+    if (current <= 3) {
+      start = 2;
+      end = Math.min(total - 1, maxVisible - 1);
+    } else if (current >= total - 2) {
+      start = Math.max(2, total - maxVisible + 2);
+      end = total - 1;
+    }
+
+    // Add ellipsis after first page if needed
+    if (start > 2) {
+      pages.push('...');
+    }
+
+    // Add middle pages
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    // Add ellipsis before last page if needed
+    if (end < total - 1) {
+      pages.push('...');
+    }
+
+    // Always include last page
+    pages.push(total);
+
+    return pages;
   }
 
   goToPage(page: number): void {
@@ -181,6 +231,11 @@ export class MyRequestsComponent implements OnInit {
           currentStepFound = true;
         }
       }
+
+      // 5. Remove steps that have no approver assigned (not part of the actual flow)
+      this.trackingSteps = this.trackingSteps.filter(step =>
+        step.name !== 'To be Assigned'
+      );
 
       this.overallProgress = this.calculateOverallProgress(request.status);
     } catch (error) {

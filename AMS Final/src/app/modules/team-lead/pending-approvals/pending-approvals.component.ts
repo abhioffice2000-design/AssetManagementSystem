@@ -2,6 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { AssetRequest, ApprovalStage } from '../../../core/models/request.model';
 import { HeroService } from '../../../core/services/hero.service';
 import { RequestService } from '../../../core/services/request.service';
+import { NotificationService } from '../../../core/services/notification.service';
+
 @Component({
   selector: 'app-pending-approvals',
   templateUrl: './pending-approvals.component.html',
@@ -24,7 +26,8 @@ export class PendingApprovalsComponent implements OnInit {
 
   constructor(
     private hs: HeroService,
-    private requestService: RequestService
+    private requestService: RequestService,
+    private notificationService: NotificationService
   ) { }
 
   ngOnInit(): void {
@@ -228,9 +231,10 @@ export class PendingApprovalsComponent implements OnInit {
   async handleApprove() {
     console.log(this.selectedRequest);
     if (!this.selectedRequest?.approvalId) {
-      alert("No approval record found for this request");
+      this.notificationService.showToast("No approval record found for this request", "error");
       return;
     }
+
 
     try {
       this.isLoading = true;
@@ -280,27 +284,31 @@ export class PendingApprovalsComponent implements OnInit {
       
       await this.requestService.completeUserTask(req3 as any);
 
-      alert('Request Approved successfully');
+      this.notificationService.showToast('Request Approved successfully', 'success');
+
       this.selectedRequest = null;
       this.tl_remarks = '';
       this.getallrequests();
     } catch (error) {
       console.error("Approval error:", error);
-      alert("Failed to approve request. Please try again.");
+      this.notificationService.showToast("Failed to approve request. Please try again.", "error");
       this.isLoading = false;
     }
+
   }
 
   async handleReject() {
     if (!this.selectedRequest?.approvalId) {
-      alert("No approval record found for this request");
+      this.notificationService.showToast("No approval record found for this request", "error");
       return;
     }
 
+
     if (!this.tl_remarks || !this.tl_remarks.trim()) {
-      alert("Please enter remarks before rejecting.");
+      this.notificationService.showToast("Please enter remarks before rejecting.", "warning");
       return;
     }
+
 
     try {
       this.isLoading = true;
@@ -349,15 +357,17 @@ export class PendingApprovalsComponent implements OnInit {
         await this.requestService.completeUserTask(req3 as any);
       }
 
-      alert('Request Rejected successfully');
+      this.notificationService.showToast('Request Rejected successfully', 'success');
+
       this.selectedRequest = null;
       this.tl_remarks = '';
       this.getallrequests();
     } catch (error) {
       console.error("Rejection error:", error);
-      alert("Failed to reject request. Please try again.");
+      this.notificationService.showToast("Failed to reject request. Please try again.", "error");
       this.isLoading = false;
     }
+
   }
 
   onSearch(event: Event) {

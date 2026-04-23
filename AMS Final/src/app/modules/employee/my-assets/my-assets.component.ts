@@ -9,6 +9,11 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { HeroService } from '../../../core/services/hero.service';
 import { Router } from '@angular/router';
 
+interface AssetTypeOption {
+  type_id: string;
+  type_name: string;
+}
+
 @Component({
   selector: 'app-my-assets',
   templateUrl: './my-assets.component.html',
@@ -16,7 +21,14 @@ import { Router } from '@angular/router';
 })
 export class MyAssetsComponent implements OnInit {
   myAssets: Asset[] = [];
+  filteredAssets: Asset[] = [];
   RequestType = RequestType;
+
+  // Filter & search
+  searchText = '';
+  selectedTypeFilter = '';
+  assetTypes: AssetTypeOption[] = [];
+  typeMap: Record<string, string> = {}; // type_id → type_name
   
   // Modal states
   isReturnModalOpen = false;
@@ -39,16 +51,86 @@ export class MyAssetsComponent implements OnInit {
     if (!user) return;
 
     try {
+      // Fetch asset types first to build the lookup map
+      const types = await this.assetService.getAllAssetTypesCordys();
+      this.assetTypes = types.map((t: any) => ({
+        type_id: t.type_id || '',
+        type_name: t.type_name || t.name || t.type_id || ''
+      }));
+      this.assetTypes.forEach(t => this.typeMap[t.type_id] = t.type_name);
+
       this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
       
       // Fallback to mock data if no real data is found (for consistency with dashboard)
       if (this.myAssets.length === 0) {
         this.myAssets = this.assetService.getAssetsByUser(user.id);
       }
+
+      // Resolve type IDs to human-readable names
+      this.myAssets = this.myAssets.map(asset => ({
+        ...asset,
+        type: this.resolveTypeName(asset.type as string)
+      }));
+
+      this.applyFilters();
     } catch (error) {
       console.error('Failed to fetch assets from Cordys in My Assets page', error);
       this.myAssets = this.assetService.getAssetsByUser(user.id);
+      this.applyFilters();
     }
+  }
+
+  /**
+   * Resolves a type_id like "typ_01" to the human-readable name like "Hardware".
+   * Falls back to the original value if not found in the map.
+   */
+  resolveTypeName(typeValue: string): string {
+    if (!typeValue) return 'N/A';
+    // If the typeMap has this key, it's a type_id → return the name
+    if (this.typeMap[typeValue]) return this.typeMap[typeValue];
+    // Otherwise it's already a type name (from mock data etc.)
+    return typeValue;
+  }
+
+  applyFilters(): void {
+    let result = [...this.myAssets];
+
+    // Filter by type name
+    if (this.selectedTypeFilter) {
+      result = result.filter(a => a.type === this.selectedTypeFilter);
+    }
+
+    // Filter by search text (searches across name, type, and asset tag)
+    if (this.searchText && this.searchText.trim()) {
+      const query = this.searchText.trim().toLowerCase();
+      result = result.filter(a =>
+        (a.name || '').toLowerCase().includes(query) ||
+        (a.type as string || '').toLowerCase().includes(query) ||
+        (a.assetTag || '').toLowerCase().includes(query)
+      );
+    }
+
+    this.filteredAssets = result;
+  }
+
+  onSearchChange(): void {
+    this.applyFilters();
+  }
+
+  onTypeFilterChange(): void {
+    this.applyFilters();
+  }
+
+  clearFilters(): void {
+    this.searchText = '';
+    this.selectedTypeFilter = '';
+    this.applyFilters();
+  }
+
+  /** Returns unique type names present in the user's assets for the filter dropdown */
+  get uniqueAssetTypes(): string[] {
+    const types = new Set(this.myAssets.map(a => a.type as string).filter(Boolean));
+    return Array.from(types).sort();
   }
 
   isExpiringSoon(dateStr: string): boolean {
