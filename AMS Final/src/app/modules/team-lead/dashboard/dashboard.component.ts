@@ -29,12 +29,15 @@ export class LeadDashboardComponent implements OnInit {
   isLoading = false;
   teamMembers: any[] = [];
   showTeamModal = false;
+  approvalChain: any[] = [];
+  loadingProgress = false;
 
   constructor(
     private authService: AuthService,
     private userService: UserService,
     private assetService: AssetService,
-    private hs: HeroService
+    private hs: HeroService,
+    private requestService: RequestService
   ) { }
 
   ngOnInit(): void {
@@ -105,6 +108,73 @@ export class LeadDashboardComponent implements OnInit {
 
   selectRequest(req: AssetRequest): void {
     this.selectedRequest = req;
+    this.fetchApprovalProgress(req.id);
+  }
+
+  async fetchApprovalProgress(requestId: string) {
+    this.loadingProgress = true;
+    
+    // Standard template
+    const standardChain = [
+      { stage: 'Team Lead Approval', stageKey: 'Team Lead', status: 'Pending' },
+      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending' },
+      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending' }
+    ];
+
+    // Self-request template (Asset Manager -> Allocation)
+    const selfChain = [
+      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending' },
+      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending' }
+    ];
+
+    // Select base template based on requester
+    const isSelfRequest = this.selectedRequest?.requesterId === 'usr_003';
+    const baseTemplate = isSelfRequest ? selfChain : standardChain;
+
+    try {
+      const progress = await this.requestService.getRequestProgress(requestId);
+      
+      this.approvalChain = baseTemplate.map(step => {
+        const match = progress.find(p => 
+          p.stage.toLowerCase().includes(step.stageKey.toLowerCase()) || 
+          step.stage.toLowerCase().includes(p.stage.toLowerCase())
+        );
+
+        if (match) {
+          return {
+            ...step,
+            status: match.status,
+            approverName: match.approverName
+          };
+        }
+        return step;
+      });
+    } catch (err) {
+      console.error('[Dashboard] Failed to fetch progress:', err);
+      this.approvalChain = baseTemplate;
+    } finally {
+      this.loadingProgress = false;
+    }
+  }
+
+  getApprovalStageClass(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'stage-approved';
+      case 'Rejected': return 'stage-rejected';
+      case 'Pending': return 'stage-pending';
+      case 'Skipped': return 'stage-skipped';
+      default: return '';
+    }
+  }
+
+  getApprovalIcon(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'check_circle';
+      case 'Rejected': return 'cancel';
+      case 'Pending': return 'radio_button_unchecked';
+      case 'Skipped': return 'remove_circle_outline';
+      default: return 'help_outline';
+    }
   }
 
   cancelSelection(): void {
@@ -140,22 +210,13 @@ export class LeadDashboardComponent implements OnInit {
 
       // Map database fields to the AssetRequest interface fields used in the template
       this.teamRequests = rawData.map((item: any) => {
+        const request = this.requestService.mapTupleToRequest(item);
         const reqItem = item.t_asset_requests || {};
-        const userInfo = item.m_users || {};
-        const subCategory = item.m_asset_subcategories || {};
-
         return {
-          id: reqItem.request_id || '',
-          requestNumber: reqItem.request_id || '', 
-          requesterName: userInfo.name || 'User',
-          requesterTeam: userInfo.team || '',
-          category: reqItem.asset_type || '',
-          assetType: subCategory.name || '', 
-          urgency: item.urgency,
-          status: item.status,
-          requestDate: reqItem.created_at || '',
-          currentStage: 'Pending' // Initial default
-        } as any;
+          ...request,
+          reqStatus: reqItem.status || request.status,
+          status: item.status || request.status
+        };
       }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
 
       this.data.table = rawData;

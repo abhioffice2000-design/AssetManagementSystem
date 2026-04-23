@@ -21,6 +21,13 @@ export class AssetInventoryComponent implements OnInit {
   // Loading & error state
   isLoading = true;
   loadError = '';
+  
+  // Expose Math for template
+  protected readonly Math = Math;
+  
+  // Pagination
+  currentPage = 1;
+  itemsPerPage = 5;
 
   constructor(private assetService: AssetService) {}
 
@@ -55,7 +62,30 @@ export class AssetInventoryComponent implements OnInit {
       const matchesType = !this.selectedType || asset.type === this.selectedType;
       const matchesStatus = !this.selectedStatus || asset.status === this.selectedStatus;
       return matchesSearch && matchesType && matchesStatus;
-    });
+    }).sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+    this.currentPage = 1; // Reset to first page on filter change
+  }
+
+  get paginationDisplayRange(): string {
+    if (this.filteredAssets.length === 0) return '0 - 0 of 0';
+    const start = (this.currentPage - 1) * this.itemsPerPage + 1;
+    const end = Math.min(this.currentPage * this.itemsPerPage, this.filteredAssets.length);
+    return `${start} - ${end} of ${this.filteredAssets.length}`;
+  }
+
+  get paginatedAssets(): Asset[] {
+    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    return this.filteredAssets.slice(startIndex, startIndex + this.itemsPerPage);
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredAssets.length / this.itemsPerPage);
+  }
+
+  setPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
   }
 
   onSearchChange(): void {

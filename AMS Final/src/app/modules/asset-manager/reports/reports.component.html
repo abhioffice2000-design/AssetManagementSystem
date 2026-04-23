@@ -236,7 +236,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let holding of teamHoldings">
+            <tr *ngFor="let holding of paginatedTeamHoldings">
               <td>{{ holding.department }}</td>
               <td>{{ holding.team }}</td>
               <td><span class="count-badge">{{ holding.count }}</span></td>
@@ -244,6 +244,19 @@
             </tr>
           </tbody>
         </table>
+        <!-- Pagination for Team Holdings Table -->
+        <div class="pagination-controls mini" *ngIf="teamHoldings.length > pageSize">
+          <div class="pagination-info">{{ getPaginationRange(currentPageHoldings, totalHoldingsPages, teamHoldings.length) }}</div>
+          <div class="pagination-actions">
+            <button class="btn-page-sm" [disabled]="currentPageHoldings === 1" (click)="setHoldingsPage(currentPageHoldings - 1)">
+              <span class="material-icons-outlined">chevron_left</span>
+            </button>
+            <span class="page-indicator-sm">{{ currentPageHoldings }} / {{ totalHoldingsPages }}</span>
+            <button class="btn-page-sm" [disabled]="currentPageHoldings === totalHoldingsPages" (click)="setHoldingsPage(currentPageHoldings + 1)">
+              <span class="material-icons-outlined">chevron_right</span>
+            </button>
+          </div>
+        </div>
         <div class="empty-state" *ngIf="teamHoldings.length === 0">
           <p class="text-muted">No team holdings data available</p>
         </div>
@@ -259,7 +272,7 @@
         </h3>
       </div>
       <div class="card-body p-0">
-        <div class="warranty-item" *ngFor="let asset of warrantyAlerts" [ngClass]="getExpiryUrgency(asset.warrantyExpiry)">
+        <div class="warranty-item" *ngFor="let asset of paginatedWarrantyAlerts" [ngClass]="getExpiryUrgency(asset.warrantyExpiry)">
           <div class="warranty-info">
             <span class="warranty-name">{{ asset.name }}</span>
             <span class="warranty-tag">{{ asset.assetTag }}</span>
@@ -271,6 +284,19 @@
           <span class="warranty-days">
             {{ getDaysUntilExpiry(asset.warrantyExpiry) }} days left
           </span>
+        </div>
+        <!-- Pagination for Warranty Alerts -->
+        <div class="pagination-controls mini" *ngIf="warrantyAlerts.length > pageSize">
+          <div class="pagination-info">{{ getPaginationRange(currentPageWarranty, totalWarrantyPages, warrantyAlerts.length) }}</div>
+          <div class="pagination-actions">
+            <button class="btn-page-sm" [disabled]="currentPageWarranty === 1" (click)="setWarrantyPage(currentPageWarranty - 1)">
+              <span class="material-icons-outlined">chevron_left</span>
+            </button>
+            <span class="page-indicator-sm">{{ currentPageWarranty }} / {{ totalWarrantyPages }}</span>
+            <button class="btn-page-sm" [disabled]="currentPageWarranty === totalWarrantyPages" (click)="setWarrantyPage(currentPageWarranty + 1)">
+              <span class="material-icons-outlined">chevron_right</span>
+            </button>
+          </div>
         </div>
         <div class="empty-state" *ngIf="warrantyAlerts.length === 0">
           <span class="material-icons-outlined" style="font-size: 40px; color: var(--text-muted);">verified</span>
@@ -399,7 +425,7 @@
     </div>
     <div class="section-body">
       <div class="team-holding-list">
-        <div class="team-holding-card" *ngFor="let team of teamAssetHoldings">
+        <div class="team-holding-card" *ngFor="let team of paginatedTeamAssetHoldings">
           <div class="team-card-header">
             <div class="team-info">
               <div class="team-avatar">
@@ -443,6 +469,19 @@
             </div>
             <span class="team-pct">{{ getTeamPercentage(team.totalAssets) }}% of total</span>
           </div>
+        </div>
+      </div>
+      <!-- Pagination for Team Asset Holdings (Detailed Cards) -->
+      <div class="pagination-controls" style="margin-top: 24px;" *ngIf="teamAssetHoldings.length > pageSize">
+        <div class="pagination-info">Showing <strong>{{ getPaginationRange(currentPageTeams, totalTeamsPages, teamAssetHoldings.length) }}</strong></div>
+        <div class="pagination-actions">
+          <button class="btn-page" [disabled]="currentPageTeams === 1" (click)="setTeamsPage(currentPageTeams - 1)">
+            <span class="material-icons-outlined">chevron_left</span> Previous
+          </button>
+          <span class="page-indicator">Page {{ currentPageTeams }} of {{ totalTeamsPages }}</span>
+          <button class="btn-page" [disabled]="currentPageTeams === totalTeamsPages" (click)="setTeamsPage(currentPageTeams + 1)">
+            Next <span class="material-icons-outlined">chevron_right</span>
+          </button>
         </div>
       </div>
     </div>

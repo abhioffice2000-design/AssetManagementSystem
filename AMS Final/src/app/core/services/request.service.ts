@@ -318,7 +318,7 @@ export class RequestService {
       subCategory: this.getNullableValue(assetData?.sub_category_id),
       justification: reqData?.reason || '',
       urgency,
-      status,
+      status: (status === RequestStatus.PENDING) ? RequestStatus.APPROVED : status,
       currentStage,
       hasEmailApproval,
       emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
@@ -337,13 +337,16 @@ export class RequestService {
       assetName: assetData?.asset_name || '',
       approvalChain: [
         { stage: ApprovalStage.TEAM_LEAD, action: 'Approved' },
-        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
-        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+        { stage: ApprovalStage.ASSET_MANAGER, action: 'Approved' },
+        { stage: ApprovalStage.ALLOCATION, action: 'Approved' }
       ],
       comments: [],
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
-      requesterRole: this.getNullableValue(userInfo?.role_id)
+      requesterRole: this.getNullableValue(userInfo?.role_id),
+      requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
+      requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
+      teamLeadJustification: this.getNullableValue(approval?.reason || approval?.remarks || approval?.temp2)
     };
   }
 
@@ -357,8 +360,8 @@ export class RequestService {
   /**
    * Returns stats computed from all requests (not just pending).
    */
-  getAllRequestStats() {
-    const list = this.allRequestsList;
+  getAllRequestStats(customList?: AssetRequest[]) {
+    const list = customList || (this.allRequestsList.length > 0 ? this.allRequestsList : this.requests);
     return {
       total: list.length,
       pending: list.filter(r => r.status === RequestStatus.PENDING).length,
@@ -446,7 +449,7 @@ export class RequestService {
    * Maps a single tuple from the SOAP response to the AssetRequest interface.
    * Response structure: tuple > old > t_asset_requests
    */
-  private mapTupleToRequest(tuple: any): AssetRequest {
+  public mapTupleToRequest(tuple: any): AssetRequest {
     const parent = tuple?.old || tuple;
     const reqData = parent?.t_asset_requests || parent;
 
@@ -499,7 +502,7 @@ export class RequestService {
       subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || ''),
       justification: reqData?.reason || '',
       urgency: urgency,
-      status: status,
+      status: (status === RequestStatus.PENDING && currentStage !== ApprovalStage.TEAM_LEAD) ? RequestStatus.APPROVED : status,
       currentStage: currentStage,
       hasEmailApproval: hasEmailApproval,
       emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
@@ -507,16 +510,39 @@ export class RequestService {
       requestDate: requestDate,
       lastUpdated: requestDate,
       requestType: requestType,
-      approvalChain: [
-        { stage: ApprovalStage.TEAM_LEAD, action: 'Pending' },
-        { stage: ApprovalStage.ASSET_MANAGER, action: 'Pending' },
-        { stage: ApprovalStage.ALLOCATION, action: 'Pending' }
+      approvalChain: hasEmailApproval ? [
+        { 
+          stage: ApprovalStage.ASSET_MANAGER, 
+          action: (currentStage === ApprovalStage.ASSET_MANAGER) ? 'Pending' : (status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending') 
+        },
+        { 
+          stage: ApprovalStage.ALLOCATION, 
+          action: (currentStage === ApprovalStage.ALLOCATION) ? 'Pending' : 'Pending' 
+        }
+      ] : [
+        { 
+          stage: ApprovalStage.TEAM_LEAD, 
+          action: (currentStage !== ApprovalStage.TEAM_LEAD) ? 'Approved' : 'Pending',
+          approverName: 'Team Lead'
+        },
+        { 
+          stage: ApprovalStage.ASSET_MANAGER, 
+          action: (currentStage === ApprovalStage.ASSET_MANAGER) ? 'Pending' : (status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending') 
+        },
+        { 
+          stage: ApprovalStage.ALLOCATION, 
+          action: (currentStage === ApprovalStage.ALLOCATION) ? 'Pending' : 'Pending' 
+        }
       ],
       comments: [],
+      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || '',
       // Requester details from nested m_users
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
-      requesterRole: this.getNullableValue(userInfo?.role_id)
+      requesterRole: this.getNullableValue(userInfo?.role_id),
+      requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
+      requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
+      teamLeadJustification: this.getNullableValue(reqData?.t_request_approvals?.reason || reqData?.t_request_approvals?.remarks || reqData?.t_request_approvals?.temp2)
     };
   }
 
@@ -527,6 +553,8 @@ export class RequestService {
     const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
     const userInfo = data?.m_users || {};
     const approvalData = data?.t_asset_return_approvals || {};
+
+    const assetInfo = data?.m_assets || tuple?.old?.m_assets || tuple?.m_assets || {};
 
     const status = this.mapToStatus(data?.status || '');
     const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
@@ -541,12 +569,15 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: 'Hardware', // Default for returns if not specified
-      category: 'Asset Return',
+      assetType: this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
+      assetName: this.getNullableValue(assetInfo?.asset_name),
+      assignedAssetId: this.getNullableValue(data?.asset_id || assetInfo?.asset_id),
+      assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
-      status: status,
+      status: (status === RequestStatus.PENDING) ? RequestStatus.APPROVED : status,
       currentStage: currentStage,
       hasEmailApproval: false,
       requestDate: data?.return_date || '',
