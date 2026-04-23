@@ -3,6 +3,8 @@ import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { AssetRequest, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
 import { HeroService } from 'src/app/core/services/hero.service';
+import { MailService } from 'src/app/core/services/mail.service';
+
 
 export interface EnrichedTicket {
   taskid: string;
@@ -38,12 +40,26 @@ export class AllocationTicketsComponent implements OnInit {
   drawerOpen = false;
   assetManagerNameForThisUser: string = "";
   assetManagerIDForThisUser: string = "";
+  
+  // Search and Filter
+  searchTerm: string = '';
+  selectedAssetType: string = '';
+  assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
+  subCategoryMap: Map<string, string> = new Map();
+
+  
+  // Pagination
+  currentPage: number = 1;
+  pageSize: number = 5;
+
 
   constructor(
     private requestService: RequestService,
     private assetService: AssetService,
-    private hs: HeroService
+    private hs: HeroService,
+    private mailService: MailService
   ) { }
+
 
   async ngOnInit(): Promise<void> {      // ✅ made async
     const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
@@ -73,8 +89,33 @@ export class AllocationTicketsComponent implements OnInit {
       console.error('Failed to fetch asset manager info:', err);
     }
 
+    try {
+      const subCats = await this.assetService.getAllSubcategoriesCordys();
+      subCats.forEach(sc => {
+        const id = sc.sub_category_id || sc.SUB_CATEGORY_ID || sc.id;
+        const name = sc.sub_category_name || sc.SUB_CATEGORY_NAME || sc.name;
+        if (id && name) this.subCategoryMap.set(id, name);
+      });
+      console.log('Subcategory Map initialized:', this.subCategoryMap.size, 'items');
+    } catch (err) {
+      console.warn('Failed to load subcategories for mapping:', err);
+    }
+
+    try {
+      const typeCounts = await this.assetService.fetchAssetTypeWiseCount();
+      // Extract unique type names from master data, excluding 'Infrastructure' as per user request
+      this.assetTypeOptions = typeCounts
+        .map(t => t.type_name)
+        .filter(name => name && name.toLowerCase() !== 'infrastructure');
+      console.log('Dynamic Asset Type Options loaded:', this.assetTypeOptions);
+    } catch (err) {
+      console.warn('Failed to load dynamic asset types, falling back to defaults:', err);
+    }
+
     this.loadTickets();
   }
+
+
 
   async loadTickets(): Promise<void> {
     this.loading = true;
@@ -229,8 +270,9 @@ export class AllocationTicketsComponent implements OnInit {
       ticketId: this.getVal(reqData?.request_id) ?? this.getVal(approval?.request_id) ?? '—',
       requestorName: this.getVal(userData?.name) ?? '—',
       assetType: this.getVal(reqData?.asset_type) ?? '—',
-      subCategory: this.getVal(assetData?.sub_category_id) ?? '—',
+      subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',
+
       assetId: this.getVal(assetData?.asset_id) ?? '—',
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '—',
       availabilityStatus: this.getVal(assetData?.status) ?? '—',
@@ -298,10 +340,12 @@ export class AllocationTicketsComponent implements OnInit {
     this.activeTab = tab;
     this.drawerOpen = false;
     this.selectedTicket = null;
+    this.currentPage = 1; // Reset to first page
     if (tab === 'return') {
       this.loadReturnTickets();
     }
   }
+
 
   openDetails(ticket: EnrichedTicket): void {
     this.selectedTicket = ticket;
@@ -330,14 +374,69 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   get filteredTickets(): EnrichedTicket[] {
-    if (this.activeTab === 'unresolved') return this.unresolvedTickets;
-    if (this.activeTab === 'resolved') return this.resolvedTickets;
-    return this.returnTickets.filter(t =>
+    let source: EnrichedTicket[] = [];
+    if (this.activeTab === 'unresolved') source = this.unresolvedTickets;
+    else if (this.activeTab === 'resolved') source = this.resolvedTickets;
+    else source = this.returnTickets.filter(t =>
       t.status === RequestStatus.PENDING ||
       t.status === RequestStatus.IN_PROGRESS ||
-      t.status === RequestStatus.APPROVED // Keep approved in list temporarily until refresh
+      t.status === RequestStatus.APPROVED
     );
+
+    // Apply Search
+    let filtered = source.filter(t => {
+      const matchesSearch = !this.searchTerm || 
+        t.ticketId.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        t.requestorName.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        t.subCategory.toLowerCase().includes(this.searchTerm.toLowerCase());
+      
+      const matchesType = !this.selectedAssetType || t.assetType === this.selectedAssetType;
+      
+      return matchesSearch && matchesType;
+    });
+
+    // Sort by Date (Descending - Newest first)
+    filtered.sort((a, b) => {
+      const dateA = a.assignedDate ? new Date(a.assignedDate).getTime() : 0;
+      const dateB = b.assignedDate ? new Date(b.assignedDate).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    return filtered;
   }
+
+
+  get paginatedTickets(): EnrichedTicket[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredTickets.slice(start, start + this.pageSize);
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredTickets.length / this.pageSize);
+  }
+
+  get pageNumbers(): number[] {
+    const pages = [];
+    for (let i = 1; i <= this.totalPages; i++) pages.push(i);
+    return pages;
+  }
+
+  setPage(page: number): void {
+    this.currentPage = page;
+  }
+
+  nextPage(): void {
+    if (this.currentPage < this.totalPages) this.currentPage++;
+  }
+
+  prevPage(): void {
+    if (this.currentPage > 1) this.currentPage--;
+  }
+
+  onFilterChange(): void {
+    this.currentPage = 1;
+  }
+
 
   getStatusClass(status: RequestStatus): string {
     switch (status) {
@@ -424,14 +523,15 @@ export class AllocationTicketsComponent implements OnInit {
       Action: 'COMPLETE'
     }
     await this.requestService.completeUserTask(req4 as any)
+    
+    // Notify Asset Manager for Final Confirmation
+    this.mailService.sendAllocationCompletionNotification({
+      requestId: ticket.ticketId,
+      assetName: ticket.assetName || ticket.assetType,
+      allocationName: 'Allocation Team Member',
+      managerName: this.assetManagerNameForThisUser || 'Asset Manager'
+    });
 
-    // this.requestService.approveRequest(
-    //   ticket.rawRequest.id,
-    //   'USR003',
-    //   'Allocation Team',
-    //   'Asset allocated by allocation team.',
-    //   ApprovalStage.ALLOCATION
-    // );
     this.loadTickets();
   }
 

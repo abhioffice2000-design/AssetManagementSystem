@@ -125,7 +125,8 @@ Adnate IT Solutions
 
 
   /**
-   * Sends a confirmation email to the employee who raised the asset request via Cordys SOAP.
+   * Sends notification emails to the employee, Team Lead, and Asset Manager 
+   * when a new asset request is raised.
    */
   async sendAssetRequestConfirmation(params: {
     employeeName: string;
@@ -135,42 +136,335 @@ Adnate IT Solutions
     requestId: string;
     justification: string;
     urgency?: string;
+    teamLeadName?: string;
   }): Promise<void> {
-    console.log('[MailService] sendAssetRequestConfirmation (SOAP) for:', params.requestId);
+    console.log('[MailService] Sending tripartite notifications for request:', params.requestId);
 
-    const subject = `Asset Request Submitted: ${params.requestId}`;
+    const assetDetails = `Type: ${params.assetType}, Sub-Category: ${params.category}`;
+    const urgency = params.urgency || 'Medium';
+
+    // ── 1. Notification for the Employee ──
+    const employeeSubject = `Asset Request Submitted - ${params.requestId}`;
+    const employeeBody = `
+Dear ${params.employeeName},
+
+Your request for a new asset has been successfully submitted and is now pending approval.
+
+Request Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Asset Details: ${assetDetails}
+Urgency: ${urgency}
+Reason: ${params.justification}
+---------------------------------------------
+
+You can track the real-time status of your request through the "My Requests" dashboard in the Asset Management Portal.
+
+Best Regards,
+Asset Management System
+    `.trim();
+
+    // ── 2. Notification for the Team Lead & Asset Manager ──
+    // Note: Per user request, management emails are sent to the designated test address
+    const managementEmail = 'sourabhsharma1003@gmail.com';
+    const managementBodyTemplate = (name: string) => `
+Dear ${name},
+
+A new asset request has been submitted by ${params.employeeName} and requires your review/allocation.
+
+Request Summary:
+---------------------------------------------
+Ticket ID: ${params.requestId}
+Employee Name: ${params.employeeName}
+Asset Required: ${assetDetails}
+Urgency Level: ${urgency}
+Justification: ${params.justification}
+---------------------------------------------
+
+Workflow Action:
+Please log in to the Administrator or Team Lead portal to approve/reject this request or proceed with asset allocation.
+
+Best Regards,
+IT Assets Department
+    `.trim();
+
+
+    const tlName = params.teamLeadName || 'Team Lead';
+    const testEmail = 'sourabhsharma1003@gmail.com';
     
+    // Unique subjects for each role
+    const amSubject = `[Asset Manager Alert] Allocation Required: Request ${params.requestId}`;
+    const tlSubject = `[Team Lead Alert] Review Required: Request ${params.requestId}`;
+    const empSubject = `[Employee Copy] Request Submitted: ${params.requestId}`;
+
+    // Helper for substantial delay to allow BPM engine processing
+    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    try {
+      // 1. Asset Manager
+      console.log('[MailService] 1/3: Dispatching Asset Manager alert...');
+      await this.sendSoapEmail(testEmail, 'Asset Manager', amSubject, managementBodyTemplate('Asset Manager'));
+      await delay(1500);
+
+      // 2. Team Lead
+      console.log('[MailService] 2/3: Dispatching Team Lead alert...');
+      await this.sendSoapEmail(testEmail, tlName, tlSubject, managementBodyTemplate(tlName));
+      await delay(1500);
+
+
+      // 3. Employee
+      console.log('[MailService] 3/3: Dispatching Employee confirmation...');
+      await this.sendSoapEmail(testEmail, params.employeeName, empSubject, employeeBody);
+      
+      console.log('[MailService] All tripartite notifications successfully dispatched');
+    } catch (err) {
+      console.error('[MailService] Pipeline failure in multi-email dispatch:', err);
+    }
+  }
+
+
+
+  /**
+   * Notifies the Employee and Asset Manager when the status of a request 
+   * changes (e.g., approved or rejected by Team Lead).
+   */
+  async sendAssetRequestStatusUpdate(params: {
+    requestId: string;
+    employeeName: string;
+    employeeEmail: string;
+    status: 'Approved' | 'Rejected';
+    teamLeadName: string;
+    remarks: string;
+    assetType?: string;
+  }): Promise<void> {
+    console.log(`[MailService] Dispatching status update (${params.status}) for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    const statusText = params.status === 'Approved' ? 'approved' : 'rejected';
+    const statusColor = params.status === 'Approved' ? 'Green' : 'Red';
+
+    // ── 1. Body for the Employee ──
+    const employeeSubject = `Update on your Asset Request: ${params.requestId} [${params.status}]`;
+    const employeeBody = `
+Dear ${params.employeeName},
+
+Your Team Lead, ${params.teamLeadName}, has ${statusText} your asset request.
+
+Request ID: ${params.requestId}
+Status: ${params.status}
+Remarks: ${params.remarks}
+
+${params.status === 'Approved' ? 'Your request has been forwarded to the Asset Manager for final allocation.' : 'Please contact your Team Lead for further clarification.'}
+
+Best Regards,
+Asset Management Team
+    `.trim();
+
+    // ── 2. Body for the Asset Manager ──
+    const managerSubject = `[Status Update] Request ${params.requestId} ${params.status} by TL ${params.teamLeadName}`;
+    const managerBody = `
+Dear Asset Manager,
+
+Notification of status change for Asset Request ${params.requestId}.
+
+The request submitted by ${params.employeeName} has been ${statusText} by the Team Lead, ${params.teamLeadName}.
+
+Current Workflow State:
+---------------------------------------------
+Ticket ID: ${params.requestId}
+Employee Name: ${params.employeeName}
+Action Taken: ${params.status}
+Lead Remarks: ${params.remarks}
+---------------------------------------------
+
+${params.status === 'Approved' ? 'This request is now pending your review and subsequent asset allocation. Please log in to the portal to take the next action.' : 'The workflow for this request has been terminated as it was rejected by the supervisor.'}
+
+Best Regards,
+${params.teamLeadName}
+Team Lead
+    `.trim();
+
+
+    try {
+      // Send Employee Copy (to test email for verification as requested by workflow)
+      console.log('[MailService] Dispatching Employee status update...');
+      await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${employeeSubject}`, employeeBody);
+      await delay(1000);
+
+      // Send Manager Copy
+      console.log('[MailService] Dispatching Manager status update...');
+      await this.sendSoapEmail(testEmail, 'Asset Manager', managerSubject, managerBody);
+      
+      console.log('[MailService] Status updates dispatched successfully');
+    } catch (err) {
+      console.error('[MailService] Error in status update dispatch:', err);
+    }
+  }
+
+  /**
+   * Final decision notification from Asset Manager to Employee and Allocation Team.
+   */
+  async sendAssetManagerStatusUpdate(params: {
+    requestId: string;
+    employeeName: string;
+    status: 'Approved' | 'Rejected';
+    managerName: string;
+    remarks: string;
+    allocationMemberName?: string;
+    assetName?: string;
+  }): Promise<void> {
+    console.log(`[MailService] Asset Manager dispatching status (${params.status}) for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    const statusText = params.status === 'Approved' ? 'approved' : 'rejected';
+
+    // ── 1. Body for the Employee ──
+    const employeeSubject = `Final Action on your Asset Request: ${params.requestId} [${params.status}]`;
+    const employeeBody = `
+Dear ${params.employeeName},
+
+The Asset Manager, ${params.managerName}, has ${statusText} your request.
+
+Request Details:
+---------------------------------------------
+Ticket ID: ${params.requestId}
+Current Status: ${params.status}
+Manager Remarks: ${params.remarks}
+---------------------------------------------
+
+${params.status === 'Approved' ? `Your request for ${params.assetName || 'the asset'} has been approved. The Allocation Team (${params.allocationMemberName || 'IT Team'}) will coordinate the physical delivery/handoff shortly.` : 'Your request has been declined. Please contact the IT department for further information.'}
+
+Best Regards,
+Asset Management Team
+    `.trim();
+
+    // ── 2. Body for the Allocation Team (Only on Approval) ──
+    const allocationSubject = `[Allocation Task] New Approved Request: ${params.requestId}`;
+    const allocationBody = `
+Dear ${params.allocationMemberName || 'Allocation Team'},
+
+A new asset request has been fully approved by the Asset Manager (${params.managerName}) and is now assigned to you for final allocation.
+
+Allocation Task Summary:
+---------------------------------------------
+Request ID: ${params.requestId}
+Employee: ${params.employeeName}
+Asset to Allocate: ${params.assetName || 'Selected Asset'}
+Manager Remarks: ${params.remarks}
+---------------------------------------------
+
+Action Required:
+Please retrieve the asset from inventory and complete the handoff to ${params.employeeName}. Once done, mark the task as complete in your dashboard.
+
+Best Regards,
+Asset Management System
+    `.trim();
+
+    try {
+      // 1. Send Employee Copy
+      console.log('[MailService] Dispatching Employee final notification...');
+      await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${employeeSubject}`, employeeBody);
+      await delay(1200);
+
+      // 2. Send Allocation Team Copy (Only if approved)
+      if (params.status === 'Approved') {
+        console.log('[MailService] Dispatching Allocation Team notification...');
+        await this.sendSoapEmail(testEmail, params.allocationMemberName || 'Allocation Team', allocationSubject, allocationBody);
+      }
+      
+      console.log('[MailService] Asset Manager notifications dispatched successfully');
+    } catch (err) {
+      console.error('[MailService] Error in manager notification pipeline:', err);
+    }
+  }
+
+  /**
+   * Notification from Allocation Team to Asset Manager 
+   * stating that the asset has been physically allocated.
+   */
+  async sendAllocationCompletionNotification(params: {
+    requestId: string,
+    assetName: string,
+    allocationName: string,
+    managerName: string
+  }): Promise<void> {
+    console.log(`[MailService] Allocation Team notifying manager of completion for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `[Allocation Done] Final Confirmation Required: ${params.requestId}`;
+    const body = `
+Dear ${params.managerName},
+
+The Allocation Team (${params.allocationName}) has completed the physical allocation of the requested asset.
+
+Allocation Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Asset Name: ${params.assetName}
+Status: Allocated
+---------------------------------------------
+
+Action Required:
+Please review the allocation and provide the Final Confirmation in the portal to allow the requester to acknowledge receipt.
+
+Best Regards,
+Allocation Team
+    `.trim();
+
+    await this.sendSoapEmail(testEmail, params.managerName, subject, body);
+  }
+
+  /**
+   * Final notification from Asset Manager to Employee 
+   * for final acknowledgment and task closure.
+   */
+  async sendFinalManagerConfirmationNotification(params: {
+    requestId: string,
+    employeeName: string,
+    managerName: string,
+    assetName: string
+  }): Promise<void> {
+    console.log(`[MailService] Final Manager confirmation alert for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `Final Step: Acknowledge Receipt of your Asset - ${params.requestId}`;
     const body = `
 Dear ${params.employeeName},
 
-Your new asset request has been successfully submitted to the system.
+The Asset Manager, ${params.managerName}, has verified the allocation of your new asset (${params.assetName}).
 
-Request Details:
---------------------------------------------
-Request ID:    ${params.requestId}
-Asset Type:    ${params.assetType}
-Sub-Category:  ${params.category}
-Urgency Level: ${params.urgency || 'Medium'}
-Justification: ${params.justification}
---------------------------------------------
+Final Step:
+---------------------------------------------
+Ticket ID: ${params.requestId}
+Status: Ready for Handover
+---------------------------------------------
 
-Your request has been routed for approval. You can track the real-time progress of this request on your dashboard.
-
-Track Your Request: ${window.location.origin}/employee/my-requests
-
-If you have any questions or did not authorize this request, please contact IT Support immediately.
+Please log in to the Asset Management Portal and "Acknowledge Receipt" to complete the request lifecycle and formally accept the asset.
 
 Best Regards,
-IT Support Team
-Adnate IT Solutions
+Asset Management System
     `.trim();
 
-    const requestSoap = `
+    await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${subject}`, body);
+  }
+
+
+
+  /**
+   * Helper to send a raw SOAP email via Cordys WelcomeEmail_BPM activity.
+
+   */
+  private async sendSoapEmail(to: string, name: string, subject: string, body: string): Promise<void> {
+    const soap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
     <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
-      <toemail>sourabhsharma1003@gmail.com</toemail>
-      <toname>${this.xmlEscape(params.employeeName)}</toname>
+      <toemail>${this.xmlEscape(to)}</toemail>
+      <toname>${this.xmlEscape(name)}</toname>
       <subject>${this.xmlEscape(subject)}</subject>
       <body>${this.xmlEscape(body)}</body>
     </WelcomeEmail_BPM>
@@ -178,10 +472,10 @@ Adnate IT Solutions
 </SOAP:Envelope>`.trim();
 
     try {
-      await this.hs.ajax(null, null, {}, requestSoap);
-      console.log('[MailService] ✅ Asset Request Confirmation SOAP sent');
-    } catch (error) {
-      console.error('[MailService] ❌ Failed to send Asset Request SOAP', error);
+      await this.hs.ajax(null, null, {}, soap);
+      console.log(`[MailService] SOAP Email sent to ${to}`);
+    } catch (err) {
+      console.error(`[MailService] Failed to send SOAP Email to ${to}`, err);
     }
   }
 

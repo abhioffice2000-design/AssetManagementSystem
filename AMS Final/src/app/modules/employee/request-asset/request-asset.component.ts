@@ -216,7 +216,8 @@ export class RequestAssetComponent implements OnInit {
       category: subCatName,
       requestId: `${newrequestid}`,
       justification: formVal.justification,
-      urgency: formVal.urgency
+      urgency: formVal.urgency,
+      teamLeadName: user.teamLeadName
     });
 
     this.notificationService.showToast(`Request Raised Successfully! (ID: ${newrequestid})`, 'success');
