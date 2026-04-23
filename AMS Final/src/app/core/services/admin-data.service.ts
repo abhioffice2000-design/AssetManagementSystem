@@ -811,6 +811,31 @@ export class AdminDataService {
 
     return this.normalizeNullable(value, fallback);
   }
+  async changeUserPassword(email: string, newPassword: string): Promise<void> {
+    const updatePasswordSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName isAnonymous="">\${this.xmlEscape(email)}</UserName>
+        <Credentials allowDuplicate="true">
+          <UserIDPassword>
+            <UserID>\${this.xmlEscape(email)}</UserID>
+            <Password>\${this.xmlEscape(newPassword)}</Password>
+          </UserIDPassword>
+        </Credentials>
+      </User>
+    </UpdateUserInOrganization>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.heroService.ajax(null, null, {}, updatePasswordSoap);
+    } catch (e: any) {
+      console.error('Error changing password for user:', e);
+      throw new Error('Failed to update user password.');
+    }
+  }
 
   private xmlEscape(value: string): string {
     return value

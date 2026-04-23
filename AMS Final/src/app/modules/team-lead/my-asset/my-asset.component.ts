@@ -5,6 +5,8 @@ import { RequestService } from '../../../core/services/request.service';
 import { HeroService } from '../../../core/services/hero.service';
 import { Asset } from '../../../core/models/asset.model';
 import { AssetRequest } from '../../../core/models/request.model';
+import { NotificationService } from '../../../core/services/notification.service';
+
 
 @Component({
   selector: 'app-my-asset',
@@ -80,7 +82,8 @@ export class MyAssetComponent implements OnInit {
     private authService: AuthService,
     private assetService: AssetService,
     private requestService: RequestService,
-    private hs: HeroService
+    private hs: HeroService,
+    private notificationService: NotificationService
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -185,9 +188,10 @@ export class MyAssetComponent implements OnInit {
 
     const user = this.authService.getCurrentUser();
     if (!user) {
-      alert("User session not found.");
+      this.notificationService.showToast("User session not found.", "error");
       return;
     }
+
 
     this.isLoading = true;
     try {
@@ -223,15 +227,17 @@ export class MyAssetComponent implements OnInit {
       };
       await this.hs.ajax('UpdateT_asset_return_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalPayload);
       
-      alert('Asset return requested successfully');
+      this.notificationService.showToast('Asset return requested successfully', 'success');
+
       
       this.getAssetsByUser(user.id);
       this.PendingRequestsForTeamLead(user.id); // Refresh pending requests occasionally
     } catch (err) {
       console.error("Return error:", err);
-      alert("Failed to return asset. Please check the network payload.");
+      this.notificationService.showToast("Failed to return asset. Please check the network payload.", "error");
       this.isLoading = false;
     }
+
   }
 
   async extendWarranty(asset: Asset) {
@@ -239,9 +245,10 @@ export class MyAssetComponent implements OnInit {
 
     const user = this.authService.getCurrentUser();
     if (!user) {
-      alert("User session not found.");
+      this.notificationService.showToast("User session not found.", "error");
       return;
     }
+
 
     this.isLoading = true;
     try {
@@ -278,15 +285,17 @@ export class MyAssetComponent implements OnInit {
       };
       await this.hs.ajax('UpdateT_asset_return_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalPayload);
 
-      alert('Warranty extension requested successfully');
+      this.notificationService.showToast('Warranty extension requested successfully', 'success');
+
       
       this.getAssetsByUser(user.id);
       this.PendingRequestsForTeamLead(user.id);
     } catch (err) {
       console.error("Extend Warranty error:", err);
-      alert("Failed to request warranty extension. Please check the network payload.");
+      this.notificationService.showToast("Failed to request warranty extension. Please check the network payload.", "error");
       this.isLoading = false;
     }
+
   }
 
   // --- Tracking Logic ---

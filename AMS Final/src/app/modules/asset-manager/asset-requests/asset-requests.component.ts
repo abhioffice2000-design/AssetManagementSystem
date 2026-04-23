@@ -4,6 +4,8 @@ import { AssetRequest, ApprovalStage, RequestStatus, RequestUrgency, RequestType
 import { AuthService } from '../../../core/services/auth.service';
 import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
+import { NotificationService } from '../../../core/services/notification.service';
+
 
 @Component({
   selector: 'app-asset-requests',
@@ -52,7 +54,8 @@ export class AssetRequestsComponent implements OnInit {
     private requestService: RequestService,
     private authService: AuthService,
     private userService: UserService,
-    private assetService: AssetService
+    private assetService: AssetService,
+    private notificationService: NotificationService
   ) { }
 
   ngOnInit(): void {
@@ -93,7 +96,7 @@ export class AssetRequestsComponent implements OnInit {
 
       // Stats from all requests (ensure total reflects live data)
       this.requestStats = this.requestService.getAllRequestStats(this.allRequests);
-      
+
       // If pending count in stats is less than actual pending list (mismatch), fix it
       if (this.requestStats.pending < this.pendingRequests.length) {
         this.requestStats.pending = this.pendingRequests.length;
@@ -165,7 +168,7 @@ export class AssetRequestsComponent implements OnInit {
         req.requesterName.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase());
     }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
-    
+
     this.currentPage = 1; // Reset page on filter change
   }
 
@@ -359,6 +362,9 @@ export class AssetRequestsComponent implements OnInit {
           Action: 'COMPLETE'
         }
         await this.requestService.completeUserTask(req4 as any)
+
+        this.notificationService.showToast(`Request ${this.selectedRequest.id} approved and routed for allocation.`, 'success');
+
         // this.requestService.approveRequest(
         //   this.selectedRequest.id,
         //   currentUser.id,
@@ -419,7 +425,9 @@ export class AssetRequestsComponent implements OnInit {
               Action: 'COMPLETE'
             }
             await this.requestService.completeUserTask(req4 as any)
+            this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
             console.log("Step 2 (Forwarding) Success");
+
           } catch (error) {
             console.error("Return Approval SOAP call failed:", error);
           }
@@ -432,6 +440,7 @@ export class AssetRequestsComponent implements OnInit {
             this.actionComments,
             ApprovalStage.ASSET_MANAGER
           );
+          this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
         }
       } else {
         // Standard Request Logic (New Asset / Warranty)
@@ -443,7 +452,9 @@ export class AssetRequestsComponent implements OnInit {
             this.actionComments,
             ApprovalStage.ASSET_MANAGER
           );
+          this.notificationService.showToast(`Request ${this.selectedRequest.id} approved successfully.`, 'success');
         } else {
+
           this.requestService.rejectRequest(
             this.selectedRequest.id,
             currentUser.id,
@@ -451,7 +462,9 @@ export class AssetRequestsComponent implements OnInit {
             this.actionComments,
             ApprovalStage.ASSET_MANAGER
           );
+          this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
         }
+
       }
 
       this.closeActionModal();
@@ -550,6 +563,8 @@ export class AssetRequestsComponent implements OnInit {
         };
         await this.requestService.completeUserTask(taskPayload as any);
       }
+      this.notificationService.showToast(`Request ${this.selectedRequest.id} confirmed successfully.`, 'success');
+
 
     } else {
       // Step 1 — mark the approval record as Rejected
@@ -589,7 +604,9 @@ export class AssetRequestsComponent implements OnInit {
       };
       console.log('[Confirmation] Reject payload (step 2):', rejectRequestPayload);
       await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+      this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
     }
+
 
     this.loadAllData();
   }
@@ -621,8 +638,8 @@ export class AssetRequestsComponent implements OnInit {
       const progress = await this.requestService.getRequestProgress(request.id);
       if (progress && progress.length > 0) {
         // Find the Team Lead approval in the history
-        const tlApproval = progress.find(p => 
-          p.stage.toLowerCase().includes('team lead') || 
+        const tlApproval = progress.find(p =>
+          p.stage.toLowerCase().includes('team lead') ||
           p.stage.toLowerCase().includes('manager') // Sometimes Team Lead is called Manager in DB
         );
 
@@ -715,9 +732,11 @@ export class AssetRequestsComponent implements OnInit {
     if (!docName) return;
     // In a real implementation, this would be a full URL to the file storage
     // For now, we'll try to open it in a new tab
-    const fileUrl = `assets/documents/${docName}`; 
+    const fileUrl = `assets/documents/${docName}`;
     window.open(fileUrl, '_blank');
+    this.notificationService.showToast(`Opening document: ${docName}...`, 'info');
   }
+
 
   downloadDocument(docName: string): void {
     if (!docName) return;
@@ -728,5 +747,7 @@ export class AssetRequestsComponent implements OnInit {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    this.notificationService.showToast(`Initiating download: ${docName}`, 'success');
   }
+
 }

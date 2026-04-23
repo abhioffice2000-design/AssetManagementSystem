@@ -108,6 +108,9 @@
                     <button class="btn btn-sm btn-outline" title="Edit User" (click)="openEditModal(user)">
                       <span class="material-icons-outlined" style="font-size: 16px;">edit</span>
                     </button>
+                    <button class="btn btn-sm btn-outline" title="Change Password" (click)="openChangePasswordModal(user)">
+                      <span class="material-icons-outlined" style="font-size: 16px;">lock_reset</span>
+                    </button>
                     <button class="btn btn-sm btn-outline" 
                             [title]="user.isActive ? 'Make Inactive' : 'Activate'" 
                             [style.color]="user.isActive ? '#ef4444' : '#10b981'"
@@ -745,6 +748,42 @@
     </div>
     <div class="modal-footer" style="display: flex; justify-content: flex-end; padding: 16px; border-top: 1px solid var(--border);">
       <button class="btn btn-outline" (click)="closeProjectMembersModal()">Close</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal-overlay" *ngIf="showChangePasswordModal">
+  <div class="modal-container animate-slide-up" style="max-width: 450px;">
+    <div class="modal-header">
+      <h3><span class="material-icons-outlined" style="font-size: 20px; vertical-align: middle; margin-right: 8px; color: #6366f1;">lock_reset</span>Change Password</h3>
+      <button class="btn-icon" (click)="closeChangePasswordModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body" *ngIf="passwordChangeUser">
+      <div class="edit-user-identity" style="margin-bottom: 20px;">
+        <div class="avatar-circle" style="width: 42px; height: 42px; font-size: 16px;">{{ passwordChangeUser.name.charAt(0) }}</div>
+        <div>
+          <div style="font-weight: 700; font-size: 15px;">{{ passwordChangeUser.name }}</div>
+          <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">{{ passwordChangeUser.email }}</div>
+        </div>
+      </div>
+
+      <div class="form-group mb-16">
+        <label>New Password</label>
+        <input type="password" class="form-control" [(ngModel)]="newPassword" placeholder="Enter new password (min. 8 characters)">
+        <div class="field-error" *ngIf="passwordError" style="margin-top: 8px;">{{ passwordError }}</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" [disabled]="isSavingPassword" (click)="closeChangePasswordModal()">Cancel</button>
+      <button class="btn btn-primary" 
+              [disabled]="isSavingPassword || newPassword.length < 8" 
+              (click)="saveNewPassword()">
+        {{ isSavingPassword ? 'Saving...' : 'Update Password' }}
+      </button>
     </div>
   </div>
 </div>

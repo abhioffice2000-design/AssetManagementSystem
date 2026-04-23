@@ -5,7 +5,9 @@ import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
 import { AssetType, AssetCategory } from '../../../core/models/asset.model';
+
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
 
 @Component({
@@ -36,6 +38,7 @@ export class RequestAssetComponent implements OnInit {
     private requestService: RequestService,
     private authService: AuthService,
     private notificationService: NotificationService,
+    private mailService: MailService,
     private router: Router
   ) { }
 
@@ -204,8 +207,21 @@ export class RequestAssetComponent implements OnInit {
       Inputrequestid: `${newrequestid}`
     }
     this.requestService.callBPMForRequest(request3 as any)
-    this.notificationService.showToast('Asset request submitted successfully!', 'success');
+    
+    // Trigger notification email
+    this.mailService.sendAssetRequestConfirmation({
+      employeeName: user.name,
+      employeeEmail: user.email,
+      assetType: typeName,
+      category: subCatName,
+      requestId: `${newrequestid}`,
+      justification: formVal.justification,
+      urgency: formVal.urgency
+    });
+
+    this.notificationService.showToast(`Request Raised Successfully! (ID: ${newrequestid})`, 'success');
     this.notificationService.addNotification('Request Submitted', `Your asset request has been submitted.`, 'info');
+
 
     this.router.navigate(['/employee/my-requests']);
   }

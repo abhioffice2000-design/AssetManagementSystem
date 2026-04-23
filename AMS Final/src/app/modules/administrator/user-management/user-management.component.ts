@@ -67,6 +67,12 @@ export class UserManagementComponent implements OnInit {
   showEditModal = false;
   showInactiveModal = false;
   showAssetsModal = false;
+  showChangePasswordModal = false;
+  passwordChangeUser: User | null = null;
+  newPassword = '';
+  isSavingPassword = false;
+  passwordError = '';
+
   isUpdatingUserStatus = false;
   editingUser: User | null = null;
   userToDeactivate: User | null = null;
@@ -312,6 +318,43 @@ export class UserManagementComponent implements OnInit {
     this.isSavingEdit = false;
   }
 
+  openChangePasswordModal(user: User): void {
+    this.passwordChangeUser = user;
+    this.newPassword = '';
+    this.passwordError = '';
+    this.isSavingPassword = false;
+    this.showChangePasswordModal = true;
+  }
+
+  closeChangePasswordModal(): void {
+    this.showChangePasswordModal = false;
+    this.passwordChangeUser = null;
+    this.newPassword = '';
+    this.passwordError = '';
+    this.isSavingPassword = false;
+  }
+
+  async saveNewPassword(): Promise<void> {
+    if (!this.passwordChangeUser || !this.newPassword || this.isSavingPassword) return;
+    
+    if (this.newPassword.length < 8) {
+        this.passwordError = 'Password must be at least 8 characters long.';
+        return;
+    }
+
+    this.isSavingPassword = true;
+    this.passwordError = '';
+
+    try {
+      await this.adminDataService.changeUserPassword(this.passwordChangeUser.email, this.newPassword);
+      this.notificationService.showToast(`Password for \${this.passwordChangeUser.name} changed successfully.`, 'success');
+      this.closeChangePasswordModal();
+    } catch (e: any) {
+      this.passwordError = 'Failed to change password. Please try again.';
+      this.isSavingPassword = false;
+    }
+  }
+
   onEditUserEmailChange(email: string): void {
     this.editUserForm.email = email;
     const trimmed = email.trim().toLowerCase();
@@ -392,7 +435,9 @@ export class UserManagementComponent implements OnInit {
       await this.loadRoles();
       await this.loadProjects();
       this.filterUsers();
+      this.notificationService.showToast('User details updated successfully!', 'success');
       this.closeEditModal();
+
     } catch (error) {
       console.error('Failed to update user:', error);
       this.isSavingEdit = false;
@@ -453,7 +498,9 @@ export class UserManagementComponent implements OnInit {
       await this.loadUsers();
       await this.loadProjects();
       this.filterUsers();
+      this.notificationService.showToast(`User '${name}' created successfully!`, 'success');
       this.closeAddUserModal();
+
     } catch (error) {
       console.error('Unable to add new user.', error);
       this.isSavingUser = false;
@@ -480,7 +527,9 @@ export class UserManagementComponent implements OnInit {
     try {
       await this.adminDataService.addProject(projectName);
       await this.loadProjects();
+      this.notificationService.showToast(`Project '${projectName}' added successfully!`, 'success');
       this.closeAddProjectModal();
+
     } catch (error) {
       console.error('Unable to add project.', error);
       this.addProjectError = 'Unable to add project. Please try again.';
@@ -535,7 +584,9 @@ export class UserManagementComponent implements OnInit {
         const updatedUser = { ...this.userToDeactivate, isActive: nextStatus };
         this.users = this.users.map(user => user.id === updatedUser.id ? updatedUser : user);
         this.filterUsers();
+        this.notificationService.showToast(`User status marked as ${nextStatus ? 'Active' : 'Inactive'} successfully.`, 'success');
         this.closeInactiveModal();
+
       } catch (error) {
         console.error('Unable to mark user inactive.', error);
         this.isUpdatingUserStatus = false;
