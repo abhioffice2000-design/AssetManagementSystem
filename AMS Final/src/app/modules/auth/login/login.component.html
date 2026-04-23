@@ -53,6 +53,11 @@
           <a href="javascript:void(0)" class="forgot-password">Forgot Password?</a>
         </div>
 
+        <div class="login-error-banner" *ngIf="loginError">
+          <span class="material-icons-outlined">error_outline</span>
+          <span>{{ loginError }}</span>
+        </div>
+
         <button type="submit" class="btn-submit" [disabled]="isLoading">
           <span *ngIf="!isLoading">Sign In</span>
           <div *ngIf="isLoading" class="spinner"></div>

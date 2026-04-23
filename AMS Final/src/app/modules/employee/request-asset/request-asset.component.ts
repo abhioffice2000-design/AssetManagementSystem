@@ -23,6 +23,11 @@ export class RequestAssetComponent implements OnInit {
   // Currently filtered lists for dropdowns
   availableTypes: any[] = [];
   availableSubCategories: any[] = [];
+  
+  // File upload state
+  selectedFileBase64: string | null = null;
+  selectedFileName: string | null = null;
+  
   // urgencies removed
 
   constructor(
@@ -67,7 +72,7 @@ export class RequestAssetComponent implements OnInit {
       }
 
       if (this.masterSubCategories.length === 0) {
-        console.warn('[RequestAsset Debug] Cordys returned 0 subcats. Using hardcoded defaults.');
+        console.warn('[RequestAsset Debug] Cordys returned 0 sub-categories. Using hardcoded defaults.');
         this.masterSubCategories = [
           { sub_category_id: 'cat_001', name: 'Laptop', type_id: 'typ_02' },
           { sub_category_id: 'cat_002', name: 'Software License', type_id: 'typ_01' },
@@ -102,12 +107,28 @@ export class RequestAssetComponent implements OnInit {
     console.log('[RequestAsset Debug] Filtered Sub-categories:', this.availableSubCategories);
   }
 
+  onFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      this.selectedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Includes the data URI scheme e.g. "data:image/jpeg;base64,..."
+        this.selectedFileBase64 = reader.result as string; 
+      };
+      reader.readAsDataURL(file);
+    } else {
+      this.selectedFileBase64 = null;
+      this.selectedFileName = null;
+    }
+  }
+
   async onSubmit(): Promise<void> {
     console.log('[onSubmit] Called. Form valid:', this.requestForm.valid);
     console.log('[onSubmit] Form values:', this.requestForm.value);
     console.log('[onSubmit] Form errors:', {
       assetType: this.requestForm.get('assetType')?.errors,
-      category: this.requestForm.get('category')?.errors,
+      subCategory: this.requestForm.get('subCategory')?.errors,
       justification: this.requestForm.get('justification')?.errors,
     });
     if (this.requestForm.invalid) {
@@ -120,12 +141,23 @@ export class RequestAssetComponent implements OnInit {
       this.notificationService.showToast('You must be logged in to submit a request.', 'error');
       return;
     }
+
     const formVal = this.requestForm.value;
+    
+    // Validate file upload if email approval is checked
+    if (formVal.hasEmailApproval && !this.selectedFileBase64) {
+      this.notificationService.showToast('Please upload the email approval document.', 'error');
+      return;
+    }
+
     const isDeptHead = user.role === 'Team Lead'; // Simplified for demo
     const skipTeamLead = formVal.hasEmailApproval || isDeptHead;
 
     const selectedTypeObj = this.masterAssetTypes.find(t => String(t.type_id) === String(formVal.assetType));
     const typeName = selectedTypeObj ? selectedTypeObj.type_name : 'Hardware';
+
+    const selectedSubCatObj = this.masterSubCategories.find(s => String(s.sub_category_id) === String(formVal.subCategory));
+    const subCatName = selectedSubCatObj ? selectedSubCatObj.name : formVal.subCategory;
 
     var request1 = {
       tuple: {
@@ -137,7 +169,9 @@ export class RequestAssetComponent implements OnInit {
             urgency: formVal.urgency,
             email_approval: String(formVal.hasEmailApproval),
             status: 'Pending',
-            temp1: formVal.subCategory
+            temp1: subCatName,
+            temp2: this.selectedFileName ? this.selectedFileName : '',
+            document: this.selectedFileBase64 ? 'ATTACHED_VIA_BPM' : ''
           }
         }
       }
@@ -164,19 +198,15 @@ export class RequestAssetComponent implements OnInit {
     let newapprovalid = res2.new.t_request_approvals.approval_id;
     console.log("newapprovalid", newapprovalid)
     let request3 = {
-
-
-      InputDoc: formVal.hasEmailApproval.toString(),
+      InputDoc: this.selectedFileBase64 ? `${this.selectedFileName}|${this.selectedFileBase64}` : formVal.hasEmailApproval.toString(),
       Inputusrid: user.id,
       Inputrequestapprovalid: `${newapprovalid}`,
       Inputrequestid: `${newrequestid}`
-
-
     }
     this.requestService.callBPMForRequest(request3 as any)
     this.notificationService.showToast('Asset request submitted successfully!', 'success');
     this.notificationService.addNotification('Request Submitted', `Your asset request has been submitted.`, 'info');
 
-    this.router.navigate(['/employee/dashboard']);
+    this.router.navigate(['/employee/my-requests']);
   }
 }

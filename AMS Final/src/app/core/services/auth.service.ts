@@ -30,6 +30,7 @@ export class AuthService {
         .then(user => {
           console.log('Login successful, user data obtained:', user);
           localStorage.setItem('currentUser', JSON.stringify(user));
+          localStorage.setItem('userId', user.id);
           this.currentUserSubject.next(user);
           observer.next(user);
           observer.complete();
@@ -91,8 +92,15 @@ export class AuthService {
       team: (userData.m_projects && userData.m_projects.project_name) ? userData.m_projects.project_name : (userData.team || 'General'),
       designation: userData.designation || 'Specialist',
       isActive: userData.status === 'Active',
-      joinDate: userData.created_at || new Date().toISOString().split('T')[0]
+      joinDate: userData.created_at || new Date().toISOString().split('T')[0],
+      projectId: userData.project_id,
+      projectName: (userData.m_projects && userData.m_projects.project_name) ? userData.m_projects.project_name : undefined
     };
+
+    // Block login if user account is inactive
+    if (!finalUser.isActive) {
+      throw new Error('Your account has been deactivated. Please contact the administrator.');
+    }
 
     return finalUser;
   }
@@ -126,20 +134,62 @@ export class AuthService {
       const row = data.new ? data.new : (data.old ? data.old : data);
       const item = row.m_users || row;
 
-      return {
+      const user: User = {
         id: item.id || item.user_id || item.email,
         name: item.name,
         email: item.email,
         role: this.mapRoleIdToUserRole(item.role_id),
         department: item.department || 'IT',
         team: (item.m_projects && item.m_projects.project_name) ? item.m_projects.project_name : (item.team || 'General'),
+        projectId: item.project_id,
+        projectName: (item.m_projects && item.m_projects.project_name) ? item.m_projects.project_name : (item.projectName || item.team),
+        teamLeadName: (item.m_projects && (item.m_projects.team_lead || item.m_projects.tl_id)) ? (item.m_projects.team_lead || item.m_projects.tl_id) : undefined,
         designation: item.designation || 'Specialist',
         isActive: item.status === 'Active',
         joinDate: item.created_at || new Date().toISOString().split('T')[0]
       };
+
+      // Background resolution for project details if standard mapping was incomplete
+      if (user.projectId && (!user.projectName || !user.teamLeadName)) {
+         this.resolveProjectDetailsInBackground(user);
+      }
+
+      return user;
     } catch (error) {
       console.error('Error fetching user details:', error);
       return null;
+    }
+  }
+
+  private async resolveProjectDetailsInBackground(user: User) {
+    if (!user.projectId) return;
+    
+    const getProjectSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetM_projectsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Project_id>${user.projectId}</Project_id>
+    </GetM_projectsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, getProjectSoap);
+      const projData = this.hs.xmltojson(resp, 'm_projects');
+      if (projData) {
+        const p = projData.new ? projData.new : (projData.old ? projData.old : projData);
+        const item = p.m_projects || p;
+        user.projectName = item.project_name;
+        user.teamLeadName = item.team_lead || item.tl_id;
+        
+        // Update subject if this is the current user
+        const current = this.currentUserSubject.value;
+        if (current && current.id === user.id) {
+          this.currentUserSubject.next({...current, projectName: user.projectName, teamLeadName: user.teamLeadName});
+        }
+      }
+    } catch (e) {
+      console.warn('Silent failure resolving project details in background:', e);
     }
   }
 
@@ -355,8 +405,9 @@ export class AuthService {
         joinDate: new Date().toISOString().split('T')[0]
       };
 
-      //   localStorage.setItem('currentUser', JSON.stringify(newUser));
-      //  this.currentUserSubject.next(newUser);
+       localStorage.setItem('currentUser', JSON.stringify(newUser));
+       localStorage.setItem('userId', newUser.id);
+       this.currentUserSubject.next(newUser);
 
       return newUser;
 

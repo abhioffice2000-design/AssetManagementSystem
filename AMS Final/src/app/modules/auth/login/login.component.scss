@@ -96,6 +96,34 @@
   .forgot-password { color: #3B82F6; font-weight: 700; font-size: 0.95rem; }
 }
 
+.login-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 14px;
+  color: #DC2626;
+  font-size: 0.9rem;
+  font-weight: 600;
+  animation: shakeIn 0.4s ease;
+
+  .material-icons-outlined {
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+}
+
+@keyframes shakeIn {
+  0% { transform: translateX(-8px); opacity: 0; }
+  25% { transform: translateX(6px); }
+  50% { transform: translateX(-4px); }
+  75% { transform: translateX(2px); }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
 .btn-submit {
   width: 100%;
   height: 56px;

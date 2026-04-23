@@ -3,6 +3,7 @@ import { User } from '../../../core/models/user.model';
 import { AssetService } from '../../../core/services/asset.service';
 import { Asset } from '../../../core/models/asset.model';
 import { AdminDataService, Role, Project, Allocation, AssetTypeAssignment, AssignedAsset } from '../../../core/services/admin-data.service';
+import { NotificationService } from '../../../core/services/notification.service';
 
 type UserTab = 'users' | 'roles' | 'projects' | 'assignments';
 
@@ -59,6 +60,10 @@ export class UserManagementComponent implements OnInit {
     assetTypeId: ''
   };
 
+  showProjectMembersModal = false;
+  selectedProjectForMembers: Project | null = null;
+  projectMembersList: User[] = [];
+
   showEditModal = false;
   showInactiveModal = false;
   showAssetsModal = false;
@@ -70,6 +75,18 @@ export class UserManagementComponent implements OnInit {
   selectedUser: User | null = null;
   selectedUserAssets: Asset[] = [];
 
+  // Edit User Modal
+  editUserForm: {
+    email: string;
+    roleName: string;
+    projectId: string;
+    assetTypeId: string;
+  } = { email: '', roleName: '', projectId: '', assetTypeId: '' };
+  isSavingEdit = false;
+  editUserEmailError = '';
+  editUserAssignedAssets: AssignedAsset[] = [];
+  isLoadingEditAssets = false;
+
   showUserAssetsSidebar = false;
   selectedSidebarUser: User | null = null;
   allAssignedAssets: AssignedAsset[] = [];
@@ -78,7 +95,8 @@ export class UserManagementComponent implements OnInit {
 
   constructor(
     private assetService: AssetService,
-    private adminDataService: AdminDataService
+    private adminDataService: AdminDataService,
+    private notificationService: NotificationService
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -89,6 +107,40 @@ export class UserManagementComponent implements OnInit {
     this.allocations = this.adminDataService.getAllocations();
     this.filterUsers();
     this.filterProjects();
+  }
+
+  // --- Project Management Additions ---
+
+  openProjectMembersModal(project: Project): void {
+    this.selectedProjectForMembers = project;
+    // memberCount in projects is from user count by project
+    this.projectMembersList = this.users.filter(u => u.projectName === project.name || u.projectId === project.id);
+    this.showProjectMembersModal = true;
+  }
+
+  closeProjectMembersModal(): void {
+    this.showProjectMembersModal = false;
+    this.selectedProjectForMembers = null;
+    this.projectMembersList = [];
+  }
+
+  async toggleProjectStatus(project: Project): Promise<void> {
+    const newStatus = project.status === 'Active' ? 'Completed' : 'Active';
+    const projectIdToUpdate = project.id || project.projectCode; // project_id
+    if (!projectIdToUpdate) {
+      this.notificationService.showToast('Unable to update project: Missing Project ID.', 'error');
+      return;
+    }
+
+    try {
+      await this.adminDataService.updateProjectStatus(projectIdToUpdate, newStatus);
+      project.status = newStatus;
+      this.notificationService.showToast(`Project ${project.name} marked as ${newStatus} successfully.`, 'success');
+      // If we made it inactive, maybe reload projects just to be sure, though updating locally is fine
+    } catch (e: any) {
+      console.error('Error toggling project status:', e);
+      this.notificationService.showToast('Failed to update project status. Please try again.', 'error');
+    }
   }
 
   setTab(tab: UserTab): void {
@@ -226,22 +278,124 @@ export class UserManagementComponent implements OnInit {
     return 'badge-default';
   }
 
-  openEditModal(user: User): void {
-    // Clone user to avoid modifying table data directly before saving
+  async openEditModal(user: User): Promise<void> {
     this.editingUser = { ...user };
+    this.editUserForm = {
+      email: user.email,
+      roleName: user.role,
+      projectId: user.projectId || '',
+      assetTypeId: ''
+    };
+    this.editUserEmailError = '';
+    this.isSavingEdit = false;
     this.showEditModal = true;
+
+    // Load assigned assets for this user
+    this.isLoadingEditAssets = true;
+    this.editUserAssignedAssets = [];
+    try {
+      const allAssets = await this.adminDataService.GetAllAssetsAssignedToAllUsers();
+      this.editUserAssignedAssets = allAssets.filter(a => a.userId === user.id);
+    } catch (error) {
+      console.error('Error loading edit user assets:', error);
+    } finally {
+      this.isLoadingEditAssets = false;
+    }
   }
 
   closeEditModal(): void {
     this.showEditModal = false;
     this.editingUser = null;
+    this.editUserForm = { email: '', roleName: '', projectId: '', assetTypeId: '' };
+    this.editUserEmailError = '';
+    this.editUserAssignedAssets = [];
+    this.isSavingEdit = false;
   }
 
-  saveUser(): void {
-    if (this.editingUser) {
-      this.users = this.users.map(user => user.id === this.editingUser!.id ? { ...this.editingUser! } : user);
+  onEditUserEmailChange(email: string): void {
+    this.editUserForm.email = email;
+    const trimmed = email.trim().toLowerCase();
+    // Allow same email as current user, but reject duplicates with other users
+    if (trimmed && this.editingUser) {
+      const isDuplicate = this.users.some(
+        u => u.email.trim().toLowerCase() === trimmed && u.id !== this.editingUser!.id
+      );
+      this.editUserEmailError = isDuplicate ? 'This email already exists for another user.' : '';
+    } else {
+      this.editUserEmailError = '';
+    }
+  }
+
+  onEditUserRoleChange(roleName: string): void {
+    this.editUserForm.roleName = roleName;
+    this.editUserForm.projectId = '';
+    this.editUserForm.assetTypeId = '';
+  }
+
+  get editRequiresProject(): boolean {
+    return this.editUserForm.roleName === this.employeeRoleName || this.editUserForm.roleName === this.teamLeadRoleName;
+  }
+
+  get editRequiresAssetType(): boolean {
+    return this.editUserForm.roleName === this.assetTeamMemberRoleName;
+  }
+
+  get canSaveEditUser(): boolean {
+    if (this.isSavingEdit || !!this.editUserEmailError) {
+      return false;
+    }
+    if (!this.editUserForm.email.trim() || !this.editUserForm.roleName) {
+      return false;
+    }
+    return true;
+  }
+
+  async saveUser(): Promise<void> {
+    if (!this.editingUser || !this.canSaveEditUser) {
+      return;
+    }
+
+    this.isSavingEdit = true;
+
+    try {
+      const selectedRole = this.roles.find(r => r.name === this.editUserForm.roleName);
+      const updates: {
+        email?: string;
+        roleId?: string;
+        projectId?: string;
+        assetTypeId?: string;
+      } = {};
+
+      // Only include changed fields
+      if (this.editUserForm.email.trim() !== this.editingUser.email) {
+        updates.email = this.editUserForm.email.trim();
+      }
+      if (this.editUserForm.roleName !== this.editingUser.role && selectedRole) {
+        updates.roleId = selectedRole.id;
+      }
+      if (this.editUserForm.projectId) {
+        updates.projectId = this.editUserForm.projectId;
+      }
+      if (this.editUserForm.assetTypeId) {
+        updates.assetTypeId = this.editUserForm.assetTypeId;
+      }
+
+      await this.adminDataService.updateUserDetails(this.editingUser.id, updates);
+
+      // If role changed to TeamLead and a project was selected, assign as TL
+      if (updates.roleId && this.editUserForm.roleName === this.teamLeadRoleName && this.editUserForm.projectId) {
+        await this.adminDataService.assignTeamLeadToProject(this.editUserForm.projectId, this.editingUser.id);
+      }
+
+      // Reload from DB to reflect changes
+      await this.loadUsers();
+      await this.loadRoles();
+      await this.loadProjects();
       this.filterUsers();
       this.closeEditModal();
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      this.isSavingEdit = false;
     }
   }
 
@@ -476,7 +630,7 @@ export class UserManagementComponent implements OnInit {
 
   private async loadUsers(): Promise<void> {
     try {
-      this.users = await this.adminDataService.GetAllUserRoleProjectDetails();
+      this.users = (await this.adminDataService.GetAllUserRoleProjectDetails()).reverse();
     } catch (error) {
       console.error('Unable to load DB users for admin user management.', error);
       this.users = [];

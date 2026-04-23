@@ -13,6 +13,7 @@ export class LoginComponent implements OnInit {
   loginForm: FormGroup;
   isLoading = false;
   showPassword = false;
+  loginError = '';
 
   constructor(
     private fb: FormBuilder,
@@ -40,6 +41,7 @@ export class LoginComponent implements OnInit {
     }
 
     this.isLoading = true;
+    this.loginError = '';
     const { email, password } = this.loginForm.value;
 
     this.authService.login(email, password).subscribe({
@@ -51,7 +53,7 @@ export class LoginComponent implements OnInit {
       },
       error: (err) => {
         this.isLoading = false;
-        this.notificationService.showToast(err.message || 'Login failed. Please try again.', 'error');
+        this.loginError = err.message || 'Login failed. Please try again.';
       }
     });
   }

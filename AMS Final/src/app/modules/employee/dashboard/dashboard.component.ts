@@ -52,4 +52,36 @@ export class EmployeeDashboardComponent implements OnInit {
       return expiry > now && expiry <= ninetyDaysFromNow;
     }).length;
   }
+
+  formatSubcategory(subCatId: string, fallbackType?: string): string {
+    if (!subCatId || subCatId === '-' || subCatId === 'N/A') {
+      if (fallbackType) return this.formatSubcategory(fallbackType);
+      return subCatId || '-';
+    }
+    
+    const subCatMap: { [key: string]: string } = {
+      'cat_001': 'Laptop',
+      'cat_002': 'Software License',
+      'cat_003': 'Monitor',
+      'cat_004': 'Peripheral',
+      'asset_001': 'Dell Latitude 5420',
+      'asset_002': 'Adobe Creative Cloud',
+      'typ_01': 'Software',
+      'typ_02': 'Hardware',
+      'typ_03': 'Network',
+      'typ_04': 'Peripheral'
+    };
+    
+    const idLower = subCatId.toLowerCase();
+    if (subCatMap[idLower]) return subCatMap[idLower];
+    
+    // Capitalize generic typ_ or cat_ if not explicitly known. If we have a fallback type (like asset.type), use that instead!
+    if (idLower.startsWith('cat_') || idLower.startsWith('typ_') || idLower.startsWith('asset_')) {
+      if (fallbackType && fallbackType !== subCatId) return this.formatSubcategory(fallbackType);
+      return 'Asset Detail';
+    }
+    
+    // Default capitalize
+    return subCatId.charAt(0).toUpperCase() + subCatId.slice(1).toLowerCase();
+  }
 }
