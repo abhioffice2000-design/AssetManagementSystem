@@ -173,13 +173,15 @@ export class RequestAssetComponent implements OnInit {
             email_approval: String(formVal.hasEmailApproval),
             status: 'Pending',
             temp1: subCatName,
-            temp2: this.selectedFileName ? this.selectedFileName : '',
-            document: this.selectedFileBase64 ? 'ATTACHED_VIA_BPM' : ''
+            temp2: this.selectedFileName || '',
+            document: this.selectedFileBase64 ? 'ATTACHED' : ''
           }
         }
       }
     };
     // this.requestService.addRequest(newReq as any);
+    console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
+    
     var res = await this.requestService.submitNewRequestForm(request1 as any);
     console.log("res", res)
     let newrequestid = res.new.t_asset_requests.request_id;

@@ -483,18 +483,16 @@ export class AllocationTicketsComponent implements OnInit {
         old: {
           m_assets: {
             asset_id: ticket.assetId,
-
           }
-        }
-        ,
+        },
         new: {
           m_assets: {
             status: "Allocated",
+            assigned_to: ticket.rawRequest.requesterId,
+            assigned_to_name: ticket.rawRequest.requesterName,
             temp1: ticket.rawRequest.requesterId
-
           }
         }
-
       }
     }
     console.log("Request2 is ", req2);

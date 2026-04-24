@@ -16,6 +16,8 @@ export interface User {
   projectId?: string;
   projectName?: string;
   teamLeadName?: string;
+  assetTypeId?: string;
+  assetTypeName?: string;
 }
 
 export enum UserRole {

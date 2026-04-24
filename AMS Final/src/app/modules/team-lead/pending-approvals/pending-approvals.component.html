@@ -138,6 +138,25 @@
         <textarea type="text" [value]="selectedRequest.reason" readonly 
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box; resize: vertical;" rows="3"></textarea>
       </div>
+
+      <!-- Attachment section -->
+      <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;" *ngIf="selectedRequest.document">
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Attachment</label>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 6px; border: 1px solid #e2e8f0;">
+          <span class="material-icons-outlined" style="color: #64748b; font-size: 20px;">description</span>
+          <span style="font-size: 14px; color: #1e293b; font-family: monospace; flex: 1;">{{ selectedRequest.document }}</span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-icon btn-outline" style="padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; cursor: pointer;"
+                    (click)="viewDocument(selectedRequest.document)" title="View Document">
+              <span class="material-icons-outlined" style="font-size: 18px; color: #475569;">visibility</span>
+            </button>
+            <button class="btn btn-icon btn-outline" style="padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; cursor: pointer;"
+                    (click)="downloadDocument(selectedRequest.document)" title="Download Document">
+              <span class="material-icons-outlined" style="font-size: 18px; color: #475569;">download</span>
+            </button>
+          </div>
+        </div>
+      </div>
       
       <!-- Remarks section -->
       <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;">

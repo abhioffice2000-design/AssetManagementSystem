@@ -519,7 +519,9 @@ export class AdminDataService {
         isActive: masterRecord.status.toLowerCase() === 'active',
         joinDate: masterRecord.createdAt.split('T')[0],
         projectId: masterRecord.projectId !== 'null' ? masterRecord.projectId : undefined,
-        projectName: this.normalizeSoapNullable(userData.m_projects?.project_name, '') || undefined
+        projectName: this.normalizeSoapNullable(userData.m_projects?.project_name, '') || undefined,
+        assetTypeId: masterRecord.assetTypeId !== 'null' ? masterRecord.assetTypeId : undefined,
+        assetTypeName: this.normalizeSoapNullable(userData.m_asset_types?.asset_type_name || userData.m_asset_types?.name, '') || undefined
       };
     }) as User[];
   }
@@ -775,7 +777,21 @@ export class AdminDataService {
         urgency: this.normalizeNullable(requestData.urgency, '-'),
         status: this.normalizeNullable(requestData.status, 'Pending'),
         emailApproval: emailApprovalRaw === 'true' || emailApprovalRaw === '1' || emailApprovalRaw === 'yes',
-        document: this.normalizeSoapNullable(requestData.temp2, '') || this.normalizeSoapNullable(requestData.document, ''),
+        document: (() => {
+          const t2 = this.normalizeSoapNullable(requestData.temp2, '');
+          const d1 = this.normalizeSoapNullable(requestData.document, '');
+          
+          // Case 1: modern attachment format filename|base64
+          if (t2.includes('|') || t2.startsWith('data:')) return t2;
+          
+          // Case 2: Just filename in temp2
+          if (t2 && t2 !== 'null') return t2;
+          
+          // Case 3: fallback to document if it's not a placeholder
+          if (d1 && d1 !== 'ATTACHED' && d1 !== 'null' && !d1.includes('BPM')) return d1;
+          
+          return '';
+        })(),
         createdAt: this.normalizeNullable(requestData.created_at, ''),
         subCategory: this.normalizeNullable(requestData.temp1, '-')
       };
@@ -805,6 +821,11 @@ export class AdminDataService {
     if (typeof value === 'object') {
       if (value['@nil'] === 'true' || value['@null'] === 'true' || value.null === 'true') {
         return fallback;
+      }
+      // Handle cases where the value is an object containing a text property
+      const textVal = value['#text'] || value['text'] || value['_'];
+      if (textVal !== undefined && textVal !== null) {
+        return this.normalizeNullable(textVal, fallback);
       }
       return fallback;
     }

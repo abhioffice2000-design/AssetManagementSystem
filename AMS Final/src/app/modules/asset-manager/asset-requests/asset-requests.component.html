@@ -117,7 +117,7 @@
               <span class="request-type-badge">{{ req.requestType }}</span>
             </div>
             <div class="request-info">
-              <h4>{{ req.category }}<span *ngIf="req.subCategory"> — {{ req.subCategory }}</span></h4>
+              <h4>{{ req.category }}<span *ngIf="req.subCategory && req.subCategory !== 'N/A'"> — {{ req.subCategory }}</span></h4>
               <p class="text-muted">{{ req.justification }}</p>
             </div>
             <div class="request-meta">
@@ -164,8 +164,9 @@
         <h4 *ngIf="activeTab === 'return'">No return requests found</h4>
         <h4 *ngIf="activeTab === 'all'">No requests found</h4>
         <p class="text-muted">
-          {{ activeTab === 'pending' ? 'All caught up! There are no requests awaiting your approval.' : (activeTab ===
-          'return' ? 'There are no return requests at this time.' : 'Try adjusting your search or filter criteria.') }}
+          {{ activeTab === 'pending' ? 'All caught up! There are no requests awaiting your approval.' : 
+             (activeTab === 'return' ? 'There are no return requests at this time.' : 
+             'Try adjusting your search or filter criteria.') }}
         </p>
       </div>
 
@@ -359,21 +360,17 @@
               <span>{{ detailRequest.assetType }}<span *ngIf="detailRequest.category && detailRequest.category !== ''">
                   — {{ detailRequest.category }}</span></span>
             </div>
-            <div class="detail-item">
+            <div class="detail-item" *ngIf="detailRequest.requestType !== 'Extend Warranty'">
               <label>Urgency</label>
               <span class="urgency-badge" [ngClass]="getUrgencyClass(detailRequest.urgency)">{{ detailRequest.urgency |
                 uppercase }}</span>
             </div>
 
             <div class="detail-item">
-              <label>Project</label>
-              <span>{{ detailRequest.requesterProjectName || detailRequest.requesterProject || '—' }}</span>
-            </div>
-            <div class="detail-item">
               <label>Role</label>
               <span>{{ detailRequest.requesterRoleName || detailRequest.requesterRole || '—' }}</span>
             </div>
-            <div class="detail-item full-col">
+            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Extend Warranty'">
               <label>Document</label>
               <div *ngIf="detailRequest.document" class="doc-actions-wrapper">
                 <span class="email-doc">
@@ -416,7 +413,7 @@
           <div class="detail-grid">
 
             <ng-container *ngIf="detailRequest.requestType !== 'Return Asset'">
-              <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation'">
+              <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation' && detailRequest.requestType !== 'Extend Warranty'">
                 <label>Select Asset</label>
                 <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
                   <option value="">-- Select Available Asset --</option>
@@ -438,7 +435,7 @@
                 </select>
               </div>
             </ng-container>
-            <ng-container *ngIf="detailRequest.requestType !== 'Return Asset'">
+            <ng-container *ngIf="detailRequest.requestType !== 'Return Asset' && detailRequest.requestType !== 'Extend Warranty'">
               <div class="detail-item">
                 <label>Asset ID</label>
                 <span class="mono-text">{{ detailRequest.assignedAssetId || '—' }}</span>
@@ -468,7 +465,7 @@
             <ng-container *ngIf="detailRequest.requestType === 'Return Asset'">
               <div class="detail-item">
                 <label>Asset Name</label>
-                <span>{{ detailRequest.assetName || detailRequest.category || '—' }}</span>
+                <span style="font-weight: 600; color: var(--primary);">{{ detailRequest.assetName || detailRequest.category || '—' }}</span>
               </div>
               <div class="detail-item">
                 <label>Asset ID</label>
