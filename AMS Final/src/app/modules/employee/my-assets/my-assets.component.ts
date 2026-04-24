@@ -61,8 +61,29 @@ export class MyAssetsComponent implements OnInit {
         .filter(t => t.type_name && t.type_name.toLowerCase() !== 'infrastructure');
       this.assetTypes.forEach(t => this.typeMap[t.type_id] = t.type_name);
 
+      try {
+        const resp = await this.hs.ajax('GetAssetsByUser', 'http://schemas.cordys.com/AMS_Database_Metadata', { userId: user.id || '' });
+        const result = this.hs.xmltojson(resp, 'm_assets');
+        const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
-      this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
+        this.myAssets = rawData.map((item: any) => ({
+          id: item.asset_id || item.id || '',
+          assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
+          name: item.asset_name || item.name || '',
+          type: item.type_id || item.type || item.asset_type || '',
+          category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || '',
+          subCategory: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || '',
+          condition: item.condition || 'Good',
+          status: item.status || 'Allocated',
+          warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
+          assignedTo: item.user_id || user.id || '',
+          purchaseDate: item.purchase_date || item.purchaseDate || ''
+        } as any));
+      } catch (err) {
+        console.error('Failed to fetch assets via GetAssetsByUser:', err);
+        // Fallback
+        this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
+      }
       
       // Fallback to mock data if no real data is found (for consistency with dashboard)
       if (this.myAssets.length === 0) {

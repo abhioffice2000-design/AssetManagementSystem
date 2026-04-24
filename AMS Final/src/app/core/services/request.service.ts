@@ -502,6 +502,105 @@ export class RequestService {
   }
 
   /**
+   * Fetches specific confirmation details (task_id, asset_id) dynamically for the employee confirmation step.
+   * This retrieves the latest approval record where the task was assigned to the employee.
+   */
+  async getEmployeeConfirmationDetails(requestId: string): Promise<{taskId: string, assetId: string}> {
+    const normalizedId = requestId.toLowerCase();
+    
+    try {
+      const soapRequestProgress = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetRequestProgressForEmployee xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <requestId>${normalizedId}</requestId>
+    </GetRequestProgressForEmployee>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+      const response = await this.hs.ajax(null, null, {}, soapRequestProgress);
+      const data = this.hs.xmltojson(response, 'tuple');
+      
+      let taskId = '';
+      let assetId = '';
+
+      if (data) {
+        const tupleArray = Array.isArray(data) ? data : [data];
+        console.log("tupleArray Progress Data JSON:", JSON.stringify(tupleArray));
+        
+        // Helper to recursively search for keys in the object
+        const findValue = (obj: any, keys: string[]): string | null => {
+          if (!obj || typeof obj !== 'object') return null;
+          for (const k of Object.keys(obj)) {
+            if (keys.includes(k.toLowerCase())) {
+              const val = obj[k];
+              if (val && typeof val !== 'object' && String(val).trim() !== '' && String(val) !== 'null' && String(val) !== 'undefined') {
+                return String(val);
+              }
+              if (typeof val === 'object' && val['#text']) {
+                 return String(val['#text']);
+              }
+            }
+            const nested = findValue(obj[k], keys);
+            if (nested) return nested;
+          }
+          return null;
+        };
+
+        // Scan array backwards to get the most recent task/asset IDs
+        for (let i = tupleArray.length - 1; i >= 0; i--) {
+          const tuple = tupleArray[i];
+          if (!assetId) {
+             const foundAsset = findValue(tuple, ['temp1', 'asset_id', 'assetid']);
+             if (foundAsset) assetId = foundAsset;
+          }
+          if (!taskId) {
+             const foundTask = findValue(tuple, ['temp2', 'taskid', 'task_id', 'instance_id']);
+             if (foundTask) taskId = foundTask;
+          }
+          if (assetId && taskId) break;
+        }
+      }
+
+      // Fallback to fetch main request
+      if (!assetId) {
+        const soapRequestMain = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_asset_requestsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <request_id>${normalizedId}</request_id>
+    </GetT_asset_requestsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+        try {
+          const resMain = await this.hs.ajax(null, null, {}, soapRequestMain);
+          const reqObj = this.hs.xmltojson(resMain, 'old') || this.hs.xmltojson(resMain, 't_asset_requests');
+          const findValue = (obj: any, keys: string[]): string | null => {
+            if (!obj || typeof obj !== 'object') return null;
+            for (const k of Object.keys(obj)) {
+              if (keys.includes(k.toLowerCase())) {
+                const val = obj[k];
+                if (val && typeof val !== 'object' && String(val).trim() !== '' && String(val) !== 'null') return String(val);
+                if (typeof val === 'object' && val['#text']) return String(val['#text']);
+              }
+              const nested = findValue(obj[k], keys);
+              if (nested) return nested;
+            }
+            return null;
+          };
+          const found = findValue(reqObj, ['asset_id', 'assetid']);
+          if (found) assetId = found;
+        } catch (e) {}
+      }
+
+      return { taskId, assetId };
+    } catch (err) {
+      console.error('Error fetching confirmation details:', err);
+      return { taskId: '', assetId: '' };
+    }
+  }
+
+  /**
    * Fetches all requests for a specific employee from Cordys.
    * Uses the Getallrequest SOAP service and filters the result by user ID.
    */
@@ -567,8 +666,8 @@ export class RequestService {
     const requestDate = createdAt;
 
     return {
-      taskid: reqData?.t_request_approvals?.temp2 || '',
-      approvalId: reqData?.t_request_approvals?.approval_id || '',
+      taskid: parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
+      approvalId: parent?.t_request_approvals?.approval_id || reqData?.t_request_approvals?.approval_id || '',
       id: reqData?.request_id || '',
       requestNumber: reqData?.request_id || '',
       requesterId: reqData?.user_id || userInfo?.user_id || '',
@@ -579,11 +678,13 @@ export class RequestService {
       assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
       category: this.normalizeCategory(
         this.getNullableValue(
-          assetInfo?.asset_name ||
-          subCatInfo?.name ||
-          typeInfo?.type_name ||
-          reqData?.asset_name ||
-          reqData?.temp1 ||
+          assetInfo?.asset_id ||
+          parent?.t_request_approvals?.temp1 ||
+          assetInfo?.asset_name || 
+          subCatInfo?.name || 
+          typeInfo?.type_name || 
+          reqData?.asset_name || 
+          reqData?.temp1 || 
           ''
         )
       ),
@@ -630,7 +731,7 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || '',
+      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp1 || '',
       // Requester details from nested m_users
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
