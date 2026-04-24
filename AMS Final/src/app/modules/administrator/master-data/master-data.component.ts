@@ -385,7 +385,13 @@ export class MasterDataComponent implements OnInit {
     if (!this.newSubCategoryName.trim() || !this.selectedTypeIdForSubCategory || this.isSaving) return;
     this.isSaving = true;
     try {
-      const nextId = `cat_${String(this.assetCategories.length + 1).padStart(3, '0')}`;
+      // Robust Max ID increment
+      const catNumericIds = this.assetCategories.map(c => {
+        const match = (c.id || '').match(/\d+/);
+        return match ? parseInt(match[0], 10) : 0;
+      });
+      const maxCatId = catNumericIds.length > 0 ? Math.max(...catNumericIds) : 0;
+      const nextId = `cat_${String(maxCatId + 1).padStart(3, '0')}`;
       await this.assetService.addAssetSubCategory(nextId, this.newSubCategoryName.trim(), this.selectedTypeIdForSubCategory);
       this.notificationService.showToast(`Subcategory '${this.newSubCategoryName}' added successfully!`, 'success');
       this.closeAddSubCategoryModal();
@@ -408,8 +414,14 @@ export class MasterDataComponent implements OnInit {
 
     try {
       const selectedCategory = this.assetCategories.find(category => category.name === this.newAsset.category);
-      const nextId = `asset_${String(this.assets.length + 1).padStart(3, '0')}`;
-      const nextTag = `${this.newAsset.type.slice(0, 2).toUpperCase()}-${this.newAsset.name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(this.assets.length + 1).padStart(3, '0')}`;
+      // Robust Max ID increment
+      const assetNumericIds = this.assets.map(a => {
+        const match = (a.id || '').match(/\d+/);
+        return match ? parseInt(match[0], 10) : 0;
+      });
+      const maxAssetId = assetNumericIds.length > 0 ? Math.max(...assetNumericIds) : 0;
+      const nextId = `asset_${String(maxAssetId + 1).padStart(3, '0')}`;
+      const nextTag = `${this.newAsset.type.slice(0, 2).toUpperCase()}-${this.newAsset.name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(maxAssetId + 1).padStart(3, '0')}`;
 
       const asset: Asset = {
         id: nextId,
@@ -538,6 +550,19 @@ export class MasterDataComponent implements OnInit {
   }
 
   async deleteAsset(assetId: string): Promise<void> {
+    const asset = this.assets.find(a => a.id === assetId);
+    
+    // Check if asset is allocated or assigned to a user
+    if (asset && (String(asset.status).toLowerCase().includes('allocated') || asset.assignedToName)) {
+      this.openConfirmModal(
+        'Cannot Delete Asset',
+        `This asset ('${asset.name}') is currently assigned to ${asset.assignedToName || 'a user'}. Assets must be returned to inventory before deletion.`,
+        () => {},
+        true // isWarning only (hides the Confirm button)
+      );
+      return;
+    }
+
     this.openConfirmModal(
       'Delete Asset',
       'Are you sure you want to permanently delete this asset record?',
@@ -594,7 +619,7 @@ export class MasterDataComponent implements OnInit {
       const matchesSubCategory = !this.selectedAssetSubCategory || asset.subCategory === this.selectedAssetSubCategory;
       const matchesStatus = !this.selectedAssetStatus || asset.status === this.selectedAssetStatus;
       return matchesSearch && matchesType && matchesSubCategory && matchesStatus;
-    });
+    }).sort((a, b) => b.id.localeCompare(a.id));
     this.currentPage = 1;
   }
 
@@ -784,7 +809,7 @@ export class MasterDataComponent implements OnInit {
     this.assetsInSelectedSub = this.assets.filter(a => 
       String(a.category || a.subCategory).toLowerCase() === String(sub.name).toLowerCase() && 
       a.type === sub.type
-    );
+    ).sort((a, b) => b.id.localeCompare(a.id));
     this.showSubDetailModal = true;
   }
 

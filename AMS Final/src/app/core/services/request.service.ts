@@ -278,6 +278,94 @@ export class RequestService {
     }
   }
 
+  async fetchPendingWarrantyApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getpendingextendwarrantyrequests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+</SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetPendingWarrantyApprovalsForManager response');
+        return [];
+      }
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch warranty approvals from GetPendingWarrantyApprovalsForManager:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Specialized mapping for warranty requests (t_extend_asset_requests).
+   */
+  private mapWarrantyTupleToRequest(tuple: any): AssetRequest {
+    const parent = tuple?.old || tuple;
+    const approvalData = parent?.t_extend_request_approvals || parent;
+    
+    // Attempt to find the request data at different nesting levels
+    const reqData = approvalData?.t_extend_asset_requests || parent?.t_extend_asset_requests || (parent.request_id ? parent : {});
+    const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || {};
+    const assetInfo = parent?.m_assets || approvalData?.m_assets || reqData?.m_assets || {};
+    
+    // Prioritize values from joined m_assets, then fall back to temp tags
+    const assetName = this.getNullableValue(assetInfo?.asset_name || assetInfo?.name || reqData?.temp1) || 'Unknown Asset';
+    const serialNumber = this.getNullableValue(assetInfo?.serial_number || reqData?.temp2) || 'N/A';
+    const expiryDate = this.getNullableValue(assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry || reqData?.temp3) || 'N/A';
+    const assetId = this.getNullableValue(assetInfo?.asset_id || reqData?.asset_id || reqData?.asset_type) || 'N/A';
+
+    const status = this.mapToStatus(approvalData?.status || reqData?.status || '');
+    const currentStage = ApprovalStage.ASSET_MANAGER;
+
+    return {
+      taskid: this.getNullableValue(approvalData?.temp2) || '',
+      document: this.getNullableValue(reqData?.temp2) || '',
+      approvalId: approvalData?.approval_id || '',
+      id: reqData?.request_id || '',
+      requestNumber: reqData?.request_id || '',
+      requesterId: reqData?.user_id || userInfo?.user_id || '',
+      requesterName: userInfo?.name || '',
+      requesterEmail: userInfo?.email || '',
+      requesterDepartment: this.getNullableValue(userInfo?.department) || '',
+      requesterTeam: this.getNullableValue(userInfo?.team) || '',
+      assetType: this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      category: 'Warranty extension',
+      subCategory: assetName,
+      assetName: assetName,
+      assignedAssetId: assetId,
+      assignedSerial: serialNumber,
+      assignedWarrantyExpiry: expiryDate,
+      justification: reqData?.reason || '',
+      urgency: this.mapToUrgency(reqData?.urgency || 'Medium'),
+      status: status,
+      currentStage: currentStage,
+      hasEmailApproval: false,
+      requestDate: reqData?.created_at || '',
+      lastUpdated: reqData?.created_at || '',
+      requestType: RequestType.EXTEND_WARRANTY,
+      approvalChain: [
+        {
+          stage: ApprovalStage.ASSET_MANAGER,
+          action: (status === RequestStatus.PENDING) ? 'Pending' : 'Approved',
+          approverId: approvalData?.approver_id,
+          comments: approvalData?.remarks
+        }
+      ],
+      comments: [],
+      requesterStatus: this.getNullableValue(userInfo?.status),
+      requesterProject: this.getNullableValue(userInfo?.project_id),
+      requesterRole: this.getNullableValue(userInfo?.role_id),
+      requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
+      requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name)
+    };
+  }
+
 
   /**
    * Maps a single tuple from the Confirmation SOAP response to AssetRequest.
@@ -418,7 +506,7 @@ export class RequestService {
    * Uses the Getallrequest SOAP service and filters the result by user ID.
    */
   async getRequestsByUserIdFromCordys(userId: string): Promise<AssetRequest[]> {
-     const soapRequest = `
+    const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
     <Getallrequest xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
@@ -431,7 +519,7 @@ export class RequestService {
 
       if (!tuples) return [];
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
-      
+
       // Filter by user ID and map to model
       return tupleArray
         .filter((tuple: any) => {
@@ -491,11 +579,11 @@ export class RequestService {
       assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
       category: this.normalizeCategory(
         this.getNullableValue(
-          assetInfo?.asset_name || 
-          subCatInfo?.name || 
-          typeInfo?.type_name || 
-          reqData?.asset_name || 
-          reqData?.temp1 || 
+          assetInfo?.asset_name ||
+          subCatInfo?.name ||
+          typeInfo?.type_name ||
+          reqData?.asset_name ||
+          reqData?.temp1 ||
           ''
         )
       ),
@@ -506,32 +594,39 @@ export class RequestService {
       currentStage: currentStage,
       hasEmailApproval: hasEmailApproval,
       emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
-      document: this.getNullableValue(reqData?.document),
+      document: (() => {
+        const t2 = this.getNullableValue(reqData?.temp2) || '';
+        const d1 = this.getNullableValue(reqData?.document) || '';
+        if (t2.includes('|') || t2.startsWith('data:')) return t2;
+        if (t2 && t2 !== 'null') return t2;
+        if (d1 && d1 !== 'ATTACHED' && d1 !== 'null' && !d1.includes('BPM')) return d1;
+        return '';
+      })(),
       requestDate: requestDate,
       lastUpdated: requestDate,
       requestType: requestType,
       approvalChain: hasEmailApproval ? [
-        { 
-          stage: ApprovalStage.ASSET_MANAGER, 
-          action: (currentStage === ApprovalStage.ASSET_MANAGER) ? 'Pending' : (status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending') 
+        {
+          stage: ApprovalStage.ASSET_MANAGER,
+          action: (currentStage === ApprovalStage.ASSET_MANAGER) ? 'Pending' : (status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending')
         },
-        { 
-          stage: ApprovalStage.ALLOCATION, 
-          action: (currentStage === ApprovalStage.ALLOCATION) ? 'Pending' : 'Pending' 
+        {
+          stage: ApprovalStage.ALLOCATION,
+          action: (currentStage === ApprovalStage.ALLOCATION) ? 'Pending' : 'Pending'
         }
       ] : [
-        { 
-          stage: ApprovalStage.TEAM_LEAD, 
+        {
+          stage: ApprovalStage.TEAM_LEAD,
           action: (currentStage !== ApprovalStage.TEAM_LEAD) ? 'Approved' : 'Pending',
           approverName: 'Team Lead'
         },
-        { 
-          stage: ApprovalStage.ASSET_MANAGER, 
-          action: (currentStage === ApprovalStage.ASSET_MANAGER) ? 'Pending' : (status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending') 
+        {
+          stage: ApprovalStage.ASSET_MANAGER,
+          action: (currentStage === ApprovalStage.ASSET_MANAGER) ? 'Pending' : (status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending')
         },
-        { 
-          stage: ApprovalStage.ALLOCATION, 
-          action: (currentStage === ApprovalStage.ALLOCATION) ? 'Pending' : 'Pending' 
+        {
+          stage: ApprovalStage.ALLOCATION,
+          action: (currentStage === ApprovalStage.ALLOCATION) ? 'Pending' : 'Pending'
         }
       ],
       comments: [],
@@ -655,7 +750,7 @@ export class RequestService {
     if (t === 'typ_02' || t === 'hardware' || t.includes('laptop') || t.includes('hard') || t.includes('comp')) return 'Hardware';
     if (t === 'typ_03' || t === 'network' || t.includes('wifi') || t.includes('router')) return 'Network';
     if (t === 'typ_04' || t === 'peripheral') return 'Peripheral';
-    
+
     // Default: capitalize first letter
     return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
   }
@@ -677,7 +772,7 @@ export class RequestService {
     };
 
     if (mappings[v]) return mappings[v];
-    
+
     // If it's still a technical ID but not in list, return generic label
     if (v.startsWith('cat_') || v.startsWith('typ_') || v.startsWith('asset_')) return 'Asset Detail';
 

@@ -1,0 +1,240 @@
+<div class="requests-container animate-fade-in">
+  <div class="page-header">
+    <div class="page-title">
+      <span class="material-icons-outlined title-icon">security</span>
+      <div>
+        <h2>Warranty Extension Requests</h2>
+        <p class="text-muted">Manage equipment maintenance and warranty extension approvals</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="card filter-bar animate-slide-up">
+    <div class="search-box">
+      <span class="material-icons-outlined search-icon">search</span>
+      <input type="text" [(ngModel)]="searchTerm" (ngModelChange)="onSearchChange()" 
+             placeholder="Search by request #, requester or asset...">
+    </div>
+    <div class="filter-group">
+      <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()">
+        <option value="">All Statuses</option>
+        <option *ngFor="let status of statuses" [value]="status">{{ status }}</option>
+      </select>
+      <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
+        <option value="">All Urgency</option>
+        <option *ngFor="let urgency of urgencies" [value]="urgency">{{ urgency }}</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div class="loading-state card animate-fade-in" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <h4>Loading warranty requests...</h4>
+    <p class="text-muted">Fetching latest maintenance data from Cordys</p>
+  </div>
+
+  <!-- Error State -->
+  <div class="error-state card animate-fade-in" *ngIf="loadError && !isLoading">
+    <span class="material-icons-outlined error-icon">error_outline</span>
+    <h4>Unable to load requests</h4>
+    <p class="text-muted">{{ loadError }}</p>
+    <button class="btn-retry" (click)="loadData()">
+      <span class="material-icons-outlined">refresh</span> Try Again
+    </button>
+  </div>
+
+  <!-- Requests List -->
+  <div class="requests-list animate-slide-up" *ngIf="!isLoading && !loadError">
+    <div class="request-card card" *ngFor="let req of paginatedRequests">
+      <div class="request-row">
+        <div class="request-main">
+          <div class="request-header">
+            <span class="request-number">{{ req.id }}</span>
+            <span class="urgency-badge" [ngClass]="getUrgencyClass(req.urgency)">{{ req.urgency | uppercase }}</span>
+            <span class="request-type-badge">WARRANTY EXTENSION</span>
+            <span class="status-badge" [ngClass]="req.status ? req.status.toLowerCase() : 'pending'">{{ req.status || 'Pending' }}</span>
+          </div>
+          <div class="request-info">
+            <h4>Warranty extension — {{ req.subCategory || req.assetName || 'Equipment' }}</h4>
+            <p class="text-muted">{{ req.justification }}</p>
+          </div>
+          <div class="request-meta">
+            <span class="meta-item">
+              <span class="material-icons-outlined">person</span>
+              {{ req.requesterName }}
+            </span>
+            <span class="meta-item">
+              <span class="material-icons-outlined">calendar_today</span>
+              {{ req.requestDate | date: 'dd MMM yyyy' }}
+            </span>
+          </div>
+        </div>
+        <div class="request-actions">
+          <div class="action-buttons" *ngIf="req.status === 'Pending'">
+            <button class="btn-approve" (click)="openActionModal(req, 'approve')">
+              <span class="material-icons-outlined">check_circle</span> Approve
+            </button>
+            <button class="btn-reject" (click)="openActionModal(req, 'reject')">
+              <span class="material-icons-outlined">cancel</span> Reject
+            </button>
+          </div>
+          <button class="btn-detail" (click)="openDetailModal(req)">
+            <span class="material-icons-outlined">info</span> Details
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state card animate-fade-in" *ngIf="filteredWarrantyRequests.length === 0">
+      <span class="material-icons-outlined empty-icon">inventory_2</span>
+      <h4>No warranty requests found</h4>
+      <p class="text-muted">There are no maintenance requests matching your current filters</p>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-bar" *ngIf="filteredWarrantyRequests.length > 0">
+      <div class="pagination-info">
+        Showing {{ paginationDisplayRange }}
+      </div>
+      <div class="pagination-controls">
+        <button [disabled]="currentPage === 1" (click)="setPage(currentPage - 1)">Previous</button>
+        <span class="page-numbers">
+          Page {{ currentPage }} of {{ totalPages }}
+        </span>
+        <button [disabled]="currentPage === totalPages" (click)="setPage(currentPage + 1)">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Action Modal (Approve/Reject) -->
+<div class="modal-overlay" *ngIf="showActionModal">
+  <div class="modal-content animate-slide-up">
+    <div class="modal-header" [ngClass]="actionType === 'approve' ? 'modal-approve' : 'modal-reject'">
+      <h3>
+        <span class="material-icons-outlined">{{ actionType === 'approve' ? 'check_circle' : 'cancel' }}</span>
+        {{ actionType === 'approve' ? 'Approve Warranty Extension' : 'Reject Warranty Extension' }}
+      </h3>
+      <button class="btn-icon-close" (click)="closeActionModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    
+    <div class="modal-body">
+      <div class="modal-request-summary">
+        <div class="summary-row">
+          <label>Request ID</label>
+          <span>{{ detailRequest?.id }}</span>
+        </div>
+        <div class="summary-row">
+          <label>Asset</label>
+          <span>{{ detailRequest?.subCategory || detailRequest?.assetName }}</span>
+        </div>
+        <div class="summary-row">
+          <label>Requester</label>
+          <span>{{ detailRequest?.requesterName }}</span>
+        </div>
+      </div>
+
+      <div class="detail-section" *ngIf="actionType === 'approve'">
+        <h4 class="detail-section-title">
+          <span class="material-icons-outlined">group</span>
+          Assign Execution Team
+        </h4>
+        <div class="detail-grid">
+          <div class="detail-item full-col">
+            <label>Allocation Team Member</label>
+            <select class="asset-select" [(ngModel)]="selectedAllocationMemberId">
+              <option value="">-- Choose Team Member --</option>
+              <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
+                {{ member.name }} — {{ member.email }}
+              </option>
+            </select>
+            <small class="error-text" *ngIf="!selectedAllocationMemberId" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px; display: block;">
+              * Mandatory for approval
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <div class="comments-section">
+        <label>Manager Remarks</label>
+        <textarea [(ngModel)]="actionComments" placeholder="Enter your comments here..." rows="4"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeActionModal()">Cancel</button>
+      <button class="btn-confirm" 
+              [ngClass]="actionType === 'approve' ? 'btn-confirm-approve' : 'btn-confirm-reject'"
+              (click)="directConfirmAction(detailRequest!, actionType!)">
+        {{ actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" *ngIf="showDetailModal">
+  <div class="modal-content modal-detail animate-slide-up">
+    <div class="modal-header modal-detail-header">
+      <h3>
+        <span class="material-icons-outlined">info</span>
+        Request Details: {{ detailRequest?.id }}
+      </h3>
+      <button class="btn-icon-close" (click)="closeDetailModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body" *ngIf="detailRequest">
+      <div class="detail-section">
+        <h4 class="detail-section-title">Requester Information</h4>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <label>Requester Name</label>
+            <span>{{ detailRequest.requesterName }}</span>
+          </div>
+          <div class="detail-item">
+            <label>Requester Email</label>
+            <span class="email-link">{{ detailRequest.requesterEmail }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4 class="detail-section-title">Maintenance Details</h4>
+        <div class="detail-grid">
+          <div class="detail-item">
+            <label>Asset Name</label>
+            <span style="font-weight: 600; color: var(--primary);">{{ detailRequest.assetName || detailRequest.subCategory }}</span>
+          </div>
+          <div class="detail-item">
+            <label>Current Expiry</label>
+            <span style="color: #dc2626; font-weight: 600;">{{ detailRequest.assignedWarrantyExpiry | date: 'dd MMM yyyy' }}</span>
+          </div>
+          <div class="detail-item">
+            <label>Asset ID</label>
+            <span class="mono-text">{{ detailRequest.assignedAssetId }}</span>
+          </div>
+          <div class="detail-item">
+            <label>Serial Number</label>
+            <span class="mono-text">{{ detailRequest.assignedSerial }}</span>
+          </div>
+          <div class="detail-item full-col">
+            <label>Employee Justification</label>
+            <p>{{ detailRequest.justification }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" *ngIf="detailRequest && detailRequest.status === 'Pending'">
+      <button class="btn-approve" (click)="openActionModal(detailRequest, 'approve')">Approve Request</button>
+      <button class="btn-reject" (click)="openActionModal(detailRequest, 'reject')">Reject Request</button>
+    </div>
+  </div>
+</div>

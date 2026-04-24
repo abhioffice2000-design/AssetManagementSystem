@@ -80,13 +80,14 @@ export class AssetRequestsComponent implements OnInit {
       //   this.requestService.fetchPendingRequestsFromService(approverId),
       //   this.requestService.fetchPendingReturnApprovalsFromService(approverId),
       // Fetch all in parallel: all requests, pending requests, confirmation requests, and available assets
+      // Fetch all in parallel with individual error handling to prevent dashboard crash if one service fails
       const [allReqs, pendingReqs, confirmReqs, returnReqs] = await Promise.all([
-        this.requestService.fetchAllRequestsFromService(approverId),
-        this.requestService.fetchPendingRequestsFromService(approverId),
-        this.requestService.fetchConfirmationRequestsFromService(approverId),
-        this.requestService.fetchPendingReturnApprovalsFromService(approverId),
-        this.loadAvailableAssets()
-      ]);
+        this.requestService.fetchAllRequestsFromService(approverId).catch(err => { console.error('All Req fetch failed:', err); return []; }),
+        this.requestService.fetchPendingRequestsFromService(approverId).catch(err => { console.error('Pending Req fetch failed:', err); return []; }),
+        this.requestService.fetchConfirmationRequestsFromService(approverId).catch(err => { console.error('Confirm Req fetch failed:', err); return []; }),
+        this.requestService.fetchPendingReturnApprovalsFromService(approverId).catch(err => { console.error('Return Req fetch failed:', err); return []; }),
+        this.loadAvailableAssets().catch(err => { console.error('Assets load failed:', err); return []; })
+      ] as any[]);
 
       this.allRequests = allReqs;
       this.pendingRequests = pendingReqs;
@@ -136,7 +137,7 @@ export class AssetRequestsComponent implements OnInit {
     }
   }
 
-  switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
+  switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return' ): void {
     this.activeTab = tab;
     this.searchTerm = '';
     this.selectedStatus = '';
@@ -152,15 +153,19 @@ export class AssetRequestsComponent implements OnInit {
       source = this.pendingRequests;
     } else if (this.activeTab === 'return') {
       source = this.returnRequests;
+    } else if (this.activeTab === 'confirmation') {
+      source = this.confirmationRequests;
     } else {
       source = this.allRequests;
     }
 
+    const currentSearch = this.activeTab === 'confirmation' ? this.confirmationSearchTerm : this.searchTerm;
+
     this.filteredRequests = source.filter(req => {
-      const matchesSearch = !this.searchTerm ||
-        req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
-        req.requesterName.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
-        req.category.toLowerCase().includes(this.searchTerm.toLowerCase());
+      const matchesSearch = !currentSearch ||
+        req.requestNumber.toLowerCase().includes(currentSearch.toLowerCase()) ||
+        req.requesterName.toLowerCase().includes(currentSearch.toLowerCase()) ||
+        req.category.toLowerCase().includes(currentSearch.toLowerCase());
       const matchesStatus = !this.selectedStatus || req.status === this.selectedStatus;
       const matchesUrgency = !this.selectedUrgency || req.urgency === this.selectedUrgency;
       return matchesSearch && matchesStatus && matchesUrgency;
@@ -769,8 +774,17 @@ export class AssetRequestsComponent implements OnInit {
 
   viewDocument(docName: string): void {
     if (!docName) return;
-    // In a real implementation, this would be a full URL to the file storage
-    // For now, we'll try to open it in a new tab
+    
+    // If it's a base64 data URL, open it directly
+    if (docName.startsWith('data:')) {
+      const newTab = window.open();
+      if (newTab) {
+        newTab.document.write(`<iframe src="${docName}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+      }
+      return;
+    }
+
+    // Default to assets folder
     const fileUrl = `assets/documents/${docName}`;
     window.open(fileUrl, '_blank');
     this.notificationService.showToast(`Opening document: ${docName}...`, 'info');
@@ -779,14 +793,25 @@ export class AssetRequestsComponent implements OnInit {
 
   downloadDocument(docName: string): void {
     if (!docName) return;
-    const fileUrl = `assets/documents/${docName}`;
+
+    let fileUrl = '';
+    let fileName = docName;
+
+    if (docName.startsWith('data:')) {
+      fileUrl = docName;
+      // Extract a generic name if possible or use a default
+      fileName = 'attachment_' + new Date().getTime();
+    } else {
+      fileUrl = `assets/documents/${docName}`;
+    }
+
     const link = document.createElement('a');
     link.href = fileUrl;
-    link.download = docName;
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    this.notificationService.showToast(`Initiating download: ${docName}`, 'success');
+    this.notificationService.showToast(`Initiating download: ${fileName}`, 'success');
   }
 
 }

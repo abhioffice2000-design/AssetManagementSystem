@@ -10,7 +10,7 @@
     <app-stat-card label="Total Requests" [value]="totalTransactions" icon="assessment" color="blue"></app-stat-card>
     <app-stat-card label="Pending Requests" [value]="pendingAllocations" icon="pending_actions" color="amber"></app-stat-card>
     <app-stat-card label="Approved Requests" [value]="pendingReturns" icon="verified" color="purple"></app-stat-card>
-    <app-stat-card label="Resolved" [value]="recentCompletions" icon="fact_check" color="green"></app-stat-card>
+    <app-stat-card label="Rejected" [value]="rejectedCount" icon="cancel" color="red"></app-stat-card>
   </div>
 
   <div class="grid grid-2 gap-24 mb-24">
@@ -160,7 +160,7 @@
     </div>
 
     <div class="modal-body p-24">
-      <div class="request-summary mb-24" *ngIf="selectedTrackRequest">
+      <div class="request-summary mb-24" *ngIf="selectedTrackRequest" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
         <div class="summary-item">
           <label>REQUEST ID</label>
           <span class="value">{{ selectedTrackRequest.requestId }}</span>
@@ -172,6 +172,13 @@
         <div class="summary-item">
           <label>CURRENT STATUS</label>
           <span class="value status-val">{{ getStatusLabel(selectedTrackRequest.status) }}</span>
+        </div>
+        <!-- Reason Section -->
+        <div class="summary-item" style="grid-column: span 3; padding-top: 12px; border-top: 1px solid #e2e8f0; margin-top: 8px;">
+          <label>REASON FOR REQUEST</label>
+          <span class="value" style="white-space: normal; line-height: 1.5; color: #475569; display: block; margin-top: 4px;">
+            {{ selectedTrackRequest.reason || 'No reason provided' }}
+          </span>
         </div>
       </div>
 

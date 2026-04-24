@@ -31,10 +31,11 @@ export class AssetTransactionComponent implements OnInit {
   totalTransactions = 0;
   pendingAllocations = 0;
   pendingReturns = 0;
-  recentCompletions = 0;
+  rejectedCount = 0;
+
 
   transactionStatusData: ChartData<'doughnut'> = {
-    labels: ['Completed', 'Pending', 'Rejected'],
+    labels: ['Approved Requests', 'Pending', 'Rejected'],
     datasets: [{
       data: [0, 0, 0],
       backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
@@ -225,14 +226,11 @@ export class AssetTransactionComponent implements OnInit {
     this.totalTransactions = this.allRequests.length;
     this.pendingAllocations = this.allRequests.filter(r => r.status.toLowerCase() === 'pending').length;
     this.pendingReturns = this.allRequests.filter(r => r.status.toLowerCase() === 'approved').length;
-    this.recentCompletions = this.allRequests.filter(r => r.status.toLowerCase() === 'completed' || r.status.toLowerCase() === 'rejected').length;
+    this.rejectedCount = this.allRequests.filter(r => r.status.toLowerCase() === 'rejected').length;
   }
 
   private updateCharts(): void {
-    const approvedOrCompleted = this.allRequests.filter(r => {
-      const status = r.status.toLowerCase();
-      return status === 'approved' || status === 'completed';
-    }).length;
+    const approvedCount = this.allRequests.filter(r => r.status.toLowerCase() === 'approved').length;
     const pending = this.allRequests.filter(r => r.status.toLowerCase() === 'pending').length;
     const rejected = this.allRequests.filter(r => r.status.toLowerCase() === 'rejected').length;
 
@@ -240,7 +238,7 @@ export class AssetTransactionComponent implements OnInit {
       ...this.transactionStatusData,
       datasets: [{
         ...this.transactionStatusData.datasets[0],
-        data: [approvedOrCompleted, pending, rejected]
+        data: [approvedCount, pending, rejected]
       }]
     };
 
@@ -312,22 +310,51 @@ export class AssetTransactionComponent implements OnInit {
   }
 
   downloadDocument(doc: string): void {
-    if (!doc || !doc.includes('|')) {
-      this.notificationService.showToast('The attached document was not successfully stored by the backend database.', 'error');
+    if (!doc) {
+      this.notificationService.showToast('No document attachment found for this request.', 'error');
       return;
     }
 
-    const parts = doc.split('|');
-    const fileName = parts.shift() || 'document.bin';
-    const base64Data = parts.join('|'); // Rejoin in case base64 happened to have a pipe character
+    console.log('[AssetTransaction] Attempting to download:', doc.substring(0, 50) + '...');
+
+    let fileName = 'attachment_' + new Date().getTime();
+    let fileUrl = doc;
+
+    // 1. Handle Pipe Format (filename|data)
+    if (doc.includes('|')) {
+      const parts = doc.split('|');
+      fileName = parts.shift() || 'document.bin';
+      fileUrl = parts.join('|');
+      console.log('[AssetTransaction] Pipe format detected. Filename:', fileName);
+    }
+
+    // 2. Ensure fileUrl is a valid data URL or relative path
+    if (fileUrl.startsWith('data:') || fileUrl.startsWith('assets/')) {
+       // Already a valid format
+    } else if (fileUrl.length > 100) { 
+      // Heuristic: If it's a long string without "data:", it's likely raw base64
+      console.log('[AssetTransaction] Raw base64 detected (no prefix). Adding prefix...');
+      fileUrl = 'data:application/octet-stream;base64,' + fileUrl;
+    } else {
+      // Short string, treat as filename in assets folder
+      fileName = fileUrl;
+      fileUrl = `assets/documents/${fileUrl}`;
+      console.log('[AssetTransaction] Short string detected. Treating as assets path:', fileUrl);
+    }
     
-    // Create an invisible link to trigger the download
-    const link = document.createElement('a');
-    link.href = base64Data;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      // Create an invisible link to trigger the download
+      const link = document.createElement('a');
+      link.href = fileUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.notificationService.showToast(`Downloading: ${fileName}`, 'success');
+    } catch (err) {
+      console.error('[AssetTransaction] Download failed:', err);
+      this.notificationService.showToast('Failed to initiate download. The data might be corrupted.', 'error');
+    }
   }
 
   formatSubcategory(subCatId: string): string {

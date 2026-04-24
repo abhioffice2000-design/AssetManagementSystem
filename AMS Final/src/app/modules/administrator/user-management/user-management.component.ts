@@ -64,6 +64,10 @@ export class UserManagementComponent implements OnInit {
   selectedProjectForMembers: Project | null = null;
   projectMembersList: User[] = [];
 
+  showRoleMembersModal = false;
+  selectedRoleForMembers: Role | null = null;
+  roleMembersList: User[] = [];
+
   showEditModal = false;
   showInactiveModal = false;
   showAssetsModal = false;
@@ -128,6 +132,34 @@ export class UserManagementComponent implements OnInit {
     this.showProjectMembersModal = false;
     this.selectedProjectForMembers = null;
     this.projectMembersList = [];
+  }
+
+  openRoleMembersModal(role: Role): void {
+    const targetRoleName = role.name.trim().toLowerCase();
+    this.selectedRoleForMembers = role;
+    this.roleMembersList = this.users.filter(u => 
+      (u.role || '').toString().trim().toLowerCase() === targetRoleName
+    );
+    
+    // Supplement with Asset Type names if needed
+    if (role.name === this.assetManagerRoleName || role.name === this.assetTeamMemberRoleName) {
+      this.roleMembersList.forEach(user => {
+        if (user.assetTypeId && !user.assetTypeName) {
+          const type = this.assetTypes.find(t => t.id === user.assetTypeId);
+          if (type) {
+             user.assetTypeName = type.name;
+          }
+        }
+      });
+    }
+    
+    this.showRoleMembersModal = true;
+  }
+
+  closeRoleMembersModal(): void {
+    this.showRoleMembersModal = false;
+    this.selectedRoleForMembers = null;
+    this.roleMembersList = [];
   }
 
   async toggleProjectStatus(project: Project): Promise<void> {
@@ -380,7 +412,8 @@ export class UserManagementComponent implements OnInit {
   }
 
   get editRequiresAssetType(): boolean {
-    return this.editUserForm.roleName === this.assetTeamMemberRoleName;
+    return this.editUserForm.roleName === this.assetTeamMemberRoleName || 
+           this.editUserForm.roleName === this.assetManagerRoleName;
   }
 
   get canSaveEditUser(): boolean {
@@ -401,7 +434,8 @@ export class UserManagementComponent implements OnInit {
     this.isSavingEdit = true;
 
     try {
-      const selectedRole = this.roles.find(r => r.name === this.editUserForm.roleName);
+      const targetRoleName = this.editUserForm.roleName.trim().toLowerCase();
+      const selectedRole = this.roles.find(r => r.name.trim().toLowerCase() === targetRoleName);
       const updates: {
         email?: string;
         roleId?: string;
@@ -416,17 +450,24 @@ export class UserManagementComponent implements OnInit {
       if (this.editUserForm.roleName !== this.editingUser.role && selectedRole) {
         updates.roleId = selectedRole.id;
       }
-      if (this.editUserForm.projectId) {
+      // Handle Project Clearing for roles like Asset Manager/Admin
+      if (!this.editRequiresProject) {
+        updates.projectId = '';
+      } else if (this.editUserForm.projectId) {
         updates.projectId = this.editUserForm.projectId;
       }
-      if (this.editUserForm.assetTypeId) {
+
+      // Handle Asset Type Clearing for roles that don't need it
+      if (!this.editRequiresAssetType) {
+        updates.assetTypeId = '';
+      } else if (this.editUserForm.assetTypeId) {
         updates.assetTypeId = this.editUserForm.assetTypeId;
       }
 
       await this.adminDataService.updateUserDetails(this.editingUser.id, updates);
 
       // If role changed to TeamLead and a project was selected, assign as TL
-      if (updates.roleId && this.editUserForm.roleName === this.teamLeadRoleName && this.editUserForm.projectId) {
+      if (updates.roleId && targetRoleName === this.teamLeadRoleName.toLowerCase() && this.editUserForm.projectId) {
         await this.adminDataService.assignTeamLeadToProject(this.editUserForm.projectId, this.editingUser.id);
       }
 
@@ -682,6 +723,7 @@ export class UserManagementComponent implements OnInit {
   private async loadUsers(): Promise<void> {
     try {
       this.users = (await this.adminDataService.GetAllUserRoleProjectDetails()).reverse();
+      this.updateProjectMemberCounts();
     } catch (error) {
       console.error('Unable to load DB users for admin user management.', error);
       this.users = [];
@@ -702,12 +744,23 @@ export class UserManagementComponent implements OnInit {
   private async loadProjects(): Promise<void> {
     try {
       this.projects = await this.adminDataService.getProjectsFromDB();
+      this.updateProjectMemberCounts();
       this.filterProjects();
     } catch (error) {
       console.error('Unable to load DB projects for admin user management.', error);
       this.projects = [];
       this.filteredProjects = [];
     }
+  }
+
+  private updateProjectMemberCounts(): void {
+    if (!this.projects || !this.users || this.users.length === 0) return;
+    
+    this.projects.forEach(project => {
+      // Calculate true membership count including both Employees and the Team Lead
+      const members = this.users.filter(u => u.projectName === project.name || u.projectId === project.id);
+      project.memberCount = members.length;
+    });
   }
 
   private async loadAssetTypes(): Promise<void> {

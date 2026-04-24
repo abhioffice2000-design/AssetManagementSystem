@@ -401,6 +401,11 @@ export class AssetService {
     const statusStr = assetData?.status || '';
     const assetStatus = this.mapToAssetStatus(statusStr);
 
+    // Extract user info if joined in the response
+    const userData = assetData?.m_users || tuple?.old?.m_users || tuple?.m_users || {};
+    const userName = userData?.name || userData?.user_name || assetData?.assigned_to_name || assetData?.assignedToName;
+    const userId = userData?.user_id || userData?.id || assetData?.assigned_to || assetData?.temp1 || assetData?.assignedTo;
+
     return {
       id: assetData?.asset_id || '',
       assetId: assetData?.asset_id || '',
@@ -410,8 +415,8 @@ export class AssetService {
       category: subCatInfo?.name || '',
       subCategory: subCatInfo?.name || '',
       status: statusStr,
-      assignedTo: this.getNullableValue(assetData?.assigned_to),
-      assignedToName: this.getNullableValue(assetData?.assigned_to_name),
+      assignedTo: this.getNullableValue(userId),
+      assignedToName: this.getNullableValue(userName),
       department: this.getNullableValue(assetData?.department),
       team: this.getNullableValue(assetData?.team),
       location: this.getNullableValue(assetData?.location) || '',

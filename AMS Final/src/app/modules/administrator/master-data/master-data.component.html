@@ -394,10 +394,11 @@
         <table class="table table-hover mb-0">
           <thead class="sticky-top">
             <tr>
-              <th>Asset Tag</th>
+              <th>Asset Id</th>
               <th>Name</th>
               <th>Serial Number</th>
               <th>Status</th>
+              <th>Assigned To</th>
               <th>Warranty</th>
             </tr>
           </thead>
@@ -405,10 +406,16 @@
             <tr *ngFor="let asset of assetsInSelectedSub">
               <td><span class="tag-label">{{ asset.assetTag }}</span></td>
               <td><strong>{{ asset.name }}</strong></td>
-              <td><code class="text-xs">{{ asset.serialNumber }}</code></td>
+              <td><span style="font-family: 'Inter', sans-serif; font-weight: 500; color: #334155; font-size: 0.875rem;">{{ asset.serialNumber }}</span></td>
               <td><span class="badge" [ngClass]="getStatusBadgeClass(asset.status)">{{ formatAssetStatus(asset.status) }}</span></td>
               <td>
-                <span class="text-xs" [class.text-danger]="selectedSubForDetail.warrantyHealth < 100">
+                <span *ngIf="asset.status?.toLowerCase() === 'allocated'" style="font-weight: 500; color: #1e293b;">
+                   {{ asset.assignedToName || asset.assignedTo || 'Assigned' }}
+                </span>
+                <span *ngIf="asset.status?.toLowerCase() !== 'allocated'" class="text-muted">-</span>
+              </td>
+              <td>
+                <span style="font-family: 'Inter', sans-serif; font-weight: 500; color: #334155; font-size: 0.875rem;" [class.text-danger]="selectedSubForDetail.warrantyHealth < 100">
                    {{ asset.warrantyExpiry | date:'mediumDate' }}
                 </span>
               </td>

@@ -28,14 +28,14 @@ export class ExtendWarrantyComponent implements OnInit {
     private notificationService: NotificationService,
     private router: Router,
     private hs: HeroService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     const user = this.authService.getCurrentUser();
     if (user) {
       this.getAssetsByUser(user.id);
     }
-    
+
     this.warrantyForm = this.fb.group({
       assetId: ['', Validators.required],
       justification: ['', [Validators.required, Validators.minLength(5)]]
@@ -141,129 +141,131 @@ export class ExtendWarrantyComponent implements OnInit {
   }
 
   submitextendwarranty() {
-  if (this.warrantyForm.invalid) {
-    this.warrantyForm.markAllAsTouched();
-    return;
-  }
-
-  const user = this.authService.getCurrentUser();
-  if (!user) {
-    this.notificationService.showToast('You must be logged in to submit a request.', 'error');
-    return;
-  }
-
-  this.isLoading = true;
-  const formVal = this.warrantyForm.value;
-
-  const soapData = {
-    tuple: {
-      new: {
-        t_extend_asset_requests: {
-          user_id: user.id,
-          asset_type: formVal.assetId,
-          reason: formVal.justification,
-          urgency: formVal.urgency,
-          email_approval: formVal.email_approval,
-          status: "Pending",
-          created_at: new Date().toISOString()
-        }
-      }
+    if (this.warrantyForm.invalid) {
+      this.warrantyForm.markAllAsTouched();
+      return;
     }
-  };
 
-  console.log('[RequestAsset] Submitting to Cordys:', soapData);
+    const user = this.authService.getCurrentUser();
+    if (!user) {
+      this.notificationService.showToast('You must be logged in to submit a request.', 'error');
+      return;
+    }
 
-  this.hs.ajax('UpdateT_extend_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData)
-    .then((resp: any) => {
-      console.log('[RequestAsset] Insert response:', resp);
+    this.isLoading = true;
+    const formVal = this.warrantyForm.value;
 
-      // ✅ Correct extraction (Cordys structure)
-      const requestId =
-        resp?.tuple?.new?.t_extend_asset_requests?.request_id ||
-        resp?.tuple?.old?.t_extend_asset_requests?.request_id ||
-        resp?.request_id;
-
-      console.log('[RequestAsset] Extracted request_id:', requestId);
-
-      // ❌ Stop if request_id not found
-      if (!requestId) {
-        console.error('[RequestAsset] request_id not found in response');
-        this.notificationService.showToast(
-          'Request saved but approval record could not be created.',
-          'error'
-        );
-        this.isLoading = false;
-        this.router.navigate(['/team-lead/my-asset']);
-        return;
-      }
-
-      // ✅ Second API payload
-      const approvalData = {
-        tuple: {
-          new: {
-            t_extend_request_approvals: {
-              request_id: requestId,
-              approver_id: 'usr_004',
-              role: 'Asset Manager',
-              status: 'Pending',
-              remarks: formVal.justification,
-              action_date: new Date().toISOString()
-            }
+    const soapData = {
+      tuple: {
+        new: {
+          t_extend_asset_requests: {
+            user_id: user.id,
+            asset_type: formVal.assetId,
+            asset_id: formVal.assetId,
+            reason: formVal.justification,
+            status: "Pending",
+            created_at: new Date().toISOString(),
+            temp1: this.selectedAsset?.name || '',
+            temp2: this.selectedAsset?.serialNumber || '',
+            temp3: this.selectedAsset?.warrantyExpiry || ''
           }
         }
-      };
+      }
+    };
 
-      console.log('[RequestAsset] Calling 2nd API:', approvalData);
+    console.log('[RequestAsset] Submitting to Cordys:', soapData);
 
-      // 🚀 Second API call
-      return this.hs.ajax(
-        'UpdateT_extend_request_approvals',
-        'http://schemas.cordys.com/AMS_Database_Metadata',
-        approvalData
-      );
-    })
-    .then((approvalResp: any) => {
-      if (!approvalResp) return; // in case first failed
+    this.hs.ajax('UpdateT_extend_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData)
+      .then((resp: any) => {
+        console.log('[RequestAsset] Insert response:', resp);
 
-      console.log('[RequestAsset] Approval insert response:', approvalResp);
+        // ✅ Correct extraction (Cordys structure)
+        const requestId =
+          resp?.tuple?.new?.t_extend_asset_requests?.request_id ||
+          resp?.tuple?.old?.t_extend_asset_requests?.request_id ||
+          resp?.request_id;
 
-      // Extract approval_id from the response
-      const newapprovalid =
-        approvalResp?.tuple?.new?.t_extend_request_approvals?.approval_id ||
-        approvalResp?.tuple?.old?.t_extend_request_approvals?.approval_id ||
-        approvalResp?.approval_id || '';
+        console.log('[RequestAsset] Extracted request_id:', requestId);
 
-      // Extract request_id (carried from first API response via closure)
-      const newrequestid =
-        approvalResp?.tuple?.new?.t_extend_request_approvals?.request_id ||
-        approvalResp?.tuple?.old?.t_extend_request_approvals?.request_id || '';
+        // ❌ Stop if request_id not found
+        if (!requestId) {
+          console.error('[RequestAsset] request_id not found in response');
+          this.notificationService.showToast(
+            'Request saved but approval record could not be created.',
+            'error'
+          );
+          this.isLoading = false;
+          this.router.navigate(['/team-lead/my-asset']);
+          return;
+        }
 
-      console.log('[RequestAsset] Extracted approval_id:', newapprovalid, 'request_id:', newrequestid);
+        // ✅ Second API payload
+        const approvalData = {
+          tuple: {
+            new: {
+              t_extend_request_approvals: {
+                request_id: requestId,
+                approver_id: 'usr_004',
+                role: 'Asset Manager',
+                status: 'Pending',
+                remarks: formVal.justification,
+                action_date: new Date().toISOString()
+              }
+            }
+          }
+        };
 
-      // Call BPM for warranty expiry
-      const request3 = {
-        InputDoc: "false",
-        Inputusrid: user.id,
-        Inputrequestapprovalid: `${newapprovalid}`,
-        Inputrequestid: `${newrequestid}`
-      };
-      this.requestService.callBPMForwarrantyexpiry(request3 as any);
+        console.log('[RequestAsset] Calling 2nd API:', approvalData);
 
-      this.notificationService.showToast('Request submitted successfully!', 'success');
-      this.isLoading = false;
-      this.router.navigate(['/team-lead/my-asset']);
-    })
-    .catch((err: any) => {
-      console.error('[RequestAsset] Error:', err);
+        // 🚀 Second API call
+        return this.hs.ajax(
+          'UpdateT_extend_request_approvals',
+          'http://schemas.cordys.com/AMS_Database_Metadata',
+          approvalData
+        );
+      })
+      .then((approvalResp: any) => {
+        if (!approvalResp) return; // in case first failed
 
-      this.notificationService.showToast(
-        'Request submitted but approval record may have failed.',
-        'error'
-      );
+        console.log('[RequestAsset] Approval insert response:', approvalResp);
 
-      this.isLoading = false;
-      this.router.navigate(['/team-lead/my-asset']);
-    });
-}
+        // Extract approval_id from the response
+        const newapprovalid =
+          approvalResp?.tuple?.new?.t_extend_request_approvals?.approval_id ||
+          approvalResp?.tuple?.old?.t_extend_request_approvals?.approval_id ||
+          approvalResp?.approval_id || '';
+
+        // Extract request_id (carried from first API response via closure)
+        const newrequestid =
+          approvalResp?.tuple?.new?.t_extend_request_approvals?.request_id ||
+          approvalResp?.tuple?.old?.t_extend_request_approvals?.request_id || '';
+
+        console.log('[RequestAsset] Extracted approval_id:', newapprovalid, 'request_id:', newrequestid);
+
+        // Call BPM for warranty expiry
+        const request3 = {
+          // InputDoc: "false",
+          user_id: user.id,
+          approval_id: `${newapprovalid}`,
+          request_id: `${newrequestid}`
+        };
+        this.requestService.callBPMForwarrantyexpiry(request3 as any);
+
+        this.notificationService.showToast('Request submitted successfully!', 'success');
+        this.isLoading = false;
+        this.router.navigate(['/team-lead/my-asset']);
+      })
+      .catch((err: any) => {
+        console.error('[RequestAsset] Error:', err);
+
+        this.notificationService.showToast(
+          'Request submitted but approval record may have failed.',
+          'error'
+        );
+
+        this.isLoading = false;
+        this.router.navigate(['/team-lead/my-asset']);
+      });
+  }
 }
 

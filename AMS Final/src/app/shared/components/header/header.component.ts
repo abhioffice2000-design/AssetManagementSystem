@@ -10,7 +10,7 @@ import { Router, NavigationEnd } from '@angular/router';
 })
 export class HeaderComponent implements OnInit {
   currentUser: User | null = null;
-  showWelcomeMessage = true;
+  isDashboard = true;
 
   constructor(
     private authService: AuthService,
@@ -18,7 +18,7 @@ export class HeaderComponent implements OnInit {
   ) {
     this.router.events.subscribe(event => {
       if (event instanceof NavigationEnd) {
-        this.updateWelcomeMessageVisibility(event.urlAfterRedirects);
+        this.updateVisibility(event.urlAfterRedirects);
       }
     });
   }
@@ -27,20 +27,10 @@ export class HeaderComponent implements OnInit {
     this.authService.currentUser$.subscribe(user => {
       this.currentUser = user;
     });
-    this.updateWelcomeMessageVisibility(this.router.url);
+    this.updateVisibility(this.router.url);
   }
 
-  private updateWelcomeMessageVisibility(url: string): void {
-    // Hide welcome on specific admin pages, but keep on dashboard and other modules
-    if (
-      url.includes('/admin/users') ||
-      url.includes('/admin/master-data') ||
-      url.includes('/admin/asset-configuration') ||
-      url.includes('/admin/transactions')
-    ) {
-      this.showWelcomeMessage = false;
-    } else {
-      this.showWelcomeMessage = true;
-    }
+  private updateVisibility(url: string): void {
+    this.isDashboard = url.toLowerCase().includes('/dashboard');
   }
 }

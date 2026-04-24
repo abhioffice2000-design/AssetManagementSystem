@@ -101,6 +101,14 @@
   border-radius: 10px;
   border: 1px solid var(--border-color);
   width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+
+  &::-webkit-scrollbar {
+    height: 4px;
+  }
 }
 
 .tab-btn {
