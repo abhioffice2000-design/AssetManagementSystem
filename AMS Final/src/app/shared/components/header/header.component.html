@@ -1,8 +1,9 @@
-<header class="header" *ngIf="showWelcomeMessage">
+<header class="header">
   <div class="header-left">
-    <!-- Breadcrumbs or page title could go here -->
-    <h2 class="page-title">Welcome Back</h2>
-    <p class="subtitle">Track your assets and view system status.</p>
+    <div *ngIf="isDashboard">
+      <h2 class="page-title">Welcome Back</h2>
+      <p class="subtitle">Track your assets and view system status.</p>
+    </div>
   </div>
   
   <div class="header-right">

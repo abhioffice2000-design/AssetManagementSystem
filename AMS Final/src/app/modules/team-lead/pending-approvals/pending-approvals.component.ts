@@ -3,6 +3,8 @@ import { AssetRequest, ApprovalStage } from '../../../core/models/request.model'
 import { HeroService } from '../../../core/services/hero.service';
 import { RequestService } from '../../../core/services/request.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
+
 
 @Component({
   selector: 'app-pending-approvals',
@@ -27,8 +29,10 @@ export class PendingApprovalsComponent implements OnInit {
   constructor(
     private hs: HeroService,
     private requestService: RequestService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private mailService: MailService
   ) { }
+
 
   ngOnInit(): void {
     this.getuser();
@@ -87,6 +91,7 @@ export class PendingApprovalsComponent implements OnInit {
             requestNumber: reqItem.request_id || '',
             requesterId: reqItem.user_id || userInfo.user_id || '',
             requesterName: userInfo.name || '',
+            requesterEmail: userInfo.email || '',
             requesterTeam: (userInfo.m_projects && userInfo.m_projects.project_name) ? userInfo.m_projects.project_name : (userInfo.team || ''),
             category: reqItem.temp1,
             assetType: this.getAssetType(reqItem, assetTypeInfo) || subCategory.name || reqItem.asset_type || '',
@@ -99,6 +104,7 @@ export class PendingApprovalsComponent implements OnInit {
             currentStage: ApprovalStage.TEAM_LEAD,
             taskid: approvalInfo.temp2 || ''
           } as unknown as AssetRequest;
+
         }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
 
       this.isLoading = false;
@@ -284,7 +290,19 @@ export class PendingApprovalsComponent implements OnInit {
       
       await this.requestService.completeUserTask(req3 as any);
 
+      // Trigger status update email
+      this.mailService.sendAssetRequestStatusUpdate({
+        requestId: this.selectedRequest.requestNumber,
+        employeeName: this.selectedRequest.requesterName,
+        employeeEmail: (this.selectedRequest as any).requesterEmail,
+        status: 'Approved',
+        teamLeadName: this.userDetails.name,
+        remarks: this.tl_remarks || 'Approved by Team Lead',
+        assetType: this.selectedRequest.assetType
+      });
+
       this.notificationService.showToast('Request Approved successfully', 'success');
+
 
       this.selectedRequest = null;
       this.tl_remarks = '';
@@ -376,6 +394,18 @@ export class PendingApprovalsComponent implements OnInit {
 
       this.notificationService.showToast('Request Rejected successfully', 'success');
 
+      // Trigger status update email
+      this.mailService.sendAssetRequestStatusUpdate({
+        requestId: this.selectedRequest.requestNumber,
+        employeeName: this.selectedRequest.requesterName,
+        employeeEmail: (this.selectedRequest as any).requesterEmail,
+        status: 'Rejected',
+        teamLeadName: this.userDetails.name,
+        remarks: this.tl_remarks,
+        assetType: this.selectedRequest.assetType
+      });
+
+
       this.selectedRequest = null;
       this.tl_remarks = '';
       this.getallrequests();
@@ -390,6 +420,44 @@ export class PendingApprovalsComponent implements OnInit {
   onSearch(event: Event) {
     this.searchTerm = (event.target as HTMLInputElement).value;
     this.currentPage = 1;
+  }
+
+  viewDocument(docName: string): void {
+    if (!docName) return;
+    
+    if (docName.startsWith('data:')) {
+      const newTab = window.open();
+      if (newTab) {
+        newTab.document.write(`<iframe src="${docName}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+      }
+      return;
+    }
+
+    const fileUrl = `assets/documents/${docName}`;
+    window.open(fileUrl, '_blank');
+    this.notificationService.showToast(`Opening document: ${docName}...`, 'info');
+  }
+
+  downloadDocument(docName: string): void {
+    if (!docName) return;
+
+    let fileUrl = '';
+    let fileName = docName;
+
+    if (docName.startsWith('data:')) {
+      fileUrl = docName;
+      fileName = 'attachment_' + new Date().getTime();
+    } else {
+      fileUrl = `assets/documents/${docName}`;
+    }
+
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    this.notificationService.showToast(`Initiating download: ${fileName}`, 'success');
   }
 
 }

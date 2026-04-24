@@ -66,6 +66,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'Asset Inventory', icon: 'inventory', route: `${base}/inventory` },
           { label: 'Asset Requests', icon: 'assignment', route: `${base}/requests` },
+          { label: 'Warranty Requests', icon: 'security', route: `${base}/warranty` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
@@ -86,9 +87,9 @@ export class SidebarComponent implements OnInit, OnDestroy {
         break;
       case UserRole.EMPLOYEE:
         this.navItems = [
-          { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'My Assets', icon: 'devices', route: `${base}/my-assets` },
           { label: 'My Requests', icon: 'assignment', route: `${base}/my-requests` },
+
           { label: 'Return Asset', icon: 'assignment_return', route: `${base}/return-asset` },
           { label: 'Extend Warranty', icon: 'security', route: `${base}/extend-warranty` }
         ];
