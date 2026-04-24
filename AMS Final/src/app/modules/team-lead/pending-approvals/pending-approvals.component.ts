@@ -334,7 +334,7 @@ export class PendingApprovalsComponent implements OnInit {
         tuple: {
           old: {
             "t_request_approvals": {
-              approval_id: this.selectedRequest.approvalId
+              approval_id: this.selectedRequest.approvalId,
             }
           },
           new: {
