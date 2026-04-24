@@ -352,7 +352,6 @@ export class PendingApprovalsComponent implements OnInit {
           new: {
             "t_request_approvals": {
               request_id: this.selectedRequest.requestNumber,
-              approver_id: this.selectedRequest.approverId,
               role: "Employee",
               status: "Pending"
             }
