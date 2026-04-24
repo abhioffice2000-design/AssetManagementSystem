@@ -328,6 +328,20 @@ export class PendingApprovalsComponent implements OnInit {
         }
       };
 
+      var req4 = {
+        tuple: {
+          
+          new: {
+            "t_request_approvals": {
+              request_id: this.selectedRequest.requestNumber,
+              approver_id: this.selectedRequest.approverId,
+              role: "Employee",
+              status: "Pending"
+            }
+          }
+        }
+      };
+
       await this.requestService.updateEntryForTeamLead(req1 as any);
 
       // Update the master asset request status to Rejected
@@ -346,9 +360,12 @@ export class PendingApprovalsComponent implements OnInit {
         }
       };
       await this.requestService.submitNewRequestForm(req2 as any);
+      
 
       // Complete the BPM task
       var taskid = this.selectedRequest?.taskid;
+      console.log("taskid", taskid);
+      
       if (taskid) {
         var req3 = {
           TaskId: `${taskid}`,

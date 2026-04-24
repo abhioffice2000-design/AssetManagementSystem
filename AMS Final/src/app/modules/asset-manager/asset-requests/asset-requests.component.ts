@@ -538,7 +538,7 @@ export class AssetRequestsComponent implements OnInit {
             t_request_approvals: {
               approver_id: this.selectedRequest.requesterId,
               request_id: this.selectedRequest.id,
-
+              temp1: this.selectedRequest.allocatedAssetId,
               status: 'Pending',
               role: 'Employee'
             }
@@ -546,7 +546,7 @@ export class AssetRequestsComponent implements OnInit {
         }
       };
       console.log('[Confirmation] Approve payload (step 1):', newRequestForUser);
-      await this.requestService.createEntryForRequestor(approvePayload as any);
+      await this.requestService.createEntryForRequestor(newRequestForUser as any);
 
       // Step 2 — complete the BPM task so the workflow advances
       const taskId = this.selectedRequest.taskid;
