@@ -29,7 +29,7 @@ export class MyAssetsComponent implements OnInit {
   selectedTypeFilter = '';
   assetTypes: AssetTypeOption[] = [];
   typeMap: Record<string, string> = {}; // type_id → type_name
-  
+
   // Modal states
   isReturnModalOpen = false;
   isWarrantyModalOpen = false;
@@ -44,7 +44,7 @@ export class MyAssetsComponent implements OnInit {
     private fb: FormBuilder,
     private hs: HeroService,
     private router: Router
-  ) {}
+  ) { }
 
   async ngOnInit(): Promise<void> {
     const user = this.authService.getCurrentUser();
@@ -84,17 +84,53 @@ export class MyAssetsComponent implements OnInit {
         // Fallback
         this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
       }
-      
+      // Fetch allocated assets and requests in parallel for joining
+      const [assets, requests] = await Promise.all([
+        this.assetService.getAllocatedAssetsByUserId(user.id),
+        this.requestService.getRequestsByUserIdFromCordys(user.id)
+      ]);
+
+      this.myAssets = assets;
+
       // Fallback to mock data if no real data is found (for consistency with dashboard)
       if (this.myAssets.length === 0) {
         this.myAssets = this.assetService.getAssetsByUser(user.id);
       }
 
-      // Resolve type IDs to human-readable names
-      this.myAssets = this.myAssets.map(asset => ({
-        ...asset,
-        type: this.resolveTypeName(asset.type as string)
-      }));
+      // Resolve type IDs to human-readable names and join with requests for IDs
+      this.myAssets = this.myAssets.map(asset => {
+        // Try to find a matching request if requestId is missing from the asset record itself
+        if (!asset.requestId || asset.requestId === 'N/A' || asset.requestId === '') {
+          // Normalize asset identifiers for matching
+          const aId = (asset.id || '').toLowerCase().trim();
+          const aTag = (asset.assetTag || '').toLowerCase().trim();
+          const aSerial = (asset.serialNumber || '').toLowerCase().trim();
+
+          const matchingRequest = requests.find(r => {
+            const rAllocId = (r.allocatedAssetId || '').toLowerCase().trim();
+            const rAssignedId = ((r as any).assignedAssetId || '').toLowerCase().trim();
+
+            // Look into raw request data too if available (sometimes hidden in temp fields)
+            const raw = (r as any).rawRequest || {};
+            const rTemp1 = (raw.temp1 || '').toLowerCase().trim();
+            const rTemp2 = (raw.temp2 || '').toLowerCase().trim();
+
+            return (rAllocId && (rAllocId === aId || rAllocId === aTag || rAllocId === aSerial)) ||
+              (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
+              (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
+              (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
+          });
+
+          if (matchingRequest) {
+            asset.requestId = matchingRequest.id || matchingRequest.requestNumber;
+          }
+        }
+
+        return {
+          ...asset,
+          type: this.resolveTypeName(asset.type as string)
+        };
+      });
 
       this.applyFilters();
     } catch (error) {
@@ -254,7 +290,7 @@ export class MyAssetsComponent implements OnInit {
 
         this.notificationService.showToast('Return request submitted successfully!', 'success');
         this.closeModals();
-        
+
       } catch (err) {
         console.error(err);
         this.notificationService.showToast('Failed to submit return request', 'error');
@@ -323,7 +359,7 @@ export class MyAssetsComponent implements OnInit {
             Inputrequestid: `${newrequestid}`
           };
           this.requestService.callBPMForwarrantyexpiry(request3 as any);
-          
+
           const newReq = this.buildMockPayload(user, type, formVal.justification);
           this.requestService.addRequest(newReq as any);
 

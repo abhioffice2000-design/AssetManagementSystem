@@ -47,9 +47,10 @@
         <tr>
           <th>Type</th>
           <th>Subcategory Name</th>
+          <!-- <th class="text-center">Request ID</th> -->
           <th>Assigned Date</th>
           <th>Warranty Expiry</th>
-          <th>Action</th>
+          <th class="text-center">Action</th>
         </tr>
       </thead>
       <tbody>
@@ -58,6 +59,10 @@
             <span class="type-badge">{{ asset.type }}</span>
           </td>
           <td class="asset-name-cell">{{ asset.name }}</td>
+          <!-- <td class="text-center">
+            <span class="request-id-badge" *ngIf="asset.requestId">{{ asset.requestId }}</span>
+            <span class="text-muted" *ngIf="!asset.requestId">N/A</span>
+          </td> -->
           <td>{{ asset.purchaseDate | date }}</td>
           <td>
             <span [class.text-danger]="isExpiringSoon(asset.warrantyExpiry)">
@@ -65,7 +70,7 @@
             </span>
           </td>
           <td>
-            <div class="action-buttons">
+            <div class="action-buttons justify-center">
               <button class="btn btn-sm btn-outline-danger" (click)="openReturnModal(asset)">
                 <span class="material-icons-outlined">assignment_return</span>
                 Return Asset

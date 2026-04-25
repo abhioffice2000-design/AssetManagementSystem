@@ -1,50 +1,176 @@
-<div class="p-4 bg-white rounded-lg shadow-sm">
-  <div class="flex justify-between items-center mb-6">
-    <h2 class="text-2xl font-semibold text-gray-800">Asset Inventory</h2>
-    <div class="flex gap-4">
-      <div class="relative">
-        <input type="text" placeholder="Search assets..." class="pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
+<div class="inventory-container">
+  <div class="header-section">
+    <h2>Asset Inventory</h2>
+  </div>
+
+  <div class="view-tabs">
+    <div class="tab-item" [class.active]="viewMode === 'summary'" (click)="viewMode = 'summary'">Category Summary</div>
+    <div class="tab-item" [class.active]="viewMode === 'details'" (click)="viewMode = 'details'">Asset Details</div>
+  </div>
+
+  <div class="loading-state" *ngIf="loading">
+    <div class="spinner"></div>
+    <p>Loading inventory...</p>
+  </div>
+
+  <!-- Summary View -->
+  <div class="summary-view" *ngIf="!loading && viewMode === 'summary'">
+    <div class="summary-grid">
+      <div class="type-card" *ngFor="let type of typeSummaries" [style.background]="type.gradient">
+        <div class="type-header">
+          <span class="type-name">{{ type.name }}</span>
+          <span class="count-badge">{{ type.total }} Assets</span>
+        </div>
+        
+        <div class="subcat-list">
+          <div class="subcat-item" *ngFor="let sub of type.subCategories" (click)="selectSubCategory(sub.name)">
+            <div class="subcat-info">
+              <span class="name">{{ sub.name }}</span>
+            </div>
+            <div class="subcat-stats">
+              <div class="stat">
+                <span class="label">Total</span>
+                <span class="val">{{ sub.total }}</span>
+              </div>
+              <div class="stat avail">
+                <span class="label">Avail</span>
+                <span class="val">{{ sub.available }}</span>
+              </div>
+              <div class="stat assgd">
+                <span class="label">Assigned</span>
+                <span class="val">{{ sub.assigned }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <button class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2">
-        <span class="material-icons">filter_alt</span>
-        Filter
-      </button>
     </div>
   </div>
 
-  <div class="overflow-x-auto shadow rounded-lg border">
-    <table class="min-w-full divide-y divide-gray-200">
-      <thead class="bg-gray-50">
+  <!-- Details View -->
+  <div class="details-view" *ngIf="!loading && viewMode === 'details'">
+    <div class="controls-bar">
+
+    <div class="search-box">
+      <span class="material-icons">search</span>
+      <input type="text" [(ngModel)]="searchText" (input)="onFilterChange()" placeholder="Search by name, tag, or user...">
+    </div>
+    
+    <select class="filter-select" [(ngModel)]="statusFilter" (change)="onFilterChange()">
+      <option value="">All Statuses</option>
+      <option value="Available">Available</option>
+      <option value="Allocated">Allocated</option>
+      <option value="In Repair">In Repair</option>
+    </select>
+  </div>
+
+  <div class="table-card">
+    <table class="inventory-table">
+      <thead>
         <tr>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset TAG</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Name</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+          <th>Asset Detail</th>
+          <th>Asset TAG</th>
+          <th>Status</th>
+          <th>Assigned To</th>
+          <th>Warranty Expiry</th>
+          <th>Actions</th>
         </tr>
       </thead>
-      <tbody class="bg-white divide-y divide-gray-200">
-        <tr *ngFor="let asset of assets">
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{asset.assetTag}}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{asset.name}}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{asset.category}}</td>
-          <td class="px-6 py-4 whitespace-nowrap">
-            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-              {{asset.status}}
+      <tbody>
+        <tr *ngFor="let asset of paginatedAssets">
+          <td>
+            <div class="asset-info">
+              <span class="asset-name">{{ asset.name }}</span>
+              <span class="asset-cat">{{ asset.category }}</span>
+            </div>
+          </td>
+          <td>
+            <span class="asset-tag">{{ asset.assetTag }}</span>
+          </td>
+          <td>
+            <span class="status-badge" [ngClass]="getStatusClass(asset.status)">
+              {{ asset.status }}
             </span>
           </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-            <button class="text-blue-600 hover:text-blue-900 mr-2">View</button>
-            <button class="text-indigo-600 hover:text-indigo-900">Track</button>
+          <td class="assigned-cell">
+            <div *ngIf="asset.assignedToName">
+              <span class="user-name">{{ asset.assignedToName }}</span>
+            </div>
+            <span class="text-muted" *ngIf="!asset.assignedToName">Unassigned</span>
+          </td>
+          <td>
+            <span [class.text-danger]="asset.warrantyExpiry && asset.warrantyExpiry < '2026-05-01'">
+              {{ asset.warrantyExpiry | date }}
+            </span>
+          </td>
+          <td class="actions-cell">
+            <button class="action-btn btn-warranty" (click)="openWarrantyModal(asset)">
+              <span class="material-icons">verified_user</span>
+              Update Warranty
+            </button>
           </td>
         </tr>
-        <tr *ngIf="assets.length === 0">
-          <td colspan="5" class="px-6 py-10 text-center text-gray-500">
-            No assets found in the inventory.
+        <tr *ngIf="paginatedAssets.length === 0">
+          <td colspan="6" class="text-center py-10 text-muted">
+            No assets found matching your criteria.
           </td>
         </tr>
       </tbody>
     </table>
+
+    <!-- Pagination Controls -->
+    <div class="pagination-container" *ngIf="filteredAssets.length > 0">
+      <div class="pagination-info">
+        Showing <strong>{{ getPaginationRange() }}</strong> assets
+      </div>
+      
+      <div class="pagination-controls">
+        <button class="page-btn" [disabled]="currentPage === 1" (click)="changePage(currentPage - 1)">
+          <span class="material-icons">chevron_left</span>
+        </button>
+        
+        <button class="page-btn" *ngFor="let p of getPageArray()" 
+                [class.active]="currentPage === p" (click)="changePage(p)">
+          {{ p }}
+        </button>
+        
+        <button class="page-btn" [disabled]="currentPage === totalPages" (click)="changePage(currentPage + 1)">
+          <span class="material-icons">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Update Warranty Modal -->
+<div class="modal-backdrop" *ngIf="isWarrantyModalOpen">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Update Asset Warranty</h3>
+      <button class="close-btn" (click)="closeWarrantyModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    
+    <div class="modal-body" [formGroup]="warrantyForm">
+      <div class="asset-preview">
+        <p><strong>Asset:</strong> {{ selectedAsset?.name }}</p>
+        <p><strong>Tag:</strong> {{ selectedAsset?.assetTag }}</p>
+        <p><strong>Current Expiry:</strong> {{ selectedAsset?.warrantyExpiry | date }}</p>
+      </div>
+
+      <div class="form-group">
+        <label>New Warranty Expiry Date</label>
+        <input type="date" formControlName="newExpiry">
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)='closeWarrantyModal()'>Cancel</button>
+      <button class="btn-save" [disabled]="warrantyForm.invalid || loading" (click)="updateWarranty()">
+        {{ loading ? 'Updating...' : 'Update Warranty' }}
+      </button>
+    </div>
   </div>
 </div>

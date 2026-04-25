@@ -33,11 +33,7 @@
         Resolved
         <span class="tab-count resolved-count" *ngIf="resolvedTickets.length > 0">{{ resolvedTickets.length }}</span>
       </button>
-      <button [class.active]="activeTab === 'return'" (click)="setTab('return')">
-        <span class="material-icons">assignment_return</span>
-        Return Request
-        <span class="tab-count return-count" *ngIf="returnTickets.length > 0">{{ returnTickets.length }}</span>
-      </button>
+
 
       <!-- Search & Filter Bar -->
       <div class="filter-actions ml-auto" style="display: flex; gap: 12px; align-items: center; margin-left: auto;">
@@ -46,6 +42,12 @@
           <input type="text" [(ngModel)]="searchTerm" (ngModelChange)="onFilterChange()" placeholder="Search..." 
                  style="padding: 8px 8px 8px 32px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s; width: 200px;">
         </div>
+        <select class="asset-filter" [(ngModel)]="selectedRequestType" (ngModelChange)="onFilterChange()"
+                style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+          <option value="">All Requests</option>
+          <option value="new">New Asset Requests</option>
+          <option value="warranty">Extend Warranty Requests</option>
+        </select>
         <select class="asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="onFilterChange()"
                 style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
           <option value="">All Types</option>
@@ -96,10 +98,12 @@
                   <span class="material-icons">visibility</span>
                   View Details
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || activeTab === 'return'" class="btn-allocate" (click)="allocate(ticket)">
+                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')" 
+                        class="btn-allocate" (click)="allocate(ticket)">
                   <span class="material-icons">check_circle</span>
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || activeTab === 'return'" class="btn-reject" (click)="reject(ticket)">
+                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')" 
+                        class="btn-reject" (click)="reject(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
               </div>
@@ -236,10 +240,10 @@
       </div>
 
       <!-- Action Buttons inside Drawer -->
-      <div class="drawer-actions" *ngIf="activeTab === 'unresolved' || activeTab === 'return'">
+      <div class="drawer-actions" *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
         <button class="drawer-btn-allocate" (click)="allocate(selectedTicket); closeDetails()">
           <span class="material-icons">check_circle</span>
-          {{ activeTab === 'return' ? 'Approve' : 'Allocate' }}
+          {{ selectedTicket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate' }}
         </button>
         <button class="drawer-btn-reject" (click)="reject(selectedTicket); closeDetails()">
           <span class="material-icons">cancel</span>

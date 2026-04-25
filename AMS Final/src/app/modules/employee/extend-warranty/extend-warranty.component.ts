@@ -94,50 +94,32 @@ export class ExtendWarrantyComponent implements OnInit {
 
   getAssetsByUser(userId?: string): void {
     this.isLoading = true;
-    this.hs.ajax('GetAssetsByUser', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { userId: userId || '' }
-    ).then((resp: any) => {
-      const result = this.hs.xmltojson(resp, 'm_assets');
-      const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
+    const uid = userId || this.authService.getCurrentUser()?.id || 'usr_009';
 
-      const allMyAssets = rawData.map((item: any) => ({
-        id: item.asset_id || item.id || '',
-        assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
-        name: item.asset_name || item.name || '',
-        vendor: item.m_asset_vendors?.name || item.m_asset_vendors?.Name || '',
-        category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || item.asset_type || '',
-        subCategory: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || '',
-        condition: item.condition || 'Good',
-        status: item.status || 'Allocated',
-        warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
-        assignedTo: item.user_id || userId || '',
-        serialNumber: item.serial_number || item.asset_tag || ''
-      } as any));
+    this.hs.ajax('GetAllocatedAssetsByUserId', 'http://schemas.cordys.com/AMS_Database_Metadata', { userId: uid })
+      .then((resp: any) => {
+        const result = this.hs.xmltojson(resp, 'm_assets');
+        const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
-      const oneYearFromNow = new Date();
-      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+        this.eligibleAssets = rawData.map((item: any) => ({
+          id: item.asset_id || item.id || '',
+          assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
+          name: item.asset_name || item.name || '',
+          vendor: item.m_asset_vendors?.name || item.m_asset_vendors?.Name || '',
+          category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || item.asset_type || '',
+          subCategory: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || '',
+          condition: item.condition || 'Good',
+          status: item.status || 'Allocated',
+          warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
+          assignedTo: item.user_id || uid || '',
+          serialNumber: item.serial_number || item.asset_tag || ''
+        } as any));
 
-      this.eligibleAssets = allMyAssets.filter((a: any) => {
-        if (!a.warrantyExpiry) return false;
-        const expiry = new Date(a.warrantyExpiry);
-        return expiry < oneYearFromNow;
+        this.isLoading = false;
+      }).catch((err: any) => {
+        console.error('[ExtendWarranty] Error fetching allocated assets:', err);
+        this.isLoading = false;
       });
-
-      this.isLoading = false;
-    }).catch((err: any) => {
-      console.error('[ExtendWarranty] Error fetching assets:', err);
-      const user = this.authService.getCurrentUser();
-      if (user) {
-        const fallbackAssets = this.assetService.getAssetsByUser(user.id);
-        const oneYearFromNow = new Date();
-        oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-        this.eligibleAssets = fallbackAssets.filter(a => {
-          const expiry = new Date(a.warrantyExpiry);
-          return expiry < oneYearFromNow;
-        });
-      }
-      this.isLoading = false;
-    });
   }
 
   submitextendwarranty() {
@@ -161,13 +143,20 @@ export class ExtendWarrantyComponent implements OnInit {
           t_extend_asset_requests: {
             user_id: user.id,
             asset_type: formVal.assetId,
-            asset_id: formVal.assetId,
+            //   asset_id: asset_024,
             reason: formVal.justification,
+            urgency: 'Medium',
+            email_approval: 'false',
+            document: '',
             status: "Pending",
             created_at: new Date().toISOString(),
             temp1: this.selectedAsset?.name || '',
             temp2: this.selectedAsset?.serialNumber || '',
-            temp3: this.selectedAsset?.warrantyExpiry || ''
+            temp3: this.selectedAsset?.warrantyExpiry || '',
+            temp4: '',
+            temp5: '',
+            temp6: '',
+            temp7: ''
           }
         }
       }
@@ -179,27 +168,18 @@ export class ExtendWarrantyComponent implements OnInit {
       .then((resp: any) => {
         console.log('[RequestAsset] Insert response:', resp);
 
-        // ✅ Correct extraction (Cordys structure)
         const requestId =
           resp?.tuple?.new?.t_extend_asset_requests?.request_id ||
           resp?.tuple?.old?.t_extend_asset_requests?.request_id ||
           resp?.request_id;
 
-        console.log('[RequestAsset] Extracted request_id:', requestId);
-
-        // ❌ Stop if request_id not found
         if (!requestId) {
           console.error('[RequestAsset] request_id not found in response');
-          this.notificationService.showToast(
-            'Request saved but approval record could not be created.',
-            'error'
-          );
+          this.notificationService.showToast('Request saved but approval record could not be created.', 'error');
           this.isLoading = false;
-          this.router.navigate(['/team-lead/my-asset']);
           return;
         }
 
-        // ✅ Second API payload
         const approvalData = {
           tuple: {
             new: {
@@ -209,7 +189,14 @@ export class ExtendWarrantyComponent implements OnInit {
                 role: 'Asset Manager',
                 status: 'Pending',
                 remarks: formVal.justification,
-                action_date: new Date().toISOString()
+                action_date: new Date().toISOString(),
+                temp1: this.selectedAsset?.id || '',
+                temp2: '',
+                temp3: '',
+                temp4: '',
+                temp5: '',
+                temp6: '',
+                temp7: ''
               }
             }
           }

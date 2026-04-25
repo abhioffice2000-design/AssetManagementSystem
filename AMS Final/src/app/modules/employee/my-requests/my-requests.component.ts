@@ -30,6 +30,17 @@ export class MyRequestsComponent implements OnInit {
   trackingSteps: any[] = [];
   overallProgress = 0;
 
+  // Filters
+  searchTerm = '';
+  selectedType = '';
+
+  types = [
+    { label: 'All Requests', value: '' },
+    { label: 'New Asset Requests', value: RequestType.NEW_ASSET },
+    { label: 'Warranty Requests', value: RequestType.EXTEND_WARRANTY },
+    { label: 'Return Requests', value: RequestType.RETURN_ASSET }
+  ];
+
   // Resubmit Modal Data
   resubmitForm!: FormGroup;
   masterAssetTypes: any[] = [];
@@ -94,13 +105,31 @@ export class MyRequestsComponent implements OnInit {
     this.loading = false;
   }
 
+  get filteredRequests(): AssetRequest[] {
+    const filtered = this.requests.filter(req => {
+      const matchesSearch = !this.searchTerm ||
+        req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        req.category.toLowerCase().includes(this.searchTerm.toLowerCase());
+      const matchesType = !this.selectedType || req.requestType === this.selectedType;
+      return matchesSearch && matchesType;
+    });
+    return filtered;
+  }
+
   get paginatedRequests(): AssetRequest[] {
     const startIndex = (this.currentPage - 1) * this.pageSize;
-    return this.requests.slice(startIndex, startIndex + this.pageSize);
+    return this.filteredRequests.slice(startIndex, startIndex + this.pageSize);
   }
 
   get totalPages(): number {
-    return Math.ceil(this.totalRequests / this.pageSize);
+    const count = this.filteredRequests.length;
+    return Math.max(1, Math.ceil(count / this.pageSize));
+  }
+
+  // Update this to use filtered count
+  get totalFilteredCount(): number {
+    return this.filteredRequests.length;
   }
 
   /**
@@ -359,19 +388,19 @@ export class MyRequestsComponent implements OnInit {
   task_id = '';
 
   Getassetidbyapprovalid(request_id: any) {
-      this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { Request_id: request_id}
+    this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { Request_id: request_id }
     ).then((resp: any) => {
       this.responseData = resp.tuple.old.t_request_approvals.temp1;
       this.approval_id = resp.tuple.old.t_request_approvals.approval_id;
       this.task_id = resp.tuple.old.t_request_approvals.temp2;
-      console.log("approval id.......................",this.approval_id);
+      console.log("approval id.......................", this.approval_id);
     })
   }
 
   async submitConfirmation() {
     if (!this.selectedRequest) return;
-    console.log("select request",this.selectedRequest);
+    console.log("select request", this.selectedRequest);
     try {
       this.loading = true;
       const requestId = this.selectedRequest.requestNumber;
@@ -392,7 +421,7 @@ export class MyRequestsComponent implements OnInit {
       };
       this.Getassetidbyapprovalid(requestId);
       await this.requestService.submitNewRequestForm(updateReq);
-      
+
       // Update the master asset status to Allocated
       if (this.responseData) {
         const assetUpdateReq = {
@@ -428,10 +457,10 @@ export class MyRequestsComponent implements OnInit {
         }
       };
       var res3 = await this.requestService.createEntryForRequestor(updateReq2);
-      console.log("response 3",res3);
-   
+      console.log("response 3", res3);
+
       let res4 = this.Getassetidbyapprovalid(requestId);
-      console.log("response 4",this.task_id);
+      console.log("response 4", this.task_id);
       // Complete the BPM task
       if (this.task_id) {
         var req3 = {
@@ -474,21 +503,21 @@ export class MyRequestsComponent implements OnInit {
       this.Getassetidbyapprovalid(request.requestNumber);
       await this.requestService.submitNewRequestForm(updateReq);
       debugger
-      
-      console.log("approval id222222222222",this.approval_id);
+
+      console.log("approval id222222222222", this.approval_id);
 
       const updateReq2 = {
         tuple: {
-          old: { t_request_approvals: { approval_id: this.approval_id} },
+          old: { t_request_approvals: { approval_id: this.approval_id } },
           new: { t_request_approvals: { status: 'Rejected' } }
         }
       };
       var res3 = await this.requestService.createEntryForRequestor(updateReq2);
-      console.log("response 3",res3);
-     
+      console.log("response 3", res3);
+
       this.Getassetidbyapprovalid(request.requestNumber);
-      console.log("response 4",this.task_id);
-      
+      console.log("response 4", this.task_id);
+
       // Complete the BPM task
       console.log('Taskid:', this.task_id);
       if (this.task_id) {
@@ -511,13 +540,13 @@ export class MyRequestsComponent implements OnInit {
 
   populateResubmitForm(request: AssetRequest) {
     this.selectedRequest = request;
-    
+
     // 1. Find and set available sub-categories first
-    const typeObj = this.masterAssetTypes.find(t => 
+    const typeObj = this.masterAssetTypes.find(t =>
       (t.type_name || '').toLowerCase() === (request.assetType || '').toLowerCase()
     );
     const typeId = typeObj ? typeObj.type_id : '';
-    
+
     if (typeId) {
       this.availableSubCategories = this.masterSubCategories.filter(sub =>
         String(sub.type_id) === String(typeId)
@@ -541,7 +570,7 @@ export class MyRequestsComponent implements OnInit {
     this.availableSubCategories = this.masterSubCategories.filter(sub =>
       String(sub.type_id) === String(selectedType)
     );
-    
+
     // If we have a subcategory name from the request, find its ID if possible, 
     // or just ensure it's in the list
     if (this.selectedRequest && this.availableSubCategories.length > 0) {

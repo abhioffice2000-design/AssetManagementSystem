@@ -282,8 +282,10 @@ export class RequestService {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <Getpendingextendwarrantyrequests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
-</SOAP:Body>
+    <Getpendingextendwarrantyrequests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </Getpendingextendwarrantyrequests>
+  </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
     try {
@@ -303,30 +305,125 @@ export class RequestService {
   }
 
   /**
+   * Fetches the full object for a specific warranty extension request.
+   * Based on USER provided SOAP request structure.
+   */
+  async getWarrantyRequestById(requestId: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_extend_asset_requestsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Request_id>${requestId}</Request_id>
+    </GetT_extend_asset_requestsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      // Explicitly path to the object to avoid mapping errors
+      const obj = this.hs.xmltojson(response, 't_extend_asset_requests');
+      return (Array.isArray(obj) ? obj[0] : obj) || null;
+    } catch (err) {
+      console.error('Failed to fetch warranty request object:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Updates an existing warranty extension approval record.
+   * Uses UpdateT_extend_request_approvals SOAP service.
+   */
+  async updateWarrantyRequestApproval(approvalId: string, status: string, remarks: string, temp1?: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_extend_request_approvals xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_extend_request_approvals qConstraint="0">
+            <approval_id>${approvalId}</approval_id>
+          </t_extend_request_approvals>
+        </old>
+        <new>
+          <t_extend_request_approvals qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <status>${status}</status>
+            <remarks>${remarks}</remarks>
+            <action_date>${new Date().toISOString()}</action_date>
+            <temp1>${temp1 || ''}</temp1>
+          </t_extend_request_approvals>
+        </new>
+      </tuple>
+    </UpdateT_extend_request_approvals>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      return await this.hs.ajax(null, null, {}, soapRequest);
+    } catch (err) {
+      console.error('Failed to update warranty request approval:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Creates a new warranty extension approval record for the next stage.
+   * Uses UpdateT_extend_request_approvals SOAP service.
+   */
+  async createNewWarrantyApprovalEntry(requestId: string, approverId: string, role: string, remarks: string, assetId: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_extend_request_approvals xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <t_extend_request_approvals qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <request_id>${requestId}</request_id>
+            <approver_id>${approverId}</approver_id>
+            <role>${role}</role>
+            <status>Pending</status>
+            <remarks>${remarks}</remarks>
+            <action_date>${new Date().toISOString()}</action_date>
+            <temp1>${assetId}</temp1>
+          </t_extend_request_approvals>
+        </new>
+      </tuple>
+    </UpdateT_extend_request_approvals>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      return await this.hs.ajax(null, null, {}, soapRequest);
+    } catch (err) {
+      console.error('Failed to create new warranty approval entry:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Specialized mapping for warranty requests (t_extend_asset_requests).
    */
   private mapWarrantyTupleToRequest(tuple: any): AssetRequest {
     const parent = tuple?.old || tuple;
     const approvalData = parent?.t_extend_request_approvals || parent;
-    
+
     // Attempt to find the request data at different nesting levels
     const reqData = approvalData?.t_extend_asset_requests || parent?.t_extend_asset_requests || (parent.request_id ? parent : {});
     const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || {};
     const assetInfo = parent?.m_assets || approvalData?.m_assets || reqData?.m_assets || {};
-    
-    // Prioritize values from joined m_assets, then fall back to temp tags
-    const assetName = this.getNullableValue(assetInfo?.asset_name || assetInfo?.name || reqData?.temp1) || 'Unknown Asset';
-    const serialNumber = this.getNullableValue(assetInfo?.serial_number || reqData?.temp2) || 'N/A';
-    const expiryDate = this.getNullableValue(assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry || reqData?.temp3) || 'N/A';
-    const assetId = this.getNullableValue(assetInfo?.asset_id || reqData?.asset_id || reqData?.asset_type) || 'N/A';
+
+    // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
+    const assetName = this.getNullableValue(reqData?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
+    const serialNumber = this.getNullableValue(reqData?.temp2 || assetInfo?.serial_number) || 'N/A';
+    const expiryDate = this.getNullableValue(reqData?.temp3 || assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
+    const assetId = this.getNullableValue(reqData?.asset_id || assetInfo?.asset_id || reqData?.asset_type) || 'N/A';
 
     const status = this.mapToStatus(approvalData?.status || reqData?.status || '');
     const currentStage = ApprovalStage.ASSET_MANAGER;
 
     return {
-      taskid: this.getNullableValue(approvalData?.temp2) || '',
+      taskid: tuple?.old.t_extend_asset_requests.t_extend_request_approvals.temp1 || '',
       document: this.getNullableValue(reqData?.temp2) || '',
-      approvalId: approvalData?.approval_id || '',
+      approvalId: tuple?.old.t_extend_asset_requests.t_extend_request_approvals.approval_id || '',
       id: reqData?.request_id || '',
       requestNumber: reqData?.request_id || '',
       requesterId: reqData?.user_id || userInfo?.user_id || '',
@@ -505,9 +602,9 @@ export class RequestService {
    * Fetches specific confirmation details (task_id, asset_id) dynamically for the employee confirmation step.
    * This retrieves the latest approval record where the task was assigned to the employee.
    */
-  async getEmployeeConfirmationDetails(requestId: string): Promise<{taskId: string, assetId: string}> {
+  async getEmployeeConfirmationDetails(requestId: string): Promise<{ taskId: string, assetId: string }> {
     const normalizedId = requestId.toLowerCase();
-    
+
     try {
       const soapRequestProgress = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -520,14 +617,14 @@ export class RequestService {
 
       const response = await this.hs.ajax(null, null, {}, soapRequestProgress);
       const data = this.hs.xmltojson(response, 'tuple');
-      
+
       let taskId = '';
       let assetId = '';
 
       if (data) {
         const tupleArray = Array.isArray(data) ? data : [data];
         console.log("tupleArray Progress Data JSON:", JSON.stringify(tupleArray));
-        
+
         // Helper to recursively search for keys in the object
         const findValue = (obj: any, keys: string[]): string | null => {
           if (!obj || typeof obj !== 'object') return null;
@@ -538,7 +635,7 @@ export class RequestService {
                 return String(val);
               }
               if (typeof val === 'object' && val['#text']) {
-                 return String(val['#text']);
+                return String(val['#text']);
               }
             }
             const nested = findValue(obj[k], keys);
@@ -551,12 +648,12 @@ export class RequestService {
         for (let i = tupleArray.length - 1; i >= 0; i--) {
           const tuple = tupleArray[i];
           if (!assetId) {
-             const foundAsset = findValue(tuple, ['temp1', 'asset_id', 'assetid']);
-             if (foundAsset) assetId = foundAsset;
+            const foundAsset = findValue(tuple, ['temp1', 'asset_id', 'assetid']);
+            if (foundAsset) assetId = foundAsset;
           }
           if (!taskId) {
-             const foundTask = findValue(tuple, ['temp2', 'taskid', 'task_id', 'instance_id']);
-             if (foundTask) taskId = foundTask;
+            const foundTask = findValue(tuple, ['temp2', 'taskid', 'task_id', 'instance_id']);
+            if (foundTask) taskId = foundTask;
           }
           if (assetId && taskId) break;
         }
@@ -590,7 +687,7 @@ export class RequestService {
           };
           const found = findValue(reqObj, ['asset_id', 'assetid']);
           if (found) assetId = found;
-        } catch (e) {}
+        } catch (e) { }
       }
 
       return { taskId, assetId };
@@ -614,17 +711,15 @@ export class RequestService {
 
     try {
       const response = await this.hs.ajax(null, null, {}, soapRequest);
-      const tuples = this.hs.xmltojson(response, 't_asset_requests');
+      let tuples = this.hs.xmltojson(response, 'tuple') || this.hs.xmltojson(response, 't_asset_requests');
 
-      if (!tuples) return [];
+      if (!tuples) {
+        console.warn('No requests found for user in Getallrequest response');
+        return [];
+      }
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
 
-      // Filter by user ID and map to model
       return tupleArray
-        .filter((tuple: any) => {
-          const reqData = tuple?.old?.t_asset_requests || tuple?.t_asset_requests || tuple;
-          return reqData?.user_id === userId;
-        })
         .map((tuple: any) => this.mapTupleToRequest(tuple));
     } catch (err) {
       console.error('Failed to fetch employee requests from Cordys:', err);
@@ -680,11 +775,11 @@ export class RequestService {
         this.getNullableValue(
           assetInfo?.asset_id ||
           parent?.t_request_approvals?.temp1 ||
-          assetInfo?.asset_name || 
-          subCatInfo?.name || 
-          typeInfo?.type_name || 
-          reqData?.asset_name || 
-          reqData?.temp1 || 
+          assetInfo?.asset_name ||
+          subCatInfo?.name ||
+          typeInfo?.type_name ||
+          reqData?.asset_name ||
+          reqData?.temp1 ||
           ''
         )
       ),
@@ -731,7 +826,7 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp1 || '',
+      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || reqData?.temp1 || reqData?.temp2 || reqData?.temp3 || '',
       // Requester details from nested m_users
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),

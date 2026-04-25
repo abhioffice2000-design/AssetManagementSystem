@@ -1,8 +1,9 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Routes } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { SharedModule } from '../../shared/shared.module';
+import { NgChartsModule } from 'ng2-charts';
 
 
 import { AllocationDashboardComponent } from './dashboard/dashboard.component';
@@ -29,7 +30,9 @@ const routes: Routes = [
     CommonModule,
     RouterModule.forChild(routes),
     FormsModule,
-    SharedModule
+    ReactiveFormsModule,
+    SharedModule,
+    NgChartsModule
   ]
 
 })
