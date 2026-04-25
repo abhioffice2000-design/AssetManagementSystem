@@ -188,7 +188,7 @@
                 <th>Status</th>
                 <th>Warranty Expiry</th>
                 <th>Purchase Date</th>
-                <th>Actions</th>
+                <th class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -207,10 +207,16 @@
                 <td>{{ asset.warrantyExpiry | date:'mediumDate' }}</td>
                 <td>{{ asset.purchaseDate | date:'mediumDate' }}</td>
                 <td>
-                  <button class="btn btn-sm btn-outline-danger" (click)="deleteAsset(asset.id)">
-                    <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
-                    Delete
-                  </button>
+                  <div class="flex items-center justify-center gap-8" style="min-height: 40px;">
+                    <button *ngIf="canDeleteAsset(asset)" class="btn btn-sm btn-outline-danger" (click)="deleteAsset(asset.id)">
+                      <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                      Delete
+                    </button>
+                    <span *ngIf="!canDeleteAsset(asset)" class="locked-badge" title="Only available or blank assets can be deleted">
+                      <span class="material-icons-outlined">lock</span>
+                      Locked
+                    </span>
+                  </div>
                 </td>
               </tr>
               <tr *ngIf="filteredAssets.length === 0">
@@ -403,7 +409,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let asset of assetsInSelectedSub">
+            <tr *ngFor="let asset of paginatedSubAssets">
               <td><span class="tag-label">{{ asset.assetTag }}</span></td>
               <td><strong>{{ asset.name }}</strong></td>
               <td><span style="font-family: 'Inter', sans-serif; font-weight: 500; color: #334155; font-size: 0.875rem;">{{ asset.serialNumber }}</span></td>
@@ -422,6 +428,29 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      
+      <!-- Sub-modal Pagination -->
+      <div class="pagination-wrapper border-top p-12" *ngIf="assetsInSelectedSub.length > subDetailsPageSize">
+        <div class="pagination-bar" style="border: none; padding: 0;">
+          <div class="pagination-info text-xs">
+            Showing {{ (subDetailsCurrentPage - 1) * subDetailsPageSize + 1 }} to {{ (subDetailsCurrentPage * subDetailsPageSize > assetsInSelectedSub.length) ? assetsInSelectedSub.length : (subDetailsCurrentPage * subDetailsPageSize) }} of {{ assetsInSelectedSub.length }}
+          </div>
+          <div class="pagination-controls">
+            <button class="page-btn btn-xs" [disabled]="subDetailsCurrentPage === 1" (click)="setSubPage(subDetailsCurrentPage - 1)">
+              <span class="material-icons-outlined" style="font-size: 16px;">chevron_left</span>
+            </button>
+            <button class="page-btn btn-xs" 
+                    *ngFor="let page of subDetailsPageNumbers" 
+                    [class.active]="page === subDetailsCurrentPage"
+                    (click)="setSubPage(page)">
+              {{ page }}
+            </button>
+            <button class="page-btn btn-xs" [disabled]="subDetailsCurrentPage === subDetailsTotalPages" (click)="setSubPage(subDetailsCurrentPage + 1)">
+              <span class="material-icons-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 

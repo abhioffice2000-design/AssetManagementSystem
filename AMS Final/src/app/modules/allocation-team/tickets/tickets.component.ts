@@ -1,9 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
-import { AssetRequest, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
+import { AssetRequest, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
 import { HeroService } from 'src/app/core/services/hero.service';
 import { MailService } from 'src/app/core/services/mail.service';
+import { NotificationService } from 'src/app/core/services/notification.service';
 
 
 export interface EnrichedTicket {
@@ -32,7 +33,8 @@ export interface EnrichedTicket {
   styleUrls: ['./tickets.component.scss']
 })
 export class AllocationTicketsComponent implements OnInit {
-  activeTab: 'unresolved' | 'resolved' | 'return' = 'unresolved';
+  RequestType = RequestType;
+  activeTab: 'unresolved' | 'resolved' = 'unresolved';
   loading = true;
   allTickets: EnrichedTicket[] = [];
   returnTickets: EnrichedTicket[] = [];
@@ -44,6 +46,7 @@ export class AllocationTicketsComponent implements OnInit {
   // Search and Filter
   searchTerm: string = '';
   selectedAssetType: string = '';
+  selectedRequestType: string = ''; // New filter
   assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
   subCategoryMap: Map<string, string> = new Map();
 
@@ -57,7 +60,8 @@ export class AllocationTicketsComponent implements OnInit {
     private requestService: RequestService,
     private assetService: AssetService,
     private hs: HeroService,
-    private mailService: MailService
+    private mailService: MailService,
+    private notificationService: NotificationService
   ) { }
 
 
@@ -336,14 +340,11 @@ export class AllocationTicketsComponent implements OnInit {
     return 'Medium';
   }
 
-  setTab(tab: 'unresolved' | 'resolved' | 'return'): void {
+  setTab(tab: 'unresolved' | 'resolved'): void {
     this.activeTab = tab;
     this.drawerOpen = false;
     this.selectedTicket = null;
     this.currentPage = 1; // Reset to first page
-    if (tab === 'return') {
-      this.loadReturnTickets();
-    }
   }
 
 
@@ -376,12 +377,7 @@ export class AllocationTicketsComponent implements OnInit {
   get filteredTickets(): EnrichedTicket[] {
     let source: EnrichedTicket[] = [];
     if (this.activeTab === 'unresolved') source = this.unresolvedTickets;
-    else if (this.activeTab === 'resolved') source = this.resolvedTickets;
-    else source = this.returnTickets.filter(t =>
-      t.status === RequestStatus.PENDING ||
-      t.status === RequestStatus.IN_PROGRESS ||
-      t.status === RequestStatus.APPROVED
-    );
+    else source = this.resolvedTickets;
 
     // Apply Search
     let filtered = source.filter(t => {
@@ -392,7 +388,11 @@ export class AllocationTicketsComponent implements OnInit {
       
       const matchesType = !this.selectedAssetType || t.assetType === this.selectedAssetType;
       
-      return matchesSearch && matchesType;
+      const matchesRequestType = !this.selectedRequestType || 
+        (this.selectedRequestType === 'new' && t.rawRequest.requestType === RequestType.NEW_ASSET) ||
+        (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY);
+
+      return matchesSearch && matchesType && matchesRequestType;
     });
 
     // Sort by Date (Descending - Newest first)
@@ -451,10 +451,6 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async allocate(ticket: EnrichedTicket): Promise<void> {
-    if (this.activeTab === 'return') {
-      await this.allocateAssetReturn(ticket);
-      return;
-    }
 
     debugger
     var req1 = {
@@ -490,7 +486,8 @@ export class AllocationTicketsComponent implements OnInit {
             status: "Allocated",
             assigned_to: ticket.rawRequest.requesterId,
             assigned_to_name: ticket.rawRequest.requesterName,
-            temp1: ticket.rawRequest.requesterId
+            temp1: ticket.rawRequest.requesterId,
+            temp2: ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate'
           }
         }
       }
@@ -535,10 +532,6 @@ export class AllocationTicketsComponent implements OnInit {
 
   async reject(ticket: EnrichedTicket): Promise<void> {
     debugger;
-    if (this.activeTab === 'return') {
-      await this.rejectAssetReturn(ticket);
-      return;
-    }
 
     this.requestService.rejectRequest(
       ticket.rawRequest.id,

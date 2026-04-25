@@ -15,17 +15,17 @@ import { UserService } from '../../../core/services/user.service';
 export class WarrantyRequestsComponent implements OnInit {
   warrantyRequests: AssetRequest[] = [];
   filteredWarrantyRequests: AssetRequest[] = [];
-  
+
   searchTerm = '';
   selectedStatus = '';
   selectedUrgency = '';
-  
+
   statuses = Object.values(RequestStatus);
   urgencies = Object.values(RequestUrgency);
-  
+
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
-  
+
   showDetailModal = false;
   showActionModal = false;
   detailRequest: AssetRequest | null = null;
@@ -60,6 +60,7 @@ export class WarrantyRequestsComponent implements OnInit {
     try {
       const currentUser = this.authService.getCurrentUser();
       const approverId = currentUser?.id || 'usr_004';
+      console.log("user id", currentUser?.id)
 
       const [warrantyReqs, memberResult] = await Promise.all([
         this.requestService.fetchPendingWarrantyApprovalsFromService(approverId),
@@ -67,7 +68,7 @@ export class WarrantyRequestsComponent implements OnInit {
       ]);
 
       this.warrantyRequests = warrantyReqs;
-      
+      console.log("warrantyReqs", warrantyReqs)
       // Normalize team members to a flat structure
       const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
       this.allocationTeamMemberList = rawMembers.map((m: any) => ({
@@ -75,7 +76,7 @@ export class WarrantyRequestsComponent implements OnInit {
         name: m?.old?.m_users?.name || m?.m_users?.name || m?.name || 'Unknown',
         email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
       }));
-      
+
       this.applyFilters();
     } catch (err: any) {
       console.error('Failed to load warranty requests:', err);
@@ -141,6 +142,23 @@ export class WarrantyRequestsComponent implements OnInit {
 
   async openDetailModal(request: AssetRequest): Promise<void> {
     this.detailRequest = { ...request };
+    this.actionComments = '';
+    this.selectedAllocationMemberId = '';
+
+    try {
+      // Fetch fresh data using user-provided SOAP request logic
+      const rawData = await this.requestService.getWarrantyRequestById(request.id);
+      if (rawData) {
+        this.detailRequest.assetName = rawData.temp1 || this.detailRequest.assetName;
+        this.detailRequest.assignedSerial = rawData.temp2 || this.detailRequest.assignedSerial;
+        this.detailRequest.assignedWarrantyExpiry = rawData.temp3 || this.detailRequest.assignedWarrantyExpiry;
+        this.detailRequest.assignedAssetId = rawData.asset_id || this.detailRequest.assignedAssetId;
+        this.detailRequest.justification = rawData.reason || this.detailRequest.justification;
+      }
+    } catch (err) {
+      console.warn('Error fetching fresh warranty details:', err);
+    }
+
     this.showDetailModal = true;
   }
 
@@ -187,14 +205,17 @@ export class WarrantyRequestsComponent implements OnInit {
 
     try {
       if (action === 'approve') {
-        const req1 = {
-          tuple: {
-            old: { t_request_approvals: { approval_id: this.detailRequest.approvalId } },
-            new: { t_request_approvals: { status: "Approved", remarks: this.actionComments } }
-          }
-        };
-        await this.requestService.updateEntryForAssetManager(req1 as any);
+        debugger;
+        console.log('Approving warranty request:', this.detailRequest);
+        // 1. Update existing manager approval entry in t_extend_request_approvals
+        await this.requestService.updateWarrantyRequestApproval(
+          this.detailRequest.approvalId as string,
+          'Approved',
+          this.actionComments,
+          this.detailRequest.assignedAssetId as string
+        );
 
+        // 2. Update status of the asset in m_assets table
         const req2 = {
           tuple: {
             old: { m_assets: { asset_id: this.detailRequest.assignedAssetId } },
@@ -203,22 +224,16 @@ export class WarrantyRequestsComponent implements OnInit {
         };
         await this.requestService.updateAssetStatus(req2 as any);
 
-        const req3 = {
-          tuple: {
-            new: {
-              t_request_approvals: {
-                approver_id: this.selectedAllocationMemberId,
-                request_id: this.detailRequest.id,
-                role: "Asset Allocation Team",
-                status: "Pending",
-                remarks: this.actionComments,
-                temp1: this.detailRequest.assignedAssetId
-              }
-            }
-          }
-        };
-        await this.requestService.createEntryForTeamAllocationMember(req3 as any);
+        // 3. Create new entry in t_extend_request_approvals for the Allocation Team
+        await this.requestService.createNewWarrantyApprovalEntry(
+          this.detailRequest.id,
+          this.selectedAllocationMemberId,
+          "Asset Allocation Team",
+          this.actionComments,
+          this.detailRequest.assignedAssetId as string
+        );
 
+        // 4. Complete BPM task
         if (this.detailRequest.taskid) {
           await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
         }
@@ -236,13 +251,18 @@ export class WarrantyRequestsComponent implements OnInit {
 
         this.notificationService.showToast(`Warranty request approved.`, 'success');
       } else {
-        await this.requestService.rejectRequest(
-          this.detailRequest.id,
-          currentUser.id,
-          currentUser.name,
+        // Handle Rejection using the same specialized warranty table
+        await this.requestService.updateWarrantyRequestApproval(
+          this.detailRequest.approvalId as string,
+          'Rejected',
           this.actionComments,
-          ApprovalStage.ASSET_MANAGER
+          this.detailRequest.assignedAssetId as string
         );
+
+        if (this.detailRequest.taskid) {
+          await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
+        }
+
         this.notificationService.showToast(`Warranty request rejected.`, 'info');
       }
 

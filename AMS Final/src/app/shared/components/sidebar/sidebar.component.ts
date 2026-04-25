@@ -51,14 +51,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
     }
     const role = this.currentUser.role;
     const base = this.authService.getRoleRoute(role);
-
     switch (role) {
       case UserRole.ADMINISTRATOR:
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'User Management', icon: 'people', route: `${base}/users` },
           { label: 'Master Data', icon: 'settings', route: `${base}/master-data` },
-          { label: 'Asset Transactions', icon: 'sync_alt', route: `${base}/transactions` }
+          { label: 'Asset Transactions', icon: 'sync_alt', route: `${base}/transactions` },
+          { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
       case UserRole.ASSET_MANAGER:

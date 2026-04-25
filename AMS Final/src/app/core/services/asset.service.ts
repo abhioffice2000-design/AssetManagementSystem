@@ -145,7 +145,7 @@ export class AssetService {
             <warranty_expiry>${asset.warranty_expiry || ''}</warranty_expiry>
             <status>Available</status>
             <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp2>${asset.temp2 || ''}</temp2>
+            <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp3>${asset.temp3 || ''}</temp3>
             <temp4>${asset.temp4 || ''}</temp4>
             <temp5>${asset.temp5 || ''}</temp5>
@@ -394,7 +394,7 @@ export class AssetService {
     const subCatInfo = assetData?.m_asset_subcategories || {};
 
     // Map type_name to AssetType enum
-    const typeName = typeInfo?.type_name || '';
+    const typeName = typeInfo?.type_name || assetData?.asset_type || assetData?.type_id || assetData?.type || '';
     const assetType = this.mapToAssetType(typeName);
 
     // Map status string to AssetStatus enum
@@ -427,7 +427,8 @@ export class AssetService {
       specifications: this.getNullableValue(assetData?.specifications),
       cost: parseFloat(assetData?.cost) || 0,
       condition: this.mapToAssetCondition(this.getNullableValue(assetData?.condition) || 'Good'),
-      notes: this.getNullableValue(assetData?.notes)
+      notes: this.getNullableValue(assetData?.notes),
+      requestId: this.getNullableValue(assetData?.temp2)
     };
   }
 
@@ -613,6 +614,7 @@ export class AssetService {
           warrantyExpiry: actualItem.Warranty_expiry || actualItem.warranty_expiry || actualItem.warrantyExpiry || '',
           vendor: actualItem.Vendor || actualItem.vendor || actualItem.vendor || 'N/A',
           serialNumber: actualItem.Serial_number || actualItem.serial_number || actualItem.serialNumber || 'N/A',
+          requestId: actualItem.request_id || actualItem.temp2 || actualItem.temp1 || actualItem.temp3 || row.t_asset_requests?.request_id || '',
           cost: Number(actualItem.Cost || actualItem.cost || 0),
           condition: (actualItem.Condition || actualItem.condition) as AssetCondition || AssetCondition.GOOD,
           specifications: actualItem.Specifications || actualItem.specifications || ''
@@ -622,6 +624,68 @@ export class AssetService {
       return Promise.all(assetPromises);
     } catch (error) {
       console.error('Error fetching assets from Cordys:', error);
+      return [];
+    }
+  }
+
+  async getAllocatedAssetsByUserId(userId: string): Promise<Asset[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllocatedAssetsByUserId xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetAllocatedAssetsByUserId>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      
+      return tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.m_assets || tuple?.m_assets || tuple;
+        const old = tuple?.old || tuple;
+        
+        // Extract Request ID from all possible sources (including parent structures and children)
+        const requestId = data.request_id || 
+                          data.requestId ||
+                          data.temp2 || 
+                          old.t_asset_requests?.request_id || 
+                          old.t_asset_requests?.requestId ||
+                          old.ts_asset_allocation?.request_id || 
+                          old.ts_asset_allocation?.temp2 || 
+                          old.ts_asset_allocation?.requestId ||
+                          data.ts_asset_allocation?.request_id ||
+                          data.t_asset_requests?.request_id ||
+                          '';
+
+        // Extract type robustly
+        const typeInfo = data.m_asset_types || old.m_asset_types || data.type_info || {};
+        const typeName = typeInfo.type_name || data.asset_type || data.type_id || data.type || '';
+        
+        // Extract category robustly
+        const subCatInfo = data.m_asset_subcategories || old.m_asset_subcategories || data.subcategory_info || {};
+        const catName = subCatInfo.name || data.category || data.sub_category_id || data.sub_category || '';
+
+        return {
+          id: data.asset_id || data.id || '',
+          assetTag: data.serial_number || data.asset_tag || data.asset_id || '',
+          name: data.asset_name || data.name || 'Unknown Asset',
+          type: typeName,
+          category: catName,
+          subCategory: catName,
+          status: data.status || 'Allocated',
+          warrantyExpiry: data.warranty_expiry || data.warrantyExpiry || '',
+          purchaseDate: data.purchase_date || data.purchaseDate || '',
+          vendor: data.m_asset_vendors?.name || data.vendor || '',
+          serialNumber: data.serial_number || '',
+          requestId: requestId
+        } as Asset;
+      });
+    } catch (err) {
+      console.error('Error fetching allocated assets for My Assets section:', err);
       return [];
     }
   }

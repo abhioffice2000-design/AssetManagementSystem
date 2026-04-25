@@ -9,12 +9,14 @@ import { AdminDashboardComponent } from './dashboard/dashboard.component';
 import { UserManagementComponent } from './user-management/user-management.component';
 import { MasterDataComponent } from './master-data/master-data.component';
 import { AssetTransactionComponent } from './asset-transaction/asset-transaction.component';
+import { AdminReportsComponent } from './reports/reports.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: AdminDashboardComponent },
   { path: 'users', component: UserManagementComponent },
   { path: 'master-data', component: MasterDataComponent },
   { path: 'transactions', component: AssetTransactionComponent },
+  { path: 'reports', component: AdminReportsComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
 
@@ -23,7 +25,8 @@ const routes: Routes = [
     AdminDashboardComponent,
     UserManagementComponent,
     MasterDataComponent,
-    AssetTransactionComponent
+    AssetTransactionComponent,
+    AdminReportsComponent
   ],
   imports: [
     CommonModule,

@@ -336,8 +336,8 @@ export class AssetRequestsComponent implements OnInit {
             new: {
               m_assets: {
                 status: "MoveToAllocationTeam",
-
-
+                temp1: this.selectedRequest.requesterId, // Keep requester ID in temp1 as per convention
+                temp2: this.selectedRequest.id
               }
             }
 

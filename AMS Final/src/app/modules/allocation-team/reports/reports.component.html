@@ -1,35 +1,73 @@
-<div class="reports-container">
-  <div class="header">
-    <h2>Allocation Reports</h2>
-    <p>Generate and view allocation-related reports</p>
-  </div>
-
-  <div class="reports-grid">
-    <div class="report-card">
-      <div class="icon-container bg-blue-100">
-        <span class="material-icons text-blue-600">inventory</span>
-      </div>
-      <h3>Asset Allocation History</h3>
-      <p>View historical data of all asset allocations and returns.</p>
-      <button class="generate-btn">Generate</button>
+<div class="reports-console animate-fade-in">
+  <header class="console-header mb-32">
+    <div class="h-main">
+      <h1>Report Generation Console</h1>
+      <p class="text-muted">Generate and export administrative reports for audit and maintenance</p>
     </div>
+  </header>
 
-    <div class="report-card">
-      <div class="icon-container bg-green-100">
-        <span class="material-icons text-green-600">trending_up</span>
+  <!-- Report Type Selector -->
+  <div class="reports-grid mb-32">
+    <div class="report-card" 
+         *ngFor="let report of reports" 
+         [class.active]="selectedReport === report.id"
+         (click)="generateReport(report.id)">
+      <div class="r-icon">
+        <span class="material-icons">{{ report.icon }}</span>
       </div>
-      <h3>Allocation Efficiency</h3>
-      <p>Analyze the turnaround time for asset requests.</p>
-      <button class="generate-btn">Generate</button>
-    </div>
-
-    <div class="report-card">
-      <div class="icon-container bg-purple-100">
-        <span class="material-icons text-purple-600">assignment</span>
+      <div class="r-info">
+        <h3>{{ report.title }}</h3>
+        <p>{{ report.description }}</p>
       </div>
-      <h3>Pending Tickets Summary</h3>
-      <p>A summary of all currently open allocation tickets.</p>
-      <button class="generate-btn">Generate</button>
+      <div class="r-action">
+        <span class="material-icons">chevron_right</span>
+      </div>
     </div>
   </div>
+
+  <!-- Data Workspace -->
+  <section class="workspace-card" *ngIf="selectedReport">
+    <div class="ws-header">
+      <div class="h-text">
+        <h2>{{ getSelectedReportTitle() }}</h2>
+        <p *ngIf="reportData.length > 0">Showing {{ reportData.length }} records retrieved from system</p>
+      </div>
+      <div class="ws-actions" *ngIf="reportData.length > 0">
+        <button class="btn-download" (click)="downloadCSV()">
+          <span class="material-icons">download</span>
+          Export CSV
+        </button>
+      </div>
+    </div>
+
+    <div class="ws-body">
+      <!-- Loading State -->
+      <div class="loading-state" *ngIf="loading">
+        <div class="spinner"></div>
+        <p>Retrieving real-time data...</p>
+      </div>
+
+      <!-- Table Preview -->
+      <div class="table-container" *ngIf="!loading && reportData.length > 0">
+        <table>
+          <thead>
+            <tr>
+              <th *ngFor="let header of getHeaders()">{{ header }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of reportData">
+              <td *ngFor="let header of getHeaders()">{{ row[header] }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- No Data State -->
+      <div class="empty-state" *ngIf="!loading && reportData.length === 0">
+        <span class="material-icons">search_off</span>
+        <p>No records found for this report type.</p>
+      </div>
+    </div>
+  </section>
 </div>

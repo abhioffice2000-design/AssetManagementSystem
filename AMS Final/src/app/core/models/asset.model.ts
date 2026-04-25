@@ -20,6 +20,7 @@ export interface Asset {
   cost: number;
   condition: AssetCondition;
   notes?: string;
+  requestId?: string;
 }
 
 export enum AssetType {

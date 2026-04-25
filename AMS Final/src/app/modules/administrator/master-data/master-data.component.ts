@@ -88,6 +88,8 @@ export class MasterDataComponent implements OnInit {
   selectedSubForDetail: EnrichedSubcategory | null = null;
   showSubDetailModal = false;
   assetsInSelectedSub: Asset[] = [];
+  subDetailsCurrentPage = 1;
+  subDetailsPageSize = 5;
   assetTypeChartData: ChartData<'bar', number[], string> = {
     labels: [],
     datasets: [{ data: [] }]
@@ -167,7 +169,22 @@ export class MasterDataComponent implements OnInit {
   async loadData(): Promise<void> {
     await this.loadAssetsFromService();
     
-    // Fetch raw types and subcategories from DB to ensure empty ones are displayed
+    // Load users to map names properly
+    let usersMap = new Map<string, string>();
+    try {
+      const allUsers = await this.adminDataService.GetAllUserRoleProjectDetails();
+      allUsers.forEach(u => usersMap.set(u.id, u.name));
+    } catch (e) {
+      console.warn('Failed to load users for mapping', e);
+    }
+
+    // Map names to assets locally
+    this.assets = this.assetService.getAssets().map(asset => {
+      if (asset.assignedTo && !asset.assignedToName) {
+        return { ...asset, assignedToName: usersMap.get(asset.assignedTo) || asset.assignedTo };
+      }
+      return asset;
+    });
     const dbTypes = await this.assetService.getAllAssetTypesCordys();
     const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
     
@@ -223,7 +240,7 @@ export class MasterDataComponent implements OnInit {
       }
     });
 
-    this.assets = this.assetService.getAssets();
+    // Deleted redundant this.assets = this.assetService.getAssets();
     this.assetCategoryGroups = this.buildAssetCategoryGroups();
     this.enrichedSubcategories = this.buildEnrichedSubcategories();
     this.filterSubcategories();
@@ -552,11 +569,14 @@ export class MasterDataComponent implements OnInit {
   async deleteAsset(assetId: string): Promise<void> {
     const asset = this.assets.find(a => a.id === assetId);
     
-    // Check if asset is allocated or assigned to a user
-    if (asset && (String(asset.status).toLowerCase().includes('allocated') || asset.assignedToName)) {
+    // Allow deletion for 'Available' or blank statuses
+    const status = (asset?.status || '').toLowerCase().trim();
+    const canDelete = status === 'available' || status === '';
+
+    if (!asset || !canDelete) {
       this.openConfirmModal(
         'Cannot Delete Asset',
-        `This asset ('${asset.name}') is currently assigned to ${asset.assignedToName || 'a user'}. Assets must be returned to inventory before deletion.`,
+        `This asset ('${asset?.name || 'Asset'}') is currently in '${asset?.status || 'Unknown'}' status. Only assets with 'Available' or blank status can be deleted.`,
         () => {},
         true // isWarning only (hides the Confirm button)
       );
@@ -602,6 +622,11 @@ export class MasterDataComponent implements OnInit {
     this.closeConfirmModal();
   }
 
+  canDeleteAsset(asset: Asset): boolean {
+    const status = (asset?.status || '').toLowerCase().trim();
+    return status === 'available' || status === '';
+  }
+
   isFieldInvalid(field: keyof typeof this.newAsset): boolean {
     return this.submittedAssetForm && !this.newAsset[field];
   }
@@ -639,6 +664,25 @@ export class MasterDataComponent implements OnInit {
   setPage(page: number) {
     if (page >= 1 && page <= this.totalPages) {
       this.currentPage = page;
+    }
+  }
+
+  get paginatedSubAssets() {
+    const startIndex = (this.subDetailsCurrentPage - 1) * this.subDetailsPageSize;
+    return this.assetsInSelectedSub.slice(startIndex, startIndex + this.subDetailsPageSize);
+  }
+
+  get subDetailsTotalPages() {
+    return Math.ceil(this.assetsInSelectedSub.length / this.subDetailsPageSize);
+  }
+
+  get subDetailsPageNumbers() {
+    return Array.from({ length: this.subDetailsTotalPages }, (_, i) => i + 1);
+  }
+
+  setSubPage(page: number) {
+    if (page >= 1 && page <= this.subDetailsTotalPages) {
+      this.subDetailsCurrentPage = page;
     }
   }
 
@@ -806,6 +850,7 @@ export class MasterDataComponent implements OnInit {
 
   openSubDetails(sub: EnrichedSubcategory) {
     this.selectedSubForDetail = sub;
+    this.subDetailsCurrentPage = 1;
     this.assetsInSelectedSub = this.assets.filter(a => 
       String(a.category || a.subCategory).toLowerCase() === String(sub.name).toLowerCase() && 
       a.type === sub.type
