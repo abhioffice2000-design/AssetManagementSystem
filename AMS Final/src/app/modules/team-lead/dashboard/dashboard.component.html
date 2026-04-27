@@ -51,7 +51,7 @@
                 <td>{{req.requesterName}}</td>
                 <td>{{req.category}}</td>
                 <td>{{req.assetType}}</td>
-                <td>{{((req.justification?.length || 0) > 25) ? (req.justification | slice:0:25) + '...' : (req.justification || 'No reason provided')}}</td>
+                <td>{{((req.justification.length || 0) > 25) ? (req.justification | slice:0:25) + '...' : (req.justification || 'No reason provided')}}</td>
                 <td>
                   <span class="badge" [ngClass]="{
                         'badge-warning': req.reqStatus === 'Pending' || req.reqStatus === 'In Progress', 
