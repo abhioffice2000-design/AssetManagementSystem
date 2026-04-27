@@ -146,6 +146,8 @@ export class AllocationTicketsComponent implements OnInit {
       }
       // Sync return tickets load
       await this.loadReturnTickets();
+      // Merge return tickets into allTickets so they appear in the table
+      this.allTickets = [...this.allTickets, ...this.returnTickets];
     } catch (err) {
       console.error('Failed to load allocation tickets:', err);
       this.allTickets = [];
@@ -171,6 +173,20 @@ export class AllocationTicketsComponent implements OnInit {
         const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
         console.log('Processed Return Tuples:', tupleArray);
         this.returnTickets = tupleArray.map((t: any) => this.mapReturnTupleToEnrichedTicket(t));
+
+        // Enrich each return ticket with full asset details from m_assets
+        for (const ticket of this.returnTickets) {
+          if (ticket.assetId && ticket.assetId !== '—') {
+            const asset = await this.requestService.getAssetDetailsById(ticket.assetId);
+            if (asset) {
+              ticket.assetName = asset.asset_name || ticket.assetName;
+              ticket.assetType = asset.type_id || ticket.assetType;
+              ticket.subCategory = asset.sub_category_id || ticket.subCategory;
+              ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
+            }
+          }
+        }
+
         console.log('Return Tickets Statuses:', this.returnTickets.map(t => `${t.ticketId}: ${t.status}`));
       }
     } catch (err) {
@@ -225,7 +241,7 @@ export class AllocationTicketsComponent implements OnInit {
       assetType: 'Hardware',
       subCategory: 'N/A',
       assetName: 'Asset Return',
-      assetId: this.getVal(returnData?.asset_id) ?? '—',
+      assetId: this.getVal(returnData?.temp1) ?? '—',
       warrantyExpiry: '—',
       availabilityStatus: 'N/A',
       assignedDate: this.getVal(returnData?.return_date) ?? '',
@@ -239,11 +255,12 @@ export class AllocationTicketsComponent implements OnInit {
         requestNumber: this.getVal(returnData?.return_id) ?? '',
         requesterId: this.getVal(returnData?.requested_by) ?? '',
         requesterName: this.getVal(userData?.name) ?? '',
-        requestType: 'RETURN_ASSET' as any,
+        requestType: RequestType.RETURN_ASSET,
         status,
         currentStage: ApprovalStage.ALLOCATION,
         requestDate: this.getVal(returnData?.return_date) ?? '',
         lastUpdated: this.getVal(returnData?.return_date) ?? '',
+        assignedAssetId: this.getVal(returnData?.temp1) ?? '',
         approvalChain: [{ stage: ApprovalStage.ALLOCATION, action: 'Pending' }],
         comments: []
       } as any
@@ -390,7 +407,8 @@ export class AllocationTicketsComponent implements OnInit {
       
       const matchesRequestType = !this.selectedRequestType || 
         (this.selectedRequestType === 'new' && t.rawRequest.requestType === RequestType.NEW_ASSET) ||
-        (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY);
+        (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY) ||
+        (this.selectedRequestType === 'return' && t.rawRequest.requestType === RequestType.RETURN_ASSET);
 
       return matchesSearch && matchesType && matchesRequestType;
     });
@@ -452,7 +470,7 @@ export class AllocationTicketsComponent implements OnInit {
 
   async allocate(ticket: EnrichedTicket): Promise<void> {
 
-    debugger
+   
     var req1 = {
       tuple: {
         old: {
@@ -531,7 +549,7 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async reject(ticket: EnrichedTicket): Promise<void> {
-    debugger;
+
 
     this.requestService.rejectRequest(
       ticket.rawRequest.id,
@@ -543,7 +561,7 @@ export class AllocationTicketsComponent implements OnInit {
     this.loadTickets();
   }
   async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
-    debugger;
+    
     console.log("Starting allocateAssetReturn for:", ticket.ticketId);
 
     if (!ticket.ticketId || ticket.ticketId === '—' || !ticket.approvalid || ticket.approvalid === '—') {

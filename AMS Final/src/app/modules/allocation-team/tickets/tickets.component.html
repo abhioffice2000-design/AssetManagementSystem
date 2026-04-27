@@ -47,6 +47,7 @@
           <option value="">All Requests</option>
           <option value="new">New Asset Requests</option>
           <option value="warranty">Extend Warranty Requests</option>
+          <option value="return">Return Requests</option>
         </select>
         <select class="asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="onFilterChange()"
                 style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
@@ -99,11 +100,13 @@
                   View Details
                 </button>
                 <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')" 
-                        class="btn-allocate" (click)="allocate(ticket)">
+                        class="btn-allocate" 
+                        (click)="ticket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(ticket) : allocate(ticket)">
                   <span class="material-icons">check_circle</span>
                 </button>
                 <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')" 
-                        class="btn-reject" (click)="reject(ticket)">
+                        class="btn-reject" 
+                        (click)="ticket.rawRequest.requestType === RequestType.RETURN_ASSET ? rejectAssetReturn(ticket) : reject(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
               </div>
@@ -241,11 +244,11 @@
 
       <!-- Action Buttons inside Drawer -->
       <div class="drawer-actions" *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
-        <button class="drawer-btn-allocate" (click)="allocate(selectedTicket); closeDetails()">
+        <button class="drawer-btn-allocate" (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(selectedTicket) : allocate(selectedTicket); closeDetails()">
           <span class="material-icons">check_circle</span>
-          {{ selectedTicket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate' }}
+          {{ selectedTicket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : (selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? 'Confirm Return' : 'Allocate') }}
         </button>
-        <button class="drawer-btn-reject" (click)="reject(selectedTicket); closeDetails()">
+        <button class="drawer-btn-reject" (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? rejectAssetReturn(selectedTicket) : reject(selectedTicket); closeDetails()">
           <span class="material-icons">cancel</span>
           Reject
         </button>

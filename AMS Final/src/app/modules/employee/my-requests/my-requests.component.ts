@@ -94,7 +94,15 @@ export class MyRequestsComponent implements OnInit {
     const user = this.authService.getCurrentUser();
     if (user) {
       try {
-        this.requests = await this.requestService.getRequestsByUserIdFromCordys(user.id);
+        // Fetch both asset requests and return requests in parallel
+        const [assetRequests, returnRequests] = await Promise.all([
+          this.requestService.getRequestsByUserIdFromCordys(user.id),
+          this.requestService.fetchReturnRequestsByEmployee(user.id)
+        ]);
+
+        // Merge both lists
+        this.requests = [...assetRequests, ...returnRequests];
+
         // Sort by date descending
         this.requests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
         this.totalRequests = this.requests.length;
@@ -234,7 +242,22 @@ export class MyRequestsComponent implements OnInit {
     this.overallProgress = 0;
 
     try {
-      const progressData = await this.requestService.getRequestProgress(request.id);
+      let progressData: any[];
+
+      if (request.requestType === RequestType.RETURN_ASSET) {
+        // Fetch ALL approvals from t_asset_return_approvals for return requests
+        const returnApprovals = await this.requestService.getReturnRequestProgress(request.id);
+        progressData = returnApprovals.map((a: any) => ({
+          stage: a.role || 'Unknown',
+          status: a.status || 'Pending',
+          approverId: a.approver_id,
+          approverName: a.role || 'Assigned Approver',
+          timestamp: a.action_date,
+          comments: a.remarks
+        }));
+      } else {
+        progressData = await this.requestService.getRequestProgress(request.id);
+      }
 
       // Sort to ensure chronological order for multi-stage roles like Asset Manager
       progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -265,8 +288,10 @@ export class MyRequestsComponent implements OnInit {
           isCompleted = data.status === 'Approved' || data.status === 'Completed';
           isCurrent = data.status === 'Pending';
         } else {
-          // Fallback guessing based on request status
-          isCompleted = request.status === 'Completed' || request.status === 'Approved';
+          // For return requests, only trust actual data - don't guess future steps
+          if (request.requestType !== RequestType.RETURN_ASSET) {
+            isCompleted = request.status === 'Completed' || request.status === 'Approved';
+          }
         }
 
         // Correctly handle 'Assigned Approver' or empty placeholders from the DB and lookups
@@ -502,7 +527,7 @@ export class MyRequestsComponent implements OnInit {
       };
       this.Getassetidbyapprovalid(request.requestNumber);
       await this.requestService.submitNewRequestForm(updateReq);
-      debugger
+      
 
       console.log("approval id222222222222", this.approval_id);
 

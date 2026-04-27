@@ -201,7 +201,9 @@ export class MyAssetComponent implements OnInit {
             t_asset_returns: {
               requested_by: user.id,
               status: "Pending",
-              remarks: "Returned by user"
+              return_date: new Date().toISOString().split('T')[0],
+              remarks: "Returned by user",
+              temp1: asset.id
             }
           }
         }

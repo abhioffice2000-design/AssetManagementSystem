@@ -291,7 +291,7 @@ export class AssetRequestsComponent implements OnInit {
   // //update the asset_request table with status rejected 
   // console.log("Selected request is ", this.selectedRequest);
   async confirmAction(): Promise<void> {
-    debugger
+ 
     console.log("Confirming action for request:", this.selectedRequest);
     if (!this.selectedRequest || !this.actionType) return;
 
@@ -399,7 +399,28 @@ export class AssetRequestsComponent implements OnInit {
         if (this.actionType === 'approve') {
           console.log("Executing Return Approval Flow...");
 
-          // Request 1: Update current manager approval to 'Approved'
+           // Check if this is the FINAL confirmation (Step 3) vs initial approval (Step 1)
+          // The Allocation Team sets remarks = "Waiting for Hand-off Confirmation" when creating Step 3 entry
+          const approvalRemarks = this.selectedRequest.approvalChain?.[0]?.comments || '';
+          console.log("Approval remarks from loaded data:", approvalRemarks);
+
+          let allocationTeamAlreadyApproved = approvalRemarks.toLowerCase().includes('hand-off confirmation');
+
+          // Fallback: try SOAP query if remarks check is inconclusive
+          if (!allocationTeamAlreadyApproved) {
+            try {
+              const existingApprovals = await this.requestService.fetchReturnApprovalsByRequestId(this.selectedRequest.id);
+              allocationTeamAlreadyApproved = existingApprovals.some(
+                (a: any) => a.role === 'Allocation Team Member' && a.status?.toLowerCase().includes('approved')
+              );
+              console.log("SOAP fallback check - Allocation Team already approved?", allocationTeamAlreadyApproved, "Approvals:", existingApprovals);
+            } catch (e) {
+              console.warn("SOAP fallback check failed, relying on remarks check:", e);
+            }
+          }
+          console.log("Final decision - Is final confirmation?", allocationTeamAlreadyApproved);
+
+          // Step 1: Update current manager approval to 'Approved'
           const req6 = {
             tuple: {
               old: {
@@ -421,31 +442,94 @@ export class AssetRequestsComponent implements OnInit {
             await this.requestService.updateReturnAssetStatus(req6 as any);
             console.log("Step 1 (Update Status) Success");
 
-            // Request 2: Create next pending task for Allocation Team
-            const req7 = {
-              tuple: {
-                new: {
-                  t_asset_return_approvals: {
-                    approver_id: 'usr_007', // Allocation Team ID
-                    request_id: this.selectedRequest.id,
-                    role: "Allocation Team Member",
-                    status: "Pending",
-                    remarks: this.actionComments,
+            if (allocationTeamAlreadyApproved) {
+              // ── FINAL CONFIRMATION ── Allocation Team already worked on this. End the workflow.
+              console.log("Final Confirmation: Ending workflow for return request:", this.selectedRequest.id);
+
+              // Update t_asset_returns status to 'Completed'
+              const updateReturnReq = {
+                tuple: {
+                  old: {
+                    t_asset_returns: {
+                      return_id: this.selectedRequest.id
+                    }
+                  },
+                  new: {
+                    t_asset_returns: {
+                      status: 'Completed',
+                      remarks: this.actionComments
+                    }
                   }
                 }
-              }
-            };
+              };
+              await this.requestService.createEntryForReturn(updateReturnReq as any);
+              console.log("Updated t_asset_returns to Completed");
 
-            console.log("SOAP Create (REQ7):", req7);
-            await this.requestService.completeTask(req7 as any);
-            var taskid = this.selectedRequest?.taskid;
-            var req4 = {
-              TaskId: `${taskid}`,
-              Action: 'COMPLETE'
+              // Make the asset Available again
+              if (this.selectedRequest.assignedAssetId) {
+                const updateAssetReq = {
+                  tuple: {
+                    old: {
+                      m_assets: {
+                        asset_id: this.selectedRequest.assignedAssetId
+                      }
+                    },
+                    new: {
+                      m_assets: {
+                        status: 'Available',
+                        temp1: ''
+                      }
+                    }
+                  }
+                };
+                try {
+                  await this.requestService.updateAssetStatus(updateAssetReq as any);
+                  console.log(`Asset ${this.selectedRequest.assignedAssetId} is now Available.`);
+                } catch (e) {
+                  console.error("Failed to update asset status:", e);
+                }
+              }
+
+              // Complete BPM task → workflow ends
+              var taskid = this.selectedRequest?.taskid;
+              if (taskid) {
+                var req4 = {
+                  TaskId: `${taskid}`,
+                  Action: 'COMPLETE'
+                };
+                await this.requestService.completeUserTask(req4 as any);
+              }
+
+              this.notificationService.showToast(`Return request ${this.selectedRequest.id} confirmed and completed.`, 'success');
+              console.log("Workflow ENDED for return:", this.selectedRequest.id);
+
+            } else {
+              // ── STEP 1 ── First time approval. Forward to Allocation Team.
+              const req7 = {
+                tuple: {
+                  new: {
+                    t_asset_return_approvals: {
+                      approver_id: 'usr_007', // Allocation Team ID
+                      request_id: this.selectedRequest.id,
+                      role: "Allocation Team Member",
+                      status: "Pending",
+                      remarks: this.actionComments,
+                    }
+                  }
+                }
+              };
+
+              console.log("SOAP Create (REQ7):", req7);
+              await this.requestService.completeTask(req7 as any);
+              var taskid = this.selectedRequest?.taskid;
+              var req4 = {
+                TaskId: `${taskid}`,
+                Action: 'COMPLETE'
+              }
+              await this.requestService.completeUserTask(req4 as any)
+              this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved and forwarded to Allocation Team.`, 'success');
+              console.log("Step 2 (Forwarding to Allocation Team) Success");
             }
-            await this.requestService.completeUserTask(req4 as any)
-            this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
-            console.log("Step 2 (Forwarding) Success");
 
           } catch (error) {
             console.error("Return Approval SOAP call failed:", error);
@@ -535,7 +619,7 @@ export class AssetRequestsComponent implements OnInit {
    *   2. Update the asset request record → status = 'Rejected'
    */
   async confirmActionForConfirmation(): Promise<void> {
-    debugger;
+ 
     console.log('[Confirmation] confirmActionForConfirmation called. Request:', this.selectedRequest);
 
     if (!this.selectedRequest || !this.actionType) return;

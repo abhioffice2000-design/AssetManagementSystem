@@ -74,7 +74,8 @@ export class ReturnAssetComponent implements OnInit {
               requested_by: `${user.id}`,
               return_date: formattedDate,
               status: 'Pending',
-              remarks: 'waiting for approval'
+              remarks: 'waiting for approval',
+              temp1: this.selectedAsset.id
             }
           }
         }

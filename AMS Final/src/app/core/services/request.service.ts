@@ -252,6 +252,38 @@ export class RequestService {
       throw err;
     }
   }
+  /**
+   * Fetches full asset details from m_assets by asset_id.
+   * Used to enrich return requests with asset info that isn't joined in the SOAP query.
+   */
+  async getAssetDetailsById(assetId: string): Promise<any | null> {
+    if (!assetId) return null;
+    try {
+      const resp = await this.hs.ajax(
+        'GetM_assetsObject',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { Asset_id: assetId }
+      );
+      const data = this.hs.xmltojson(resp, 'tuple') || this.hs.xmltojson(resp, 'm_assets');
+      if (!data) return null;
+      const asset = data?.old?.m_assets || data?.m_assets || data;
+      return {
+        asset_id: asset?.asset_id || '',
+        asset_name: asset?.asset_name || '',
+        type_id: asset?.type_id || asset?.asset_type || '',
+        sub_category_id: asset?.sub_category_id || '',
+        serial_number: asset?.serial_number || '',
+        purchase_date: asset?.purchase_date || '',
+        warranty_expiry: asset?.warranty_expiry || '',
+        status: asset?.status || '',
+        assigned_to: asset?.assigned_to || ''
+      };
+    } catch (err) {
+      console.warn('Failed to fetch asset details for:', assetId, err);
+      return null;
+    }
+  }
+
   async fetchPendingReturnApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -271,7 +303,25 @@ export class RequestService {
         return [];
       }
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
-      return tupleArray.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
+      const requests = tupleArray.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
+
+      // Enrich each request with full asset details from m_assets
+      const enriched = await Promise.all(requests.map(async (req) => {
+        if (req.assignedAssetId) {
+          const asset = await this.getAssetDetailsById(req.assignedAssetId);
+          if (asset) {
+            req.assetName = asset.asset_name || req.assetName;
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.category = asset.sub_category_id || req.category;
+            req.assignedSerial = asset.serial_number || req.assignedSerial;
+            req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
+            req.assignedWarrantyExpiry = asset.warranty_expiry || req.assignedWarrantyExpiry;
+          }
+        }
+        return req;
+      }));
+
+      return enriched;
     } catch (err) {
       console.error('Failed to fetch return approvals from GetPendingReturnApprovalsForManager:', err);
       throw err;
@@ -864,7 +914,7 @@ export class RequestService {
       category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
       assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.asset_id || assetInfo?.asset_id),
+      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id),
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
@@ -1085,6 +1135,50 @@ export class RequestService {
       console.log(err);
       throw err;
     });
+  }
+
+  /**
+   * Fetches all return requests, then filters by userId client-side.
+   */
+  async fetchReturnRequestsByEmployee(userId: string): Promise<AssetRequest[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_asset_returnsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromReturn_id: '0', toReturn_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      // Filter by user
+      const userTuples = tupleArray.filter((tuple: any) => {
+        const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
+        return data?.requested_by === userId;
+      });
+
+      const requests = userTuples.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
+
+      // Enrich with asset details
+      const enriched = await Promise.all(requests.map(async (req) => {
+        if (req.assignedAssetId) {
+          const asset = await this.getAssetDetailsById(req.assignedAssetId);
+          if (asset) {
+            req.assetName = asset.asset_name || req.assetName;
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.category = asset.sub_category_id || req.category;
+            req.assignedSerial = asset.serial_number || req.assignedSerial;
+          }
+        }
+        return req;
+      }));
+
+      console.log(`fetchReturnRequestsByEmployee: Found ${enriched.length} return requests for ${userId}`);
+      return enriched;
+    } catch (err) {
+      console.error('fetchReturnRequestsByEmployee failed:', err);
+      return [];
+    }
   }
 
   createEntryForAssetApprovals(request: any) {
@@ -1348,6 +1442,37 @@ export class RequestService {
       return err;
     })
   }
+  /**
+   * Fetches all t_asset_return_approvals records for a given request_id.
+   * Used to check if the Allocation Team already approved (to prevent infinite loop).
+   */
+  async fetchReturnApprovalsByRequestId(requestId: string): Promise<any[]> {
+    try {
+      const response = await this.hs.ajax(
+        'GetPendingRequestByRequestIdForAssetReturnApprovals',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { request_id: requestId }
+      );
+      const tuples = this.hs.xmltojson(response, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => {
+        const data = tuple?.old?.t_asset_return_approvals || tuple?.t_asset_return_approvals || tuple;
+        return {
+          return_approval_id: data?.return_approval_id || '',
+          request_id: data?.request_id || '',
+          approver_id: data?.approver_id || '',
+          role: data?.role || '',
+          status: data?.status || '',
+          remarks: data?.remarks || ''
+        };
+      });
+    } catch (err) {
+      console.error('Failed to fetch return approvals by request ID:', err);
+      return [];
+    }
+  }
+
   callBPMForwarrantyexpiry(request: any) {
     return this.hs.ajax(
       'AMS_warranty_expiry',
@@ -1360,5 +1485,43 @@ export class RequestService {
       console.log(err);
       throw err;
     });
+  }
+  /**
+   * Fetches ALL return approval records for tracking (not just pending).
+   * Returns approval history in chronological order for the employee progress view.
+   */
+  async getReturnRequestProgress(requestId: string): Promise<any[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_asset_return_approvalsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromReturn_approval_id: '0', toReturn_approval_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+
+      // Filter to only records matching our request_id
+      const results = tupleArray
+        .map((tuple: any) => {
+          const data = tuple?.old?.t_asset_return_approvals || tuple?.t_asset_return_approvals || tuple;
+          return {
+            return_approval_id: data?.return_approval_id || '',
+            request_id: data?.request_id || '',
+            approver_id: data?.approver_id || '',
+            role: data?.role || '',
+            status: data?.status || '',
+            remarks: data?.remarks || '',
+            action_date: data?.action_date || ''
+          };
+        })
+        .filter((r: any) => r.request_id === requestId);
+
+      console.log(`getReturnRequestProgress: Found ${results.length} approvals for ${requestId}`);
+      return results;
+    } catch (err) {
+      console.error('getReturnRequestProgress failed:', err);
+      return this.fetchReturnApprovalsByRequestId(requestId);
+    }
   }
 }

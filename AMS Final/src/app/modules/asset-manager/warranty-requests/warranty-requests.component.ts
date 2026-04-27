@@ -205,7 +205,7 @@ export class WarrantyRequestsComponent implements OnInit {
 
     try {
       if (action === 'approve') {
-        debugger;
+        
         console.log('Approving warranty request:', this.detailRequest);
         // 1. Update existing manager approval entry in t_extend_request_approvals
         await this.requestService.updateWarrantyRequestApproval(
