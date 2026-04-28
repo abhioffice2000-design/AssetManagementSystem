@@ -169,3 +169,206 @@
   .material-icons { font-size: 32px; color: #cbd5e1; margin-bottom: 12px; }
   p { font-size: 13px; font-style: italic; margin: 0; }
 }
+
+// Extend Warranty Section Styles
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.mt-24 {
+  margin-top: 24px;
+}
+
+.modern-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  th {
+    text-align: left;
+    padding: 16px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid #f1f5f9;
+  }
+
+  td {
+    padding: 16px;
+    font-size: 14px;
+    color: #334155;
+    border-bottom: 1px solid #f1f5f9;
+    
+    &.req-id {
+      font-weight: 700;
+      color: #6366f1;
+    }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px;
+    color: #94a3b8;
+    font-style: italic;
+  }
+
+  .btn-action {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: #eef2ff;
+    color: #6366f1;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      background: #6366f1;
+      color: white;
+    }
+
+    .material-icons {
+      font-size: 18px;
+    }
+  }
+}
+
+// Professional Form Styles
+.professional-form {
+  width: 550px !important;
+  
+  .modal-header {
+    background: #6366f1;
+    color: white;
+    border: none;
+    padding: 28px;
+    
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      
+      .title-icon { font-size: 28px; }
+      h3 { color: white; font-size: 20px; margin: 0; }
+    }
+    
+    .btn-close { color: rgba(255,255,255,0.7); background: none; border: none; cursor: pointer; &:hover { color: white; } }
+  }
+
+  .modal-body {
+    padding: 32px;
+  }
+
+  .form-summary {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px dashed #cbd5e1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+      .value { font-size: 14px; font-weight: 600; color: #1e293b; }
+      .text-amber { color: #d97706; }
+    }
+  }
+
+  .form-group {
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 12px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+
+      .input-icon {
+        position: absolute;
+        left: 16px;
+        color: #94a3b8;
+        font-size: 20px;
+      }
+
+      .form-input {
+        width: 100%;
+        padding: 14px 16px 14px 48px;
+        border-radius: 12px;
+        border: 2px solid #e2e8f0;
+        font-size: 15px;
+        color: #1e293b;
+        transition: all 0.2s;
+
+        &:focus {
+          outline: none;
+          border-color: #6366f1;
+          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+      }
+    }
+
+    .form-hint {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 8px;
+      font-style: italic;
+    }
+  }
+
+  .modal-footer {
+    padding: 24px 32px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 16px;
+
+    .btn-secondary {
+      background: white;
+      color: #64748b;
+      border: 1px solid #e2e8f0;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      &:hover { background: #f8fafc; color: #1e293b; }
+    }
+
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 32px;
+      border-radius: 12px;
+      background: #6366f1;
+      color: white;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      
+      &:hover:not(:disabled) { background: #4f46e5; }
+      
+      &:disabled {
+        background: #cbd5e1;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+

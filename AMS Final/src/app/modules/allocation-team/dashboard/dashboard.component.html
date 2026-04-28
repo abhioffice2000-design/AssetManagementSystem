@@ -83,10 +83,52 @@
       </div>
     </section>
   </div>
+
+  <!-- Extend Warranty Pending Requests Section -->
+  <section class="console-section full-width mt-24">
+    <div class="section-header">
+      <div class="h-main">
+        <h3>Extend Warranty Pending Requests</h3>
+        <p>Review and extend warranty for employee assets</p>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="table-responsive">
+        <table class="modern-table">
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Employee Name</th>
+              <th>Asset Name</th>
+              <th>Current Expiry</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let req of pendingWarrantyRequests">
+              <td class="req-id">{{ req.id }}</td>
+              <td>{{ req.requesterName }}</td>
+              <td>{{ req.assetName }}</td>
+              <td>{{ req.assignedWarrantyExpiry | date:'mediumDate' }}</td>
+              <td>
+                <button class="btn-action" (click)="openWarrantyModal(req)">
+                  <span class="material-icons">edit_calendar</span>
+                  Extend
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="pendingWarrantyRequests.length === 0">
+              <td colspan="5" class="empty-state">No pending warranty extension requests found.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- Warranty Details Modal -->
-<div class="modal-overlay" *ngIf="isModalOpen" (click)="closeModal()">
+<div class="modal-overlay" *ngIf="isModalOpen" (click)="$event.stopPropagation(); closeModal()">
   <div class="modal-content animate-slide-up" (click)="$event.stopPropagation()">
     <div class="modal-header">
       <h3>Warranty Assignment Details</h3>
@@ -120,6 +162,65 @@
     </div>
     <div class="modal-footer">
       <button class="btn-primary" (click)="closeModal()">Close Details</button>
+    </div>
+  </div>
+</div>
+
+<!-- Extend Warranty Professional Form Modal -->
+<div class="modal-overlay" *ngIf="isWarrantyModalOpen" (click)="closeWarrantyModal()">
+  <div class="modal-content professional-form animate-slide-up" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="header-title">
+        <span class="material-icons title-icon">history_edu</span>
+        <h3>Extend Asset Warranty</h3>
+      </div>
+      <button class="btn-close" (click)="closeWarrantyModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    
+    <div class="modal-body" *ngIf="selectedWarrantyRequest">
+      <div class="form-summary card">
+        <div class="summary-item">
+          <span class="label">Asset Details</span>
+          <span class="value">{{ selectedWarrantyRequest.assetName }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Serial Number</span>
+          <span class="value">{{ selectedWarrantyRequest.assignedSerial }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Current Expiry</span>
+          <span class="value text-amber">{{ selectedWarrantyRequest.assignedWarrantyExpiry | date:'fullDate' }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="label">Requested By</span>
+          <span class="value">{{ selectedWarrantyRequest.requesterName }}</span>
+        </div>
+      </div>
+
+      <div class="form-group mt-24">
+        <label for="newExpiryDate" class="form-label">Select New Warranty Expiry Date</label>
+        <div class="input-wrapper">
+          <span class="material-icons input-icon">calendar_today</span>
+          <input 
+            type="date" 
+            id="newExpiryDate" 
+            class="form-input" 
+            [(ngModel)]="newWarrantyDate"
+            [min]="selectedWarrantyRequest.assignedWarrantyExpiry"
+          >
+        </div>
+        <p class="form-hint">The new date must be after the current expiry date.</p>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeWarrantyModal()">Cancel</button>
+      <button class="btn-primary" (click)="approveWarrantyExtension()" [disabled]="!newWarrantyDate">
+        <span class="material-icons">verified</span>
+        Confirm Extension
+      </button>
     </div>
   </div>
 </div>

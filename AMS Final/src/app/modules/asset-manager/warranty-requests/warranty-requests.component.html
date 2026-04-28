@@ -9,6 +9,20 @@
     </div>
   </div>
 
+  <!-- Tabs Navigation -->
+  <div class="tabs-navigation">
+    <button [class.active]="activeTab === 'pending'" (click)="setTab('pending')">
+      <span class="material-icons-outlined">pending_actions</span>
+      Pending Requests
+      <span class="tab-count" *ngIf="warrantyRequests.length > 0">{{ warrantyRequests.length }}</span>
+    </button>
+    <button [class.active]="activeTab === 'resolved'" (click)="setTab('resolved')">
+      <span class="material-icons-outlined">task_alt</span>
+      Resolved
+      <span class="tab-count resolved-count" *ngIf="resolvedWarrantyRequests.length > 0">{{ resolvedWarrantyRequests.length }}</span>
+    </button>
+  </div>
+
   <!-- Filter Bar -->
   <div class="card filter-bar animate-slide-up">
     <div class="search-box">
@@ -17,9 +31,11 @@
              placeholder="Search by request #, requester or asset...">
     </div>
     <div class="filter-group">
-      <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()">
+      <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()" *ngIf="activeTab === 'resolved'">
         <option value="">All Statuses</option>
-        <option *ngFor="let status of statuses" [value]="status">{{ status }}</option>
+        <option value="Completed">Completed</option>
+        <option value="Rejected">Rejected</option>
+        <option value="Cancelled">Cancelled</option>
       </select>
       <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
         <option value="">All Urgency</option>
@@ -72,7 +88,7 @@
           </div>
         </div>
         <div class="request-actions">
-          <div class="action-buttons" *ngIf="req.status === 'Pending'">
+          <div class="action-buttons" *ngIf="activeTab === 'pending' && req.status === 'Pending'">
             <button class="btn-approve" (click)="openActionModal(req, 'approve')">
               <span class="material-icons-outlined">check_circle</span> Approve
             </button>

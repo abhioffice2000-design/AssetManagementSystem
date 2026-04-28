@@ -75,6 +75,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'Asset Inventory', icon: 'inventory', route: `${base}/inventory` },
           { label: 'Tickets', icon: 'confirmation_number', route: `${base}/tickets` },
+          { label: 'Warranty Extensions', icon: 'security', route: `${base}/warranty` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
