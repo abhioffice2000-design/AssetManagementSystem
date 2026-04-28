@@ -202,6 +202,7 @@ export class RequestAssetComponent implements OnInit {
             }
           }
         }
+<<<<<<< Updated upstream
       };      console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
       
       const res = await this.requestService.submitNewRequestForm(request1 as any);
@@ -222,6 +223,30 @@ export class RequestAssetComponent implements OnInit {
           if (serverPath) {
             await this.requestService.updateRequestDocumentPath(newrequestid, serverPath);
             console.log('[RequestAsset] File path saved to database');
+=======
+      }
+    };
+    // this.requestService.addRequest(newReq as any);
+    console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
+    
+    var res = await this.requestService.submitNewRequestForm(request1 as any);
+    console.log("res", res)
+    let newrequestid = res.new.t_asset_requests.request_id;
+    console.log("newrequestid", newrequestid)
+    // Resolve dynamic approver IDs
+    const approverDetails = await this.resolveApproverDetails(typeName);
+    const teamLeadId = approverDetails['Team Lead']?.id;
+    const assetManagerId = approverDetails['Asset Manager']?.id;
+
+    var request2 = {
+      tuple: {
+        new: {
+          t_request_approvals: {
+            request_id: `${newrequestid}`,
+            approver_id: formVal.hasEmailApproval ? assetManagerId : teamLeadId,
+            role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
+            status: 'Pending'
+>>>>>>> Stashed changes
           }
         } catch (uploadErr: any) {
           console.error('[RequestAsset] File upload failed:', uploadErr);
@@ -282,6 +307,43 @@ export class RequestAssetComponent implements OnInit {
       const errorMsg = error?.responseText || error?.errorThrown || error?.message || 'Unknown error';
       this.notificationService.showToast(`Failed to submit request: ${errorMsg}`, 'error');
     }
+  }
+
+  private async resolveApproverDetails(assetType: string): Promise<Record<string, { name: string, id: string }>> {
+    const details: Record<string, { name: string, id: string }> = {};
+    let user = this.authService.getCurrentUser();
+
+    try {
+      if (user && !user.projectId) {
+        const freshUser = await this.authService.getUserDetails(user.id);
+        if (freshUser) user = freshUser;
+      }
+
+      // 1. Team Lead
+      if (user?.projectId && user.projectId !== 'null') {
+        const project = await this.adminService.getProjectById(user.projectId);
+        if (project?.teamLead) {
+          details['Team Lead'] = {
+            name: project.teamLead,
+            id: project.teamLeadId || this.adminService.findUserIdByName(project.teamLead) || 'usr_003'
+          };
+        }
+      }
+
+      // 2. Asset Manager
+      if (assetType) {
+        const assignment = await this.adminService.getAssignmentByAssetType(assetType);
+        if (assignment) {
+          details['Asset Manager'] = {
+            name: assignment.assetManager,
+            id: assignment.assetManagerId || this.adminService.findUserIdByName(assignment.assetManager) || 'usr_004'
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve approver details:', err);
+    }
+    return details;
   }
 
   private async resolveApproverDetails(assetType: string): Promise<Record<string, { name: string, id: string }>> {

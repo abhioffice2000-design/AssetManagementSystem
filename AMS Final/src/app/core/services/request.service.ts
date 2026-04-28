@@ -938,7 +938,7 @@ export class RequestService {
       subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || ''),
       justification: reqData?.reason || '',
       urgency: urgency,
-      status: (status === RequestStatus.PENDING && currentStage !== ApprovalStage.TEAM_LEAD) ? RequestStatus.APPROVED : status,
+      status: status,
       currentStage: currentStage,
       hasEmailApproval: hasEmailApproval,
       emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
@@ -981,15 +981,27 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: reqData?.temp1 || reqData?.temp2 || reqData?.temp3 || '',
-      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || '',
+      allocatedAssetId: reqData?.temp1 || parent?.t_request_approvals?.temp1 || '',
+      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp1 || '',
+      assignedTypeId: assetInfo?.type_id || '',
+      assignedSubCategoryId: assetInfo?.sub_category_id || '',
+      assignedSerial: assetInfo?.serial_number || '',
+      assignedPurchaseDate: assetInfo?.purchase_date || '',
+      assignedWarrantyExpiry: assetInfo?.warranty_expiry || '',
       // Requester details from nested m_users
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
       requesterRole: this.getNullableValue(userInfo?.role_id),
       requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
       requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
-      teamLeadJustification: this.getNullableValue(reqData?.t_request_approvals?.reason || reqData?.t_request_approvals?.remarks || reqData?.t_request_approvals?.temp2)
+      teamLeadJustification: this.getNullableValue(
+        parent?.t_request_approvals?.reason || 
+        parent?.t_request_approvals?.remarks || 
+        parent?.t_request_approvals?.temp2 ||
+        reqData?.t_request_approvals?.reason ||
+        reqData?.t_request_approvals?.remarks ||
+        reqData?.t_request_approvals?.temp2
+      )
     };
   }
 
@@ -1024,7 +1036,7 @@ export class RequestService {
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
-      status: (status === RequestStatus.PENDING) ? RequestStatus.APPROVED : status,
+      status: status,
       currentStage: currentStage,
       hasEmailApproval: false,
       requestDate: data?.return_date || '',
