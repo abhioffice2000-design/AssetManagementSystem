@@ -205,24 +205,40 @@ export class LeadDashboardComponent implements OnInit {
     this.hs.ajax('GetRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
       {}
     ).then((resp: any) => {
-      const result = this.hs.xmltojson(resp, "t_request_approvals");
+      const result = this.hs.xmltojson(resp, "tuple") || this.hs.xmltojson(resp, "t_request_approvals");
       const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
+      console.log("rawData", rawData);
 
       // Map database fields to the AssetRequest interface fields used in the template
       this.teamRequests = rawData.map((item: any) => {
+        // Safe check for the data container
+        const parent = item.old || item;
         const request = this.requestService.mapTupleToRequest(item);
-        const reqItem = item.t_asset_requests || {};
+        
+        // Explicitly extract data from all possible joined tables with fallbacks
+        const reqItem = parent.t_request_approvals.t_asset_requests || {};
+        const approvalItem = parent.t_request_approvals || parent;
+        const userInfo = parent.t_request_approvals.m_users || reqItem.m_users || {};
+        const assetInfo = parent.t_request_approvals.m_assets || reqItem.m_assets || {};
+        const typeInfo = parent.t_request_approvals.m_asset_types || reqItem.m_asset_types || {};
+
         return {
           ...request,
-          reqStatus: reqItem.status || request.status,
-          status: item.status || request.status
+          // Robust mapping for critical fields to ensure they are never empty
+          requestNumber: reqItem.request_id || approvalItem.request_id || parent.request_id || request.requestNumber,
+          requesterName: userInfo.name,
+          category: reqItem.asset_type,
+          assetType: reqItem.temp1,
+          justification: reqItem.reason || reqItem.purpose || parent.reason || request.justification,
+          reqStatus: reqItem.status || parent.status || request.status,
+          status: approvalItem.status || parent.status || request.status,
+          remarks: approvalItem.remarks || '',
+          requestDate: reqItem.created_at || parent.created_at || request.requestDate
         };
-      }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
+
+      }).sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
 
       this.data.table = rawData;
-      
-      // We now fetch pendingApprovalsCount via getpendingcount() for better accuracy
-      // this.pendingApprovalsCount = this.teamRequests.filter(r => r.status === 'Pending').length;
       
       console.log("Mapped team requests:", this.teamRequests);
       this.isLoading = false;
@@ -231,6 +247,9 @@ export class LeadDashboardComponent implements OnInit {
       this.isLoading = false;
     });
   }
+
+
+
   getusercount() {
     this.hs.ajax('GetAllUserRoleProjectDetails', 'http://schemas.cordys.com/AMS_Database_Metadata', {}
     ).then((resp: any) => {
@@ -250,6 +269,7 @@ export class LeadDashboardComponent implements OnInit {
         team_lead: (u.m_projects && u.m_projects.team_lead) ? u.m_projects.team_lead : (this.userDetails.team_lead || this.userDetails.name || 'N/A')
       }));
       console.log("Team Size and Details updated from API:", this.teamSize, this.teamMembers);
+      this.getteamassetscount(); // Fetch team assets count now that we have the member IDs
     }).catch(err => {
       console.error("Error fetching user details in getusercount:", err);
     });
@@ -269,6 +289,31 @@ export class LeadDashboardComponent implements OnInit {
       console.log("Pending Approvals count updated from API:", this.pendingApprovalsCount);
     }).catch(err => {
       console.error("Error fetching pending count in getpendingcount:", err);
+    });
+  }
+
+  getteamassetscount() {
+    // Fetch all allocated assets from Cordys
+    this.hs.ajax('Getallocatedasset', 'http://schemas.cordys.com/AMS_Database_Metadata', {}
+    ).then((resp: any) => {
+      const result = this.hs.xmltojson(resp, "tuple");
+      const rawAssets = result ? (Array.isArray(result) ? result : [result]) : [];
+      
+      // Get the list of user IDs in the team
+      const teamUserIds = this.teamMembers.map(m => m.user_id);
+      
+      // Filter assets assigned to team members
+      // temp1 is used as the user_id in the m_assets table in this project
+      const teamAllocatedAssets = rawAssets.filter((tuple: any) => {
+        const assetData = tuple.old?.m_assets || tuple.m_assets || tuple;
+        const assignedUserId = assetData.temp1 || assetData.user_id || '';
+        return teamUserIds.includes(assignedUserId);
+      });
+
+      this.teamAssets = teamAllocatedAssets.length;
+      console.log("Team Assets count updated from API:", this.teamAssets);
+    }).catch(err => {
+      console.error("Error fetching team assets count:", err);
     });
   }
 

@@ -458,7 +458,7 @@ export class MyAssetComponent implements OnInit {
         await this.requestService.updateAssetStatus(assetUpdateReq);
       }
 
-      // Update the approval record status to Approved (equivalent to Employee's createEntryForRequestor logic)
+      // Update the approval record status to Completed (equivalent to Employee's createEntryForRequestor logic)
       if (this.approval_id) {
         const updateReq2 = {
           tuple: {
@@ -469,6 +469,7 @@ export class MyAssetComponent implements OnInit {
         console.log('[MyAsset] Updating approval record to Approved:', this.approval_id);
         await this.requestService.updateEntryForTeamLead(updateReq2);
       }
+
 
       // Complete the BPM task
       if (this.task_id) {
