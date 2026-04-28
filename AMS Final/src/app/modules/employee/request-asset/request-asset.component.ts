@@ -18,6 +18,7 @@ import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../..
 })
 export class RequestAssetComponent implements OnInit {
   requestForm!: FormGroup;
+  isSubmitting = false;
 
   // Master data from Cordys
   masterAssetTypes: any[] = [];
@@ -168,25 +169,23 @@ export class RequestAssetComponent implements OnInit {
       return;
     }
 
-    const isDeptHead = user.role === 'Team Lead'; // Simplified for demo
-    const skipTeamLead = formVal.hasEmailApproval || isDeptHead;
-
+    const isDeptHead = user.role === 'Team Lead';
     const selectedTypeObj = this.masterAssetTypes.find(t => String(t.type_id) === String(formVal.assetType));
     const typeName = selectedTypeObj ? selectedTypeObj.type_name : 'Hardware';
 
     const selectedSubCatObj = this.masterSubCategories.find(s => String(s.sub_category_id) === String(formVal.subCategory));
     const subCatName = selectedSubCatObj ? selectedSubCatObj.name : formVal.subCategory;
 
-    // Truncate filename for DB columns (temp2 max 50 chars)
     let dbFileName = this.selectedFileName || '';
     if (dbFileName.length > 50) {
       const extIdx = dbFileName.lastIndexOf('.');
-      const ext = extIdx >= 0 ? dbFileName.substring(extIdx) : '';  // e.g. ".pdf"
+      const ext = extIdx >= 0 ? dbFileName.substring(extIdx) : '';
       dbFileName = dbFileName.substring(0, 50 - ext.length) + ext;
     }
 
     try {
-      var request1 = {
+      // 1. Submit Request
+      const request1 = {
         tuple: {
           new: {
             t_asset_requests: {
@@ -202,60 +201,26 @@ export class RequestAssetComponent implements OnInit {
             }
           }
         }
-<<<<<<< Updated upstream
-      };      console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
-      
-      const res = await this.requestService.submitNewRequestForm(request1 as any);
-      console.log("res", res);
-      const newrequestid = res.new.t_asset_requests.request_id;
-      console.log("newrequestid", newrequestid);
+      };
 
-      // Step 2: Upload the file to the Cordys server filesystem
+      console.log('[RequestAsset] REQ1:', request1);
+      const res = await this.requestService.submitNewRequestForm(request1 as any);
+      const newrequestid = res.new?.t_asset_requests?.request_id;
+      if (!newrequestid) throw new Error('Failed to retrieve request ID');
+
+      // 2. Handle File Upload
       if (this.selectedFileBase64) {
         try {
-          const serverPath = await this.requestService.uploadFileToServer(
-            this.selectedFileName!,
-            this.selectedFileBase64
-          );
-          console.log('[RequestAsset] File uploaded to server at:', serverPath);
-
-          // Store the server file path in the document column
+          const serverPath = await this.requestService.uploadFileToServer(this.selectedFileName!, this.selectedFileBase64);
           if (serverPath) {
             await this.requestService.updateRequestDocumentPath(newrequestid, serverPath);
-            console.log('[RequestAsset] File path saved to database');
-=======
-      }
-    };
-    // this.requestService.addRequest(newReq as any);
-    console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
-    
-    var res = await this.requestService.submitNewRequestForm(request1 as any);
-    console.log("res", res)
-    let newrequestid = res.new.t_asset_requests.request_id;
-    console.log("newrequestid", newrequestid)
-    // Resolve dynamic approver IDs
-    const approverDetails = await this.resolveApproverDetails(typeName);
-    const teamLeadId = approverDetails['Team Lead']?.id;
-    const assetManagerId = approverDetails['Asset Manager']?.id;
-
-    var request2 = {
-      tuple: {
-        new: {
-          t_request_approvals: {
-            request_id: `${newrequestid}`,
-            approver_id: formVal.hasEmailApproval ? assetManagerId : teamLeadId,
-            role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
-            status: 'Pending'
->>>>>>> Stashed changes
           }
-        } catch (uploadErr: any) {
-          console.error('[RequestAsset] File upload failed:', uploadErr);
-          const uploadErrMsg = uploadErr?.responseText || uploadErr?.errorThrown || uploadErr?.message || 'Unknown upload error';
-          this.notificationService.showToast(`File upload failed: ${uploadErrMsg}`, 'error');
+        } catch (uploadErr) {
+          console.error('[RequestAsset] Upload failed:', uploadErr);
         }
       }
 
-      // Resolve dynamic approver IDs
+      // 3. Resolve Approvers & Create Approval Entry
       const approverDetails = await this.resolveApproverDetails(typeName);
       const teamLeadId = approverDetails['Team Lead']?.id || 'usr_003';
       const assetManagerId = approverDetails['Asset Manager']?.id || 'usr_004';
@@ -274,19 +239,18 @@ export class RequestAssetComponent implements OnInit {
       };
 
       const res2 = await this.requestService.createEntryForTeamLead(request2 as any);
-      console.log("res2", res2);
-      const newapprovalid = res2.new.t_request_approvals.approval_id;
-      console.log("newapprovalid", newapprovalid);
+      const newapprovalid = res2.new?.t_request_approvals?.approval_id;
 
+      // 4. Trigger BPM Workflow
       const request3 = {
         InputDoc: this.selectedFileBase64 ? `${this.selectedFileName}|${this.selectedFileBase64}` : formVal.hasEmailApproval.toString(),
         Inputusrid: user.id,
         Inputrequestapprovalid: `${newapprovalid}`,
         Inputrequestid: `${newrequestid}`
       };
-    await this.requestService.callBPMForRequest(request3 as any);
-      
-      // Trigger notification email
+      await this.requestService.callBPMForRequest(request3 as any);
+
+      // 5. Finalize
       this.mailService.sendAssetRequestConfirmation({
         employeeName: user.name,
         employeeEmail: user.email,
@@ -298,14 +262,13 @@ export class RequestAssetComponent implements OnInit {
         teamLeadName: user.teamLeadName
       });
 
-      this.notificationService.showToast(`Request Raised Successfully! (ID: ${newrequestid})`, 'success');
-      this.notificationService.addNotification('Request Submitted', `Your asset request has been submitted.`, 'info');
-
+      this.notificationService.showToast('Request Raised Successfully!', 'success');
       this.router.navigate(['/employee/my-requests']);
     } catch (error: any) {
       console.error('[RequestAsset] Submission failed:', error);
-      const errorMsg = error?.responseText || error?.errorThrown || error?.message || 'Unknown error';
-      this.notificationService.showToast(`Failed to submit request: ${errorMsg}`, 'error');
+      this.notificationService.showToast('Failed to submit request.', 'error');
+    } finally {
+      this.isSubmitting = false;
     }
   }
 
@@ -345,41 +308,5 @@ export class RequestAssetComponent implements OnInit {
     }
     return details;
   }
-
-  private async resolveApproverDetails(assetType: string): Promise<Record<string, { name: string, id: string }>> {
-    const details: Record<string, { name: string, id: string }> = {};
-    let user = this.authService.getCurrentUser();
-
-    try {
-      if (user && !user.projectId) {
-        const freshUser = await this.authService.getUserDetails(user.id);
-        if (freshUser) user = freshUser;
-      }
-
-      // 1. Team Lead
-      if (user?.projectId && user.projectId !== 'null') {
-        const project = await this.adminService.getProjectById(user.projectId);
-        if (project?.teamLead) {
-          details['Team Lead'] = {
-            name: project.teamLead,
-            id: project.teamLeadId || this.adminService.findUserIdByName(project.teamLead) || 'usr_003'
-          };
-        }
-      }
-
-      // 2. Asset Manager
-      if (assetType) {
-        const assignment = await this.adminService.getAssignmentByAssetType(assetType);
-        if (assignment) {
-          details['Asset Manager'] = {
-            name: assignment.assetManager,
-            id: assignment.assetManagerId || this.adminService.findUserIdByName(assignment.assetManager) || 'usr_004'
-          };
-        }
-      }
-    } catch (err) {
-      console.error('Failed to resolve approver details:', err);
-    }
-    return details;
-  }
+  
 }
