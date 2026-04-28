@@ -632,14 +632,16 @@ export class MyRequestsComponent implements OnInit {
       const res2 = await this.requestService.createEntryForTeamLead(approvalEntry as any);
       const newapprovalid = res2.new.t_request_approvals.approval_id;
 
-      // 3. Call BPM
-      const bpmRequest = {
-        InputDoc: formVal.hasEmailApproval.toString(),
-        Inputusrid: user.id,
-        Inputrequestapprovalid: `${newapprovalid}`,
-        Inputrequestid: this.selectedRequest.requestNumber
+      // 3. Complete the current BPM task (the one that notified about rejection)
+      await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
+      console.log('Taskid to complete:', this.task_id);
+      if (this.task_id) {
+        const reqTaskComplete = {
+          TaskId: `${this.task_id}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(reqTaskComplete as any);
       }
-      await this.requestService.callBPMForRequest(bpmRequest as any);
 
       this.notificationService.showToast('Request resubmitted successfully.', 'success');
       this.closeTrackingModal();

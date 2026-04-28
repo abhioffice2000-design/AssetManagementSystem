@@ -484,8 +484,6 @@ export class AllocationTicketsComponent implements OnInit {
         new: {
           m_assets: {
             status: "Allocated",
-            assigned_to: ticket.rawRequest.requesterId,
-            assigned_to_name: ticket.rawRequest.requesterName,
             temp1: ticket.rawRequest.requesterId,
             temp2: ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate'
           }

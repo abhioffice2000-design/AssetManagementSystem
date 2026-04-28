@@ -6,6 +6,7 @@ import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
+import { HeroService } from '../../../core/services/hero.service';
 
 
 
@@ -51,6 +52,7 @@ export class AssetRequestsComponent implements OnInit {
   currentPage = 1;
   pageSize = 5;
   protected readonly Math = Math;
+  task_id_latest = '';
 
   constructor(
     private requestService: RequestService,
@@ -58,7 +60,8 @@ export class AssetRequestsComponent implements OnInit {
     private userService: UserService,
     private assetService: AssetService,
     private notificationService: NotificationService,
-    private mailService: MailService
+    private mailService: MailService,
+    private hs: HeroService
   ) { }
 
 
@@ -122,6 +125,23 @@ export class AssetRequestsComponent implements OnInit {
       this.filteredConfirmationRequests = [];
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  async Getassetidbyapprovalid(request_id: any) {
+    try {
+      const resp: any = await this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
+        { Request_id: request_id }
+      );
+      const data = this.hs.xmltojson(resp, 'tuple');
+      if (data) {
+        const parent = data.old || data;
+        const approval = parent.t_request_approvals || {};
+        this.task_id_latest = approval.temp2 || '';
+        console.log("[AssetManager] Latest Task ID fetched:", this.task_id_latest);
+      }
+    } catch (err) {
+      console.error("[AssetManager] Error fetching latest task ID:", err);
     }
   }
 
@@ -302,49 +322,68 @@ export class AssetRequestsComponent implements OnInit {
     }
 
     if (this.actionType === 'approve') {
-      if (this.selectedRequest.requestType !== RequestType.RETURN_ASSET) {
+      if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
+        console.log("Executing Return Approval Flow...");
+
+        // Request 1: Update current manager approval to 'Approved'
+        const req6 = {
+          tuple: {
+            old: { t_asset_return_approvals: { return_approval_id: this.selectedRequest.returnapprovalId } },
+            new: { t_asset_return_approvals: { status: "Approved", remarks: this.actionComments } }
+          }
+        };
+
+        try {
+          await this.requestService.updateReturnAssetStatus(req6 as any);
+          
+          // Request 2: Create next pending task for Allocation Team
+          const req7 = {
+            tuple: {
+              new: {
+                t_asset_return_approvals: {
+                  approver_id: 'usr_007', // Allocation Team ID
+                  request_id: this.selectedRequest.id,
+                  role: "Allocation Team Member",
+                  status: "Pending",
+                  remarks: this.actionComments,
+                }
+              }
+            }
+          };
+          await this.requestService.completeTask(req7 as any);
+          
+          const taskid = this.selectedRequest?.taskid;
+          if (taskid) {
+            await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+          }
+          this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
+        } catch (error) {
+          console.error("Return Approval SOAP call failed:", error);
+        }
+      } else {
+        // Approval logic for Standard Requests (New Asset / Warranty)
         var req1 = {
           tuple: {
-            old: {
-              t_request_approvals: {
-                approval_id: this.selectedRequest.approvalId,
-
-              }
-            }
-            ,
-            new: {
-              t_request_approvals: {
-                status: "Approved",
-                remarks: this.actionComments,
-              }
-
-            }
-
+            old: { t_request_approvals: { approval_id: this.selectedRequest.approvalId } },
+            new: { t_request_approvals: { status: "Approved", remarks: this.actionComments } }
           }
-        }
-        console.log("First request is", req1)
-        await this.requestService.updateEntryForAssetManager(req1 as any)
+        };
+        await this.requestService.updateEntryForAssetManager(req1 as any);
+
         var req2 = {
           tuple: {
-            old: {
-              m_assets: {
-                asset_id: this.selectedRequest.assignedAssetId,
-
-              }
-            }
-            ,
+            old: { m_assets: { asset_id: this.selectedRequest.assignedAssetId } },
             new: {
               m_assets: {
                 status: "MoveToAllocationTeam",
-                temp1: this.selectedRequest.requesterId, // Keep requester ID in temp1 as per convention
+                temp1: this.selectedRequest.requesterId,
                 temp2: this.selectedRequest.id
               }
             }
-
           }
-        }
-        console.log("Request2 is ", req2);
-        await this.requestService.updateAssetStatus(req2 as any)
+        };
+        await this.requestService.updateAssetStatus(req2 as any);
+
         var req3 = {
           tuple: {
             new: {
@@ -355,150 +394,100 @@ export class AssetRequestsComponent implements OnInit {
                 status: "Pending",
                 remarks: this.actionComments,
                 temp1: this.selectedRequest.assignedAssetId,
-
               }
             }
           }
-        }
-        console.log("Third request is ", req3);
+        };
         await this.requestService.createEntryForTeamAllocationMember(req3 as any);
-        var taskid = this.selectedRequest?.taskid;
-        console.log("Taskid is  ", taskid);
-        var req4 = {
-          TaskId: `${taskid}`,
-          Action: 'COMPLETE'
-        }
-        await this.requestService.completeUserTask(req4 as any)
-        
-        // Find allocation team member name
-        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
-        const memberName = member ? member.name : 'Allocation Team';
 
+        const taskid = this.selectedRequest?.taskid;
+        if (taskid) {
+          await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+        }
+
+        // Send Mail
+        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
         this.mailService.sendAssetManagerStatusUpdate({
           requestId: this.selectedRequest.id,
           employeeName: this.selectedRequest.requesterName,
           status: 'Approved',
           managerName: currentUser.name,
           remarks: this.actionComments,
-          allocationMemberName: memberName,
+          allocationMemberName: member ? member.name : 'Allocation Team',
           assetName: this.selectedRequest.assetType
         });
 
         this.notificationService.showToast(`Request ${this.selectedRequest.id} approved and routed for allocation.`, 'success');
-
-        // this.requestService.approveRequest(
-        //   this.selectedRequest.id,
-        //   currentUser.id,
-        //   currentUser.name,
-        //   this.actionComments,
-        //   ApprovalStage.ASSET_MANAGER
-        // );
       }
-      // Check by request type rather than tab for more robust logic
+    } else {
+      // Rejection logic for ALL request types
       if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
-        if (this.actionType === 'approve') {
-          console.log("Executing Return Approval Flow...");
-
-          // Request 1: Update current manager approval to 'Approved'
-          const req6 = {
-            tuple: {
-              old: {
-                t_asset_return_approvals: {
-                  return_approval_id: this.selectedRequest.returnapprovalId,
-                }
-              },
-              new: {
-                t_asset_return_approvals: {
-                  status: "Approved",
-                  remarks: this.actionComments,
-                }
-              }
-            }
-          };
-
-          console.log("SOAP Update (REQ6):", req6);
-          try {
-            await this.requestService.updateReturnAssetStatus(req6 as any);
-            console.log("Step 1 (Update Status) Success");
-
-            // Request 2: Create next pending task for Allocation Team
-            const req7 = {
-              tuple: {
-                new: {
-                  t_asset_return_approvals: {
-                    approver_id: 'usr_007', // Allocation Team ID
-                    request_id: this.selectedRequest.id,
-                    role: "Allocation Team Member",
-                    status: "Pending",
-                    remarks: this.actionComments,
-                  }
-                }
-              }
-            };
-
-            console.log("SOAP Create (REQ7):", req7);
-            await this.requestService.completeTask(req7 as any);
-            var taskid = this.selectedRequest?.taskid;
-            var req4 = {
-              TaskId: `${taskid}`,
-              Action: 'COMPLETE'
-            }
-            await this.requestService.completeUserTask(req4 as any)
-            this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
-            console.log("Step 2 (Forwarding) Success");
-
-          } catch (error) {
-            console.error("Return Approval SOAP call failed:", error);
+        const req6 = {
+          tuple: {
+            old: { t_asset_return_approvals: { return_approval_id: this.selectedRequest.returnapprovalId } },
+            new: { t_asset_return_approvals: { status: "Rejected", remarks: this.actionComments } }
           }
-        } else {
-          // Rejection logic for returns
-          this.requestService.rejectRequest(
-            this.selectedRequest.id,
-            currentUser.id,
-            currentUser.name,
-            this.actionComments,
-            ApprovalStage.ASSET_MANAGER
-          );
-          this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
+        };
+        await this.requestService.updateReturnAssetStatus(req6 as any);
+        const taskid = this.selectedRequest?.taskid;
+        if (taskid) {
+          await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
         }
+        this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
       } else {
-        // Standard Request Logic (New Asset / Warranty)
-        if (this.actionType === 'approve') {
-          this.requestService.approveRequest(
-            this.selectedRequest.id,
-            currentUser.id,
-            currentUser.name,
-            this.actionComments,
-            ApprovalStage.ASSET_MANAGER
-          );
-          this.notificationService.showToast(`Request ${this.selectedRequest.id} approved successfully.`, 'success');
-        } else {
+        // Standard Request Rejection (New Asset / Warranty)
+        const reqReject = {
+          tuple: {
+            old: { t_request_approvals: { approval_id: this.selectedRequest.approvalId } },
+            new: { t_request_approvals: { status: "Rejected", remarks: this.actionComments } }
+          }
+        };
+        await this.requestService.updateEntryForAssetManager(reqReject as any);
 
-          this.requestService.rejectRequest(
-            this.selectedRequest.id,
-            currentUser.id,
-            currentUser.name,
-            this.actionComments,
-            ApprovalStage.ASSET_MANAGER
-          );
-          this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
-          
-          this.mailService.sendAssetManagerStatusUpdate({
-            requestId: this.selectedRequest.id,
-            employeeName: this.selectedRequest.requesterName,
-            status: 'Rejected',
-            managerName: currentUser.name,
-            remarks: this.actionComments
-          });
+        const employeeApprovalPayload = {
+          tuple: {
+            new: {
+              t_request_approvals: {
+                request_id: this.selectedRequest.id,
+                approver_id: this.selectedRequest.requesterId,
+                role: "Employee",
+                status: "Pending"
+              }
+            }
+          }
+        };
+        await this.requestService.updateEntryForAssetManager(employeeApprovalPayload as any);
+
+        const rejectRequestPayload = {
+          tuple: {
+            old: { t_asset_requests: { request_id: this.selectedRequest.id } },
+            new: { t_asset_requests: { status: 'Rejected' } }
+          }
+        };
+        await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+
+        await this.Getassetidbyapprovalid(this.selectedRequest.id);
+        const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+        if (taskid) {
+          await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
         }
 
+        this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
 
+        this.mailService.sendAssetManagerStatusUpdate({
+          requestId: this.selectedRequest.id,
+          employeeName: this.selectedRequest.requesterName,
+          status: 'Rejected',
+          managerName: currentUser.name,
+          remarks: this.actionComments || 'Rejected by Asset Manager'
+        });
       }
+    }
 
       this.closeActionModal();
       this.loadAllData();
     }
-  }
+
   // ─── Confirmation Requests Tab — dedicated approve / reject flow ──────────
 
   /**
@@ -622,23 +611,44 @@ export class AssetRequestsComponent implements OnInit {
       console.log('[Confirmation] Reject payload (step 1):', rejectApprovalPayload);
       await this.requestService.updateEntryForAssetManager(rejectApprovalPayload as any);
 
-      // Step 2 — update the asset_request row status to Rejected
-      const rejectRequestPayload = {
+      // Step 1.5 — Create new entry for Employee (same as Team Lead logic)
+      const employeeApprovalPayload = {
         tuple: {
-          old: {
-            t_asset_requests: {
-              request_id: this.selectedRequest.id
-            }
-          },
           new: {
-            t_asset_requests: {
-              status: 'Rejected'
+            t_request_approvals: {
+              request_id: this.selectedRequest.id,
+              approver_id: this.selectedRequest.requesterId,
+              role: "Employee",
+              status: "Pending"
             }
           }
         }
       };
+      console.log('[Confirmation] Employee entry payload:', employeeApprovalPayload);
+      await this.requestService.updateEntryForAssetManager(employeeApprovalPayload as any);
+
+      // Step 2 — update the asset_request row status to Rejected
+      const rejectRequestPayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: this.selectedRequest.id } },
+          new: { t_asset_requests: { status: 'Rejected' } }
+        }
+      };
       console.log('[Confirmation] Reject payload (step 2):', rejectRequestPayload);
       await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+
+      // Step 3 — Complete BPM Task
+      await this.Getassetidbyapprovalid(this.selectedRequest.id);
+      const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+      if (taskid) {
+        const reqTaskComplete = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        };
+        console.log('[Confirmation] Completing BPM Task:', taskid);
+        await this.requestService.completeUserTask(reqTaskComplete as any);
+      }
+
       this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
       
       this.mailService.sendAssetManagerStatusUpdate({

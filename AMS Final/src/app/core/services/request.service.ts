@@ -698,6 +698,38 @@ export class RequestService {
   }
 
   /**
+   * Fetches all asset requests for the currently logged-in user from Cordys.
+   * Uses the getAllRequestsBasedOnLoggedInUser SOAP service.
+   */
+  async getAllRequestsBasedOnLoggedInUser(userId: string): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllRequestsBasedOnLoggedInUser  xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetAllRequestsBasedOnLoggedInUser >
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      let tuples = this.hs.xmltojson(response, 'tuple') || this.hs.xmltojson(response, 't_asset_requests');
+
+      if (!tuples) {
+        console.warn('[RequestService] No data found in getAllRequestsBasedOnLoggedInUser response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      console.log(`[RequestService] getAllRequestsBasedOnLoggedInUser returned ${tupleArray.length} record(s)`);
+      return tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
+    } catch (err) {
+      console.error('[RequestService] Failed to fetch from getAllRequestsBasedOnLoggedInUser:', err);
+      return [];
+    }
+  }
+
+  /**
    * Fetches all requests for a specific employee from Cordys.
    * Uses the Getallrequest SOAP service and filters the result by user ID.
    */
@@ -720,7 +752,8 @@ export class RequestService {
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
 
       return tupleArray
-        .map((tuple: any) => this.mapTupleToRequest(tuple));
+        .map((tuple: any) => this.mapTupleToRequest(tuple))
+        .filter((req: AssetRequest) => req.requesterId === userId);
     } catch (err) {
       console.error('Failed to fetch employee requests from Cordys:', err);
       return [];
@@ -826,7 +859,8 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || reqData?.temp1 || reqData?.temp2 || reqData?.temp3 || '',
+      allocatedAssetId: reqData?.temp1 || reqData?.temp2 || reqData?.temp3 || '',
+      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || '',
       // Requester details from nested m_users
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
@@ -1183,11 +1217,11 @@ export class RequestService {
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
+      console.log('UpdateT_request_approvals response:', res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
-      console.log(err);
-      return err;
+      console.error('UpdateT_request_approvals error:', err);
+      throw err;
     })
   }
 
@@ -1236,11 +1270,11 @@ export class RequestService {
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
+      console.log('UpdateM_assets response:', res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
-      console.log(err);
-      return err;
+      console.error('UpdateM_assets error:', err);
+      throw err;
     })
   }
   getAllocationTeamMemberAccordingtoManager(request: any): any {
