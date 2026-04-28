@@ -781,16 +781,19 @@ export class AdminDataService {
           const t2 = this.normalizeSoapNullable(requestData.temp2, '');
           const d1 = this.normalizeSoapNullable(requestData.document, '');
           
-          // Case 1: document column has modern attachment format filename|base64
+          // Case 1: document column has a server file path (from UploadDocuments_AMS)
+          if (d1 && (d1.includes('\\') || d1.includes('/') || /^[A-Z]:/i.test(d1))) return d1;
+
+          // Case 2: document column has modern attachment format filename|base64
           if (d1.includes('|') || d1.startsWith('data:')) return d1;
 
-          // Case 2: temp2 has modern attachment format filename|base64
+          // Case 3: temp2 has modern attachment format filename|base64
           if (t2.includes('|') || t2.startsWith('data:')) return t2;
           
-          // Case 3: Just filename in temp2
+          // Case 4: Just filename in temp2
           if (t2 && t2 !== 'null') return t2;
           
-          // Case 4: fallback to document if it's not a placeholder
+          // Case 5: fallback to document if it's not a placeholder
           if (d1 && d1 !== 'ATTACHED' && d1 !== 'null' && !d1.includes('BPM')) return d1;
           
           return '';

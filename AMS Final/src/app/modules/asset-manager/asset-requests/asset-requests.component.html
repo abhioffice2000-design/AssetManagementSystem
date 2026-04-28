@@ -375,7 +375,7 @@
               <div *ngIf="detailRequest.document" class="doc-actions-wrapper">
                 <span class="email-doc">
                   <span class="material-icons-outlined">attachment</span>
-                  <span>{{ detailRequest.document }}</span>
+                  <span [title]="detailRequest.document">{{ extractFileName(detailRequest.document) }}</span>
                 </span>
                 <div class="doc-actions">
                   <button class="btn-small-outline doc-btn" (click)="viewDocument(detailRequest.document)">

@@ -312,80 +312,90 @@ export class AssetTransactionComponent implements OnInit {
   async downloadDocument(doc: string, requestId?: string): Promise<void> {
     console.log('[AssetTransaction] downloadDocument called. doc:', doc, '| requestId:', requestId);
 
-    if (!requestId) {
-      this.notificationService.showToast('No request ID available for download.', 'error');
+    // Use doc (the document field from the request) as the server path
+    let serverPath = doc;
+
+    // If doc is empty/null, try fetching from DB by requestId
+    if ((!serverPath || serverPath === 'null') && requestId) {
+      try {
+        const docInfo = await this.requestService.getRequestDocumentInfo(requestId);
+        serverPath = docInfo?.filePath || '';
+      } catch (e) {
+        console.error('[AssetTransaction] Failed to fetch doc info:', e);
+      }
+    }
+
+    if (!serverPath || serverPath === 'null') {
+      this.notificationService.showToast('No attachment found for this request.', 'error');
       return;
     }
 
-    this.notificationService.showToast('Fetching attachment...', 'info');
+    // Use the SOAP DownloadFile_AMS service to fetch the file
+    await this.fetchAndOpenFile(serverPath, 'view');
+  }
+
+  private async fetchAndOpenFile(serverPath: string, action: 'view' | 'download'): Promise<void> {
+    const displayName = this.extractFileName(serverPath);
+    this.notificationService.showToast(`Fetching: ${displayName}...`, 'info');
 
     try {
-      // Step 1: Get the stored file path and filename from the database
-      const docInfo = await this.requestService.getRequestDocumentInfo(requestId);
-      console.log('[AssetTransaction] Document info:', docInfo);
+      const parts = serverPath.split(/[\\\/]/);
+      const fileName = parts.pop() || '';
+      const dirPath = parts.join('\\');
 
-      let { filePath, fileName } = docInfo;
-
-      if (!filePath || filePath === 'null') {
-        this.notificationService.showToast('No attachment file path found for this request.', 'error');
+      if (!fileName || !dirPath) {
+        this.notificationService.showToast('Invalid file path.', 'error');
         return;
       }
 
-      // Extract directory and filename from the full path
-      // The upload returns full path like: C:\...\AMS_Uploads\filename.pdf
-      let dirPath = filePath;
-      let downloadName = fileName || 'attachment';
-
-      // If filePath contains a file (has extension), split into dir and name
-      const lastSlash = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
-      if (lastSlash >= 0) {
-        dirPath = filePath.substring(0, lastSlash);
-        const serverFileName = filePath.substring(lastSlash + 1);
-        if (serverFileName) {
-          downloadName = serverFileName;
-        }
-      }
-
-      console.log('[AssetTransaction] Downloading from dir:', dirPath, '| file:', downloadName);
-
-      // Step 2: Call the server-side DownloadFile service to get base64 content
-      const base64Content = await this.requestService.downloadFileFromServer(downloadName, dirPath);
+      const base64Content = await this.requestService.downloadFileFromServer(fileName, dirPath);
 
       if (!base64Content || base64Content.length < 10) {
         this.notificationService.showToast('File content is empty or could not be retrieved.', 'error');
         return;
       }
 
-      // Step 3: Determine MIME type from file extension
-      const ext = downloadName.split('.').pop()?.toLowerCase() || '';
-      const mimeTypes: { [key: string]: string } = {
-        'pdf': 'application/pdf',
-        'png': 'image/png',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const mimeMap: { [key: string]: string } = {
+        'pdf': 'application/pdf', 'png': 'image/png',
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
         'doc': 'application/msword',
         'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'xls': 'application/vnd.ms-excel',
         'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'eml': 'message/rfc822',
-        'msg': 'application/vnd.ms-outlook'
       };
-      const mimeType = mimeTypes[ext] || 'application/octet-stream';
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
 
-      // Step 4: Create a data URL and trigger browser download
-      const dataUrl = `data:${mimeType};base64,${base64Content}`;
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = fileName || downloadName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const byteChars = atob(base64Content);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNums)], { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
 
-      this.notificationService.showToast(`Downloading: ${fileName || downloadName}`, 'success');
-    } catch (err) {
-      console.error('[AssetTransaction] Download failed:', err);
-      this.notificationService.showToast('Failed to download attachment. Please try again.', 'error');
+      if (action === 'view') {
+        window.open(blobUrl, '_blank');
+        this.notificationService.showToast(`Opened: ${displayName}`, 'success');
+      } else {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = displayName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.notificationService.showToast(`Downloaded: ${displayName}`, 'success');
+      }
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err: any) {
+      console.error('[AssetTransaction] File fetch failed:', err);
+      this.notificationService.showToast(`Failed to fetch file: ${err?.message || 'Unknown error'}`, 'error');
     }
+  }
+
+  extractFileName(path: string): string {
+    if (!path) return 'attachment';
+    const parts = path.split(/[\\\/]/);
+    return parts[parts.length - 1] || 'attachment';
   }
 
   formatSubcategory(subCatId: string): string {

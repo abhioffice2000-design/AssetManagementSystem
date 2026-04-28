@@ -826,6 +826,8 @@ export class RequestService {
       document: (() => {
         const t2 = this.getNullableValue(reqData?.temp2) || '';
         const d1 = this.getNullableValue(reqData?.document) || '';
+        // Server file path from UploadDocuments_AMS
+        if (d1 && (d1.includes('\\') || d1.includes('/') || /^[A-Z]:/i.test(d1))) return d1;
         if (d1.includes('|') || d1.startsWith('data:')) return d1;
         if (t2.includes('|') || t2.startsWith('data:')) return t2;
         if (t2 && t2 !== 'null') return t2;
@@ -1201,51 +1203,113 @@ export class RequestService {
 
   /**
    * Uploads a file to the Cordys server filesystem via the UploadDocuments_AMS SOAP service.
+   * Uses raw SOAP XML with CDATA wrapping to safely transmit large base64 content
+   * without XML parsing issues or truncation from auto-serialization.
    * @param fileName Original filename
    * @param fileContent Base64-encoded file content (may include data URI prefix)
    * @returns The server file path where the file was saved
    */
   async uploadFileToServer(fileName: string, fileContent: string): Promise<string> {
-    return this.hs.ajax(
-      'UploadDocuments_AMS',
-      'http://schemas.cordys.com/AMS_Database_Metadata',
-      { FileName: fileName, FileContent: fileContent }
+    // Build raw SOAP XML — CDATA wrapping prevents base64 characters (+, /, =)
+    // from breaking XML parsing and avoids payload truncation by $.cordys.ajax auto-serializer
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UploadDocuments_AMS xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <FileName><![CDATA[${fileName}]]></FileName>
+      <FileContent><![CDATA[${fileContent}]]></FileContent>
+    </UploadDocuments_AMS>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
     ).then((res: any) => {
-      // Cordys custom web services return the value in a <return> element
       console.log('[uploadFileToServer] Raw response:', res);
+      console.log('[uploadFileToServer] Response JSON:', JSON.stringify(res));
+
+      // Recursive helper: dig into any object to find the first non-empty string value
+      const extractString = (obj: any, depth: number = 0): string => {
+        if (!obj || depth > 10) return '';
+        if (typeof obj === 'string' && obj.trim()) return obj.trim();
+        if (typeof obj !== 'object') return '';
+        // Check common Cordys keys first
+        for (const key of ['#text', 'text', '_', '$', 'return']) {
+          if (obj[key] && typeof obj[key] === 'string' && obj[key].trim()) {
+            return obj[key].trim();
+          }
+        }
+        // Recurse into all child properties
+        for (const key of Object.keys(obj)) {
+          if (key.startsWith('@') || key.startsWith('xmlns')) continue; // skip XML attributes
+          const val = extractString(obj[key], depth + 1);
+          if (val && val.length > 3) return val; // skip trivially short values
+        }
+        return '';
+      };
+
       let filePath = '';
-      // Try 'return' key first (standard Cordys custom WS response)
+
+      // Strategy 1: Look for 'return' element
       const ret = this.hs.xmltojson(res, 'return');
-      if (ret && typeof ret === 'string') {
-        filePath = ret;
-      } else if (ret && typeof ret === 'object') {
-        filePath = ret['#text'] || ret.text || ret._ || String(ret);
-      } else {
-        // Fallback: try method name as key
-        const alt = this.hs.xmltojson(res, 'UploadDocuments_AMS');
-        filePath = (typeof alt === 'string') ? alt : String(alt || '');
+      if (ret) {
+        filePath = (typeof ret === 'string') ? ret : extractString(ret);
       }
-      console.log('[uploadFileToServer] File saved at:', filePath);
+
+      // Strategy 2: Look for Response wrapper
+      if (!filePath) {
+        const resp = this.hs.xmltojson(res, 'UploadDocuments_AMSResponse');
+        if (resp) {
+          filePath = extractString(resp);
+        }
+      }
+
+      // Strategy 3: Look for the method element itself
+      if (!filePath) {
+        const method = this.hs.xmltojson(res, 'UploadDocuments_AMS');
+        if (method) {
+          filePath = extractString(method);
+        }
+      }
+
+      // Strategy 4: Try extracting from the raw response object
+      if (!filePath) {
+        filePath = extractString(res);
+      }
+
+      console.log('[uploadFileToServer] Extracted file path:', filePath);
       return filePath;
     }).catch((err: any) => {
-      console.error('[uploadFileToServer] Failed:', err);
+      console.error('[uploadFileToServer] SOAP Error:', err);
+      const errorDetail = err?.responseText || err?.errorThrown || err?.message || 'Unknown error';
+      console.error('[uploadFileToServer] Error detail:', errorDetail);
       throw err;
     });
   }
 
   /**
    * Updates the document column of an existing asset request with the server file path.
+   * Uses raw SOAP XML to safely handle backslashes in file paths.
    */
   updateRequestDocumentPath(requestId: string, filePath: string): Promise<any> {
-    return this.hs.ajax(
-      'UpdateT_asset_requests',
-      'http://schemas.cordys.com/AMS_Database_Metadata',
-      {
-        tuple: {
-          old: { t_asset_requests: { request_id: requestId } },
-          new: { t_asset_requests: { document: filePath } }
-        }
-      }
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_asset_requests qConstraint="0">
+            <request_id>${requestId}</request_id>
+          </t_asset_requests>
+        </old>
+        <new>
+          <t_asset_requests qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <document><![CDATA[${filePath}]]></document>
+          </t_asset_requests>
+        </new>
+      </tuple>
+    </UpdateT_asset_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
     ).then((res: any) => {
       console.log('[updateRequestDocumentPath] Document path saved:', filePath);
       return res;
@@ -1256,35 +1320,71 @@ export class RequestService {
   }
 
   /**
-   * Downloads a file from the Cordys server via the DownloadFile SOAP service.
+   * Downloads a file from the Cordys server via the DownloadFile_AMS SOAP service.
+   * Uses raw SOAP XML for consistency with the upload method.
    * @param fileName The filename to download
    * @param filePath The directory path on the server
    * @returns Base64-encoded file content
    */
   async downloadFileFromServer(fileName: string, filePath: string): Promise<string> {
-    return this.hs.ajax(
-      'DownloadFile_AMS',
-      'http://schemas.cordys.com/AMS_Database_Metadata',
-      { Fname: fileName, Fpath: filePath }
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <DownloadFile_AMS xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Fname><![CDATA[${fileName}]]></Fname>
+      <Fpath><![CDATA[${filePath}]]></Fpath>
+    </DownloadFile_AMS>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
     ).then((res: any) => {
-      // Cordys custom web services return the value in a <return> element
-      console.log('[downloadFileFromServer] Raw response:', res);
+      console.log('[downloadFileFromServer] Raw response received');
+
+      // Recursive helper: dig into any object to find the first non-empty string value
+      const extractString = (obj: any, depth: number = 0): string => {
+        if (!obj || depth > 10) return '';
+        if (typeof obj === 'string' && obj.trim()) return obj.trim();
+        if (typeof obj !== 'object') return '';
+        for (const key of ['#text', 'text', '_', '$', 'return']) {
+          if (obj[key] && typeof obj[key] === 'string' && obj[key].trim()) {
+            return obj[key].trim();
+          }
+        }
+        for (const key of Object.keys(obj)) {
+          if (key.startsWith('@') || key.startsWith('xmlns')) continue;
+          const val = extractString(obj[key], depth + 1);
+          if (val) return val;
+        }
+        return '';
+      };
+
       let content = '';
-      // Try 'return' key first (standard Cordys custom WS response)
+
       const ret = this.hs.xmltojson(res, 'return');
-      if (ret && typeof ret === 'string') {
-        content = ret;
-      } else if (ret && typeof ret === 'object') {
-        content = ret['#text'] || ret.text || ret._ || String(ret);
-      } else {
-        // Fallback: try method name as key
-        const alt = this.hs.xmltojson(res, 'DownloadFile_AMS');
-        content = (typeof alt === 'string') ? alt : String(alt || '');
+      if (ret) {
+        content = (typeof ret === 'string') ? ret : extractString(ret);
       }
+
+      if (!content) {
+        const resp = this.hs.xmltojson(res, 'DownloadFile_AMSResponse');
+        if (resp) content = extractString(resp);
+      }
+
+      if (!content) {
+        const method = this.hs.xmltojson(res, 'DownloadFile_AMS');
+        if (method) content = extractString(method);
+      }
+
+      if (!content) {
+        content = extractString(res);
+      }
+
       console.log('[downloadFileFromServer] Got file data, length:', content.length);
       return content;
     }).catch((err: any) => {
-      console.error('[downloadFileFromServer] Failed:', err);
+      console.error('[downloadFileFromServer] SOAP Error:', err);
+      const errorDetail = err?.responseText || err?.errorThrown || err?.message || 'Unknown error';
+      console.error('[downloadFileFromServer] Error detail:', errorDetail);
       throw err;
     });
   }
@@ -1304,11 +1404,32 @@ export class RequestService {
 
     try {
       const response = await this.hs.ajax(null, null, {}, soapRequest);
-      const data = this.hs.xmltojson(response, 't_asset_requests');
+      // Try multiple extraction paths
+      let data = this.hs.xmltojson(response, 't_asset_requests');
+      if (!data) {
+        // Some Cordys responses wrap in 'old' or 'tuple'
+        const tuple = this.hs.xmltojson(response, 'tuple');
+        data = tuple?.old?.t_asset_requests || tuple?.t_asset_requests || tuple;
+      }
       const reqData = Array.isArray(data) ? data[0] : data;
 
-      const filePath = (reqData?.document && typeof reqData.document === 'string') ? reqData.document : '';
-      const fileName = (reqData?.temp2 && typeof reqData.temp2 === 'string') ? reqData.temp2 : '';
+      console.log('[getRequestDocumentInfo] Raw reqData:', JSON.stringify(reqData));
+
+      // Helper to safely extract string from Cordys value (handles nil objects)
+      const safeStr = (val: any): string => {
+        if (!val) return '';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'object') {
+          if (val['@nil'] === 'true' || val['@null'] === 'true') return '';
+          return val['#text'] || val.text || val._ || '';
+        }
+        return String(val);
+      };
+
+      const filePath = safeStr(reqData?.document);
+      const fileName = safeStr(reqData?.temp2);
+
+      console.log('[getRequestDocumentInfo] filePath:', filePath, '| fileName:', fileName);
 
       return { filePath, fileName };
     } catch (err) {

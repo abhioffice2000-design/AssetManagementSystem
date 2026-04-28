@@ -794,34 +794,112 @@ export class AssetRequestsComponent implements OnInit {
       return;
     }
 
-    // Default to assets folder
-    const fileUrl = `assets/documents/${docName}`;
-    window.open(fileUrl, '_blank');
-    this.notificationService.showToast(`Opening document: ${docName}...`, 'info');
+    // Handle server file paths — use SOAP DownloadFile_AMS to fetch content then display
+    this.fetchAndOpenFile(docName, 'view');
   }
 
 
   downloadDocument(docName: string): void {
     if (!docName) return;
 
-    let fileUrl = '';
-    let fileName = docName;
-
     if (docName.startsWith('data:')) {
-      fileUrl = docName;
-      // Extract a generic name if possible or use a default
-      fileName = 'attachment_' + new Date().getTime();
-    } else {
-      fileUrl = `assets/documents/${docName}`;
+      const link = document.createElement('a');
+      link.href = docName;
+      link.download = 'attachment_' + new Date().getTime();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
     }
 
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    this.notificationService.showToast(`Initiating download: ${fileName}`, 'success');
+    // Handle server file paths — use SOAP DownloadFile_AMS to fetch content then download
+    this.fetchAndOpenFile(docName, 'download');
+  }
+
+  /**
+   * Fetches file content from the server via DownloadFile_AMS SOAP service,
+   * then either opens it in a new tab (view) or triggers a browser download.
+   */
+  private async fetchAndOpenFile(serverPath: string, action: 'view' | 'download'): Promise<void> {
+    const displayName = this.extractFileName(serverPath);
+    this.notificationService.showToast(`Fetching: ${displayName}...`, 'info');
+
+    try {
+      // Split the full server path into directory + filename
+      // e.g., "C:\OTAPPS\...\Intern_Uploads\file.pdf" → dir="C:\OTAPPS\...\Intern_Uploads", name="file.pdf"
+      const parts = serverPath.split(/[\\\/]/);
+      const fileName = parts.pop() || '';
+      const dirPath = parts.join('\\');
+
+      console.log('[AssetRequests] Calling DownloadFile_AMS - dir:', dirPath, '| file:', fileName);
+
+      if (!fileName || !dirPath) {
+        this.notificationService.showToast('Invalid file path.', 'error');
+        return;
+      }
+
+      // Call the SOAP service to get base64-encoded file content
+      const base64Content = await this.requestService.downloadFileFromServer(fileName, dirPath);
+
+      console.log('[AssetRequests] Download response length:', base64Content?.length);
+
+      if (!base64Content || base64Content.length < 10) {
+        this.notificationService.showToast('File content is empty or could not be retrieved.', 'error');
+        return;
+      }
+
+      // Determine MIME type from file extension
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const mimeMap: { [key: string]: string } = {
+        'pdf': 'application/pdf', 'png': 'image/png',
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'txt': 'text/plain', 'csv': 'text/csv',
+      };
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+      // Convert base64 to Blob
+      const byteChars = atob(base64Content);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteNums[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([new Uint8Array(byteNums)], { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+
+      if (action === 'view') {
+        // Open in new tab for viewing
+        window.open(blobUrl, '_blank');
+        this.notificationService.showToast(`Opened: ${displayName}`, 'success');
+      } else {
+        // Trigger download
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = displayName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.notificationService.showToast(`Downloaded: ${displayName}`, 'success');
+      }
+
+      // Clean up blob URL after a delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+    } catch (err: any) {
+      console.error('[AssetRequests] File fetch failed:', err);
+      const errDetail = err?.responseText || err?.errorThrown || err?.message || 'Unknown error';
+      this.notificationService.showToast(`Failed to fetch file: ${errDetail}`, 'error');
+    }
+  }
+
+  /** Extract just the filename from a full server path */
+  extractFileName(path: string): string {
+    if (!path) return 'attachment';
+    const parts = path.split(/[\\\/]/);
+    return parts[parts.length - 1] || 'attachment';
   }
 
 }
