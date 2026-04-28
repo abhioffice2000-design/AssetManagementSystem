@@ -826,6 +826,7 @@ export class RequestService {
       document: (() => {
         const t2 = this.getNullableValue(reqData?.temp2) || '';
         const d1 = this.getNullableValue(reqData?.document) || '';
+        if (d1.includes('|') || d1.startsWith('data:')) return d1;
         if (t2.includes('|') || t2.startsWith('data:')) return t2;
         if (t2 && t2 !== 'null') return t2;
         if (d1 && d1 !== 'ATTACHED' && d1 !== 'null' && !d1.includes('BPM')) return d1;
@@ -1194,8 +1195,126 @@ export class RequestService {
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
-      return err;
+      throw err;
     })
+  }
+
+  /**
+   * Uploads a file to the Cordys server filesystem via the UploadDocuments_AMS SOAP service.
+   * @param fileName Original filename
+   * @param fileContent Base64-encoded file content (may include data URI prefix)
+   * @returns The server file path where the file was saved
+   */
+  async uploadFileToServer(fileName: string, fileContent: string): Promise<string> {
+    return this.hs.ajax(
+      'UploadDocuments_AMS',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      { FileName: fileName, FileContent: fileContent }
+    ).then((res: any) => {
+      // Cordys custom web services return the value in a <return> element
+      console.log('[uploadFileToServer] Raw response:', res);
+      let filePath = '';
+      // Try 'return' key first (standard Cordys custom WS response)
+      const ret = this.hs.xmltojson(res, 'return');
+      if (ret && typeof ret === 'string') {
+        filePath = ret;
+      } else if (ret && typeof ret === 'object') {
+        filePath = ret['#text'] || ret.text || ret._ || String(ret);
+      } else {
+        // Fallback: try method name as key
+        const alt = this.hs.xmltojson(res, 'UploadDocuments_AMS');
+        filePath = (typeof alt === 'string') ? alt : String(alt || '');
+      }
+      console.log('[uploadFileToServer] File saved at:', filePath);
+      return filePath;
+    }).catch((err: any) => {
+      console.error('[uploadFileToServer] Failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Updates the document column of an existing asset request with the server file path.
+   */
+  updateRequestDocumentPath(requestId: string, filePath: string): Promise<any> {
+    return this.hs.ajax(
+      'UpdateT_asset_requests',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      {
+        tuple: {
+          old: { t_asset_requests: { request_id: requestId } },
+          new: { t_asset_requests: { document: filePath } }
+        }
+      }
+    ).then((res: any) => {
+      console.log('[updateRequestDocumentPath] Document path saved:', filePath);
+      return res;
+    }).catch((err: any) => {
+      console.error('[updateRequestDocumentPath] Failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Downloads a file from the Cordys server via the DownloadFile SOAP service.
+   * @param fileName The filename to download
+   * @param filePath The directory path on the server
+   * @returns Base64-encoded file content
+   */
+  async downloadFileFromServer(fileName: string, filePath: string): Promise<string> {
+    return this.hs.ajax(
+      'DownloadFile_AMS',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      { Fname: fileName, Fpath: filePath }
+    ).then((res: any) => {
+      // Cordys custom web services return the value in a <return> element
+      console.log('[downloadFileFromServer] Raw response:', res);
+      let content = '';
+      // Try 'return' key first (standard Cordys custom WS response)
+      const ret = this.hs.xmltojson(res, 'return');
+      if (ret && typeof ret === 'string') {
+        content = ret;
+      } else if (ret && typeof ret === 'object') {
+        content = ret['#text'] || ret.text || ret._ || String(ret);
+      } else {
+        // Fallback: try method name as key
+        const alt = this.hs.xmltojson(res, 'DownloadFile_AMS');
+        content = (typeof alt === 'string') ? alt : String(alt || '');
+      }
+      console.log('[downloadFileFromServer] Got file data, length:', content.length);
+      return content;
+    }).catch((err: any) => {
+      console.error('[downloadFileFromServer] Failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Fetches the document path and filename for a specific request.
+   * Used by the admin download flow to get the stored file path.
+   */
+  async getRequestDocumentInfo(requestId: string): Promise<{ filePath: string, fileName: string }> {
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_asset_requestsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <request_id>${requestId}</request_id>
+    </GetT_asset_requestsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(response, 't_asset_requests');
+      const reqData = Array.isArray(data) ? data[0] : data;
+
+      const filePath = (reqData?.document && typeof reqData.document === 'string') ? reqData.document : '';
+      const fileName = (reqData?.temp2 && typeof reqData.temp2 === 'string') ? reqData.temp2 : '';
+
+      return { filePath, fileName };
+    } catch (err) {
+      console.error('[getRequestDocumentInfo] Failed:', err);
+      return { filePath: '', fileName: '' };
+    }
   }
 
   createEntryForTeamLead(request: any) {
@@ -1208,7 +1327,7 @@ export class RequestService {
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
-      return err;
+      throw err;
     })
   }
   updateEntryForTeamLead(request: any) {
@@ -1226,7 +1345,7 @@ export class RequestService {
   }
 
   callBPMForRequest(request: any) {
-    this.hs.ajax(
+    return this.hs.ajax(
       'AMS_Approval',
       'http://schemas.cordys.com/default',
       request
