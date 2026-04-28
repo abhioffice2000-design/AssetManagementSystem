@@ -523,17 +523,17 @@ export class MyRequestsComponent implements OnInit {
       console.log('Confirmation submitted for:', requestId);
 
       // Update UI
-      this.selectedRequest.status = RequestStatus.COMPLETED;
+      this.selectedRequest.status = RequestStatus.APPROVED;
       this.closeConfirmForm();
       this.closeTrackingModal();
 
       // Reload to ensure data consistency
       await this.loadRequests();
 
-      alert('Asset receipt confirmed successfully. The request is now marked as Completed.');
+      this.notificationService.showToast('Asset receipt confirmed successfully. The request is now marked as Approved.', 'success');
     } catch (error) {
       console.error('Error submitting confirmation:', error);
-      alert('Failed to confirm asset receipt. Please try again.');
+      this.notificationService.showToast('Failed to confirm asset receipt. Please try again.', 'error');
     } finally {
       this.loading = false;
     }
