@@ -54,7 +54,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let asset of filteredAssets">
+        <tr *ngFor="let asset of paginatedAssets">
           <td>
             <span class="type-badge">{{ asset.type }}</span>
           </td>
@@ -82,7 +82,7 @@
             </div>
           </td>
         </tr>
-        <tr *ngIf="filteredAssets.length === 0 && myAssets.length > 0">
+        <tr *ngIf="totalFilteredCount === 0 && myAssets.length > 0">
           <td colspan="5" class="text-center text-muted p-24">
             <div class="empty-filter-state">
               <span class="material-icons-outlined empty-icon">search_off</span>
@@ -96,6 +96,38 @@
         </tr>
       </tbody>
     </table>
+
+    <!-- Pagination Footer -->
+    <div class="pagination-footer" *ngIf="totalFilteredCount > 0">
+      <div class="pagination-info">
+        Showing {{ totalFilteredCount === 0 ? 0 : (currentPage - 1) * pageSize + 1 }} to {{ Math.min(currentPage * pageSize, totalFilteredCount) }} of {{ totalFilteredCount }} assets
+      </div>
+      <div class="pagination-controls">
+        <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(1)" title="First page">
+          <span class="material-icons-outlined">first_page</span>
+        </button>
+        <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)" title="Previous page">
+          <span class="material-icons-outlined">chevron_left</span>
+        </button>
+
+        <ng-container *ngFor="let p of visiblePages">
+          <span class="page-ellipsis" *ngIf="p === '...'">…</span>
+          <button *ngIf="p !== '...'" class="page-btn" [class.active]="currentPage === p" (click)="goToPage(+p)">
+            {{ p }}
+          </button>
+        </ng-container>
+
+        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)" title="Next page">
+          <span class="material-icons-outlined">chevron_right</span>
+        </button>
+        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)" title="Last page">
+          <span class="material-icons-outlined">last_page</span>
+        </button>
+      </div>
+      <div class="pagination-page-indicator">
+        Page {{ currentPage }} of {{ totalPages }}
+      </div>
+    </div>
   </div>
 </div>
 

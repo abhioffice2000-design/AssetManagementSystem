@@ -94,8 +94,11 @@ export class AssetRequestsComponent implements OnInit {
       ] as any[]);
 
       this.allRequests = allReqs;
-      this.pendingRequests = pendingReqs;
       this.confirmationRequests = confirmReqs;
+      
+      // Filter out confirmation requests from the pending approvals list to prevent duplication
+      const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
+      this.pendingRequests = pendingReqs.filter((r: AssetRequest) => !confirmationIds.has(r.id));
 
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
       this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
@@ -156,6 +159,35 @@ export class AssetRequestsComponent implements OnInit {
       console.error('Failed to load available assets:', err);
       this.availableAssets = [];
     }
+  }
+
+  get filteredAvailableAssets(): any[] {
+    if (!this.detailRequest) return [];
+
+    const reqType = (this.detailRequest.assetType || '').toLowerCase();
+    const reqCategory = (this.detailRequest.category || '').toLowerCase();
+
+    return this.availableAssets.filter(asset => {
+      // Get normalized names for the asset using the public service methods
+      const normalizedAssetType = this.requestService.normalizeAssetType(asset.type_id).toLowerCase();
+      const normalizedAssetCat = this.requestService.normalizeCategory(asset.sub_category_id).toLowerCase();
+
+      // Priority 1: Match by category (Laptop, Monitor, etc.)
+      if (reqCategory && reqCategory !== 'hardware' && reqCategory !== 'software' && reqCategory !== 'asset detail') {
+        if (normalizedAssetCat === reqCategory) return true;
+        
+        // Also check if asset_name contains the category for more flexible matching
+        if (asset.asset_name && asset.asset_name.toLowerCase().includes(reqCategory)) return true;
+      }
+
+      // Priority 2: Match by type (Hardware, Software)
+      if (reqType && reqType !== 'n/a') {
+        return normalizedAssetType === reqType;
+      }
+
+      // If we can't determine a match based on type/category, show all available (fallback)
+      return true;
+    });
   }
 
   switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return' ): void {
@@ -274,10 +306,12 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   async directConfirmAction(request: AssetRequest, action: 'approve' | 'reject'): Promise<void> {
-    if (!this.actionComments || this.actionComments.trim() === '') {
-      alert('Approver remarks are required.');
+    if (action === 'reject' && (!this.actionComments || this.actionComments.trim() === '')) {
+      alert('Approver remarks are required for rejection.');
       return;
     }
+
+    this.notificationService.showToast(`Processing ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
 
     if (action === 'approve') {
       if (request.requestType !== RequestType.RETURN_ASSET) {
@@ -500,10 +534,12 @@ export class AssetRequestsComponent implements OnInit {
     request: AssetRequest,
     action: 'approve' | 'reject'
   ): Promise<void> {
-    if (!this.actionComments || this.actionComments.trim() === '') {
-      alert('Approver remarks are required.');
+    if (action === 'reject' && (!this.actionComments || this.actionComments.trim() === '')) {
+      alert('Approver remarks are required for rejection.');
       return;
     }
+
+    this.notificationService.showToast(`Processing confirmation ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
 
     this.selectedRequest = request;
     this.actionType = action;

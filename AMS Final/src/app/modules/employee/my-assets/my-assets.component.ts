@@ -30,6 +30,11 @@ export class MyAssetsComponent implements OnInit {
   assetTypes: AssetTypeOption[] = [];
   typeMap: Record<string, string> = {}; // type_id → type_name
 
+  // Pagination
+  currentPage = 1;
+  pageSize = 5;
+  Math = Math;
+
   // Modal states
   isReturnModalOpen = false;
   isWarrantyModalOpen = false;
@@ -183,6 +188,57 @@ export class MyAssetsComponent implements OnInit {
     }
 
     this.filteredAssets = result;
+    this.currentPage = 1; // Reset to first page on filter change
+  }
+
+  get paginatedAssets(): Asset[] {
+    const startIndex = (this.currentPage - 1) * this.pageSize;
+    return this.filteredAssets.slice(startIndex, startIndex + this.pageSize);
+  }
+
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.filteredAssets.length / this.pageSize));
+  }
+
+  get totalFilteredCount(): number {
+    return this.filteredAssets.length;
+  }
+
+  get visiblePages(): (number | string)[] {
+    const total = this.totalPages;
+    const current = this.currentPage;
+    const maxVisible = 5;
+
+    if (total <= maxVisible + 2) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    const pages: (number | string)[] = [];
+    pages.push(1);
+
+    let start = Math.max(2, current - 1);
+    let end = Math.min(total - 1, current + 1);
+
+    if (current <= 3) {
+      start = 2;
+      end = Math.min(total - 1, maxVisible - 1);
+    } else if (current >= total - 2) {
+      start = Math.max(2, total - maxVisible + 2);
+      end = total - 1;
+    }
+
+    if (start > 2) pages.push('...');
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (end < total - 1) pages.push('...');
+    pages.push(total);
+
+    return pages;
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
   }
 
   onSearchChange(): void {

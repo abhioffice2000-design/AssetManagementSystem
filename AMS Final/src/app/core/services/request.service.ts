@@ -1112,7 +1112,7 @@ export class RequestService {
     }
   }
 
-  private normalizeAssetType(type: string | undefined): string {
+  public normalizeAssetType(type: string | undefined): string {
     if (!type) return 'N/A';
     const t = type.toLowerCase().trim();
     if (t === 'typ_01' || t === 'software' || t.includes('license') || t.includes('anti') || t.includes('security')) return 'Software';
@@ -1124,7 +1124,7 @@ export class RequestService {
     return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
   }
 
-  private normalizeCategory(value: string | undefined): string {
+  public normalizeCategory(value: string | undefined): string {
     if (!value) return 'Asset Detail';
     const v = value.toLowerCase().trim();
     const mappings: { [key: string]: string } = {

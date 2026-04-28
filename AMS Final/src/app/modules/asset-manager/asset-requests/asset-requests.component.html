@@ -421,7 +421,7 @@
                   <label>Select Asset</label>
                   <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
                     <option value="">-- Select Available Asset --</option>
-                    <option *ngFor="let asset of availableAssets" [value]="asset.asset_id">
+                    <option *ngFor="let asset of filteredAvailableAssets" [value]="asset.asset_id">
                       {{ asset.asset_name }}
                     </option>
                   </select>
@@ -505,15 +505,18 @@
           </div>
         </div>
 
-        <!-- Processing Section for Asset Manager (Only for Pending requests at AM stage) -->
-        <div class="detail-section" *ngIf="detailRequest.status === RequestStatus.PENDING && detailRequest.currentStage === 'Asset Manager Approval'">
+        <!-- Processing Section for Asset Manager (Only for Pending or Confirmation requests at AM stage) -->
+        <div class="detail-section" *ngIf="(detailRequest.status === RequestStatus.PENDING || detailRequest.status === RequestStatus.APPROVED) && detailRequest.currentStage === 'Asset Manager Approval'">
           <h4 class="detail-section-title" style="color: var(--primary);">
             <span class="material-icons-outlined">gavel</span>
             Process Request
           </h4>
           <div class="approval-form-wrapper" style="padding: 15px; background: #f8f9fa; border-radius: 12px; margin-top: 10px;">
              <div class="form-control-group">
-                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #444;">Approver Remarks <span class="required" style="color: #dc3545;">*</span></label>
+                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #444;">
+                  Approver Remarks 
+                  <span class="required" style="color: #dc3545;">(Mandatory for rejection)</span>
+                </label>
                 <textarea class="remarks-input" [(ngModel)]="actionComments" 
                     placeholder="Please provide your remarks for approval or rejection..." rows="3"
                     style="width: 100%; border-radius: 8px; border: 1.5px solid #dee2e6; padding: 12px; font-family: inherit; transition: border-color 0.2s; outline: none;"></textarea>
