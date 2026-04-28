@@ -392,9 +392,11 @@
               <label>Employee Reason</label>
               <span>{{ detailRequest.justification }}</span>
             </div>
-            <div class="detail-item full-col" *ngIf="detailRequest.teamLeadJustification">
+            <div class="detail-item full-col">
               <label>Team Lead Remark</label>
-              <span class="remark-text" style="color: var(--primary); font-weight: 500;">{{ detailRequest.teamLeadJustification }}</span>
+              <span class="remark-text" style="color: var(--primary); font-weight: 500;">
+                {{ (detailRequest.teamLeadJustification && detailRequest.teamLeadJustification !== '—') ? detailRequest.teamLeadJustification : 'Empty' }}
+              </span>
             </div>
             <div class="detail-item">
               <label>Date</label>
