@@ -453,31 +453,87 @@ export class PendingApprovalsComponent implements OnInit {
       return;
     }
 
-    const fileUrl = `assets/documents/${docName}`;
-    window.open(fileUrl, '_blank');
-    this.notificationService.showToast(`Opening document: ${docName}...`, 'info');
+    this.fetchAndOpenFile(docName, 'view');
   }
 
   downloadDocument(docName: string): void {
     if (!docName) return;
 
-    let fileUrl = '';
-    let fileName = docName;
-
     if (docName.startsWith('data:')) {
-      fileUrl = docName;
-      fileName = 'attachment_' + new Date().getTime();
-    } else {
-      fileUrl = `assets/documents/${docName}`;
+      const link = document.createElement('a');
+      link.href = docName;
+      link.download = 'attachment_' + new Date().getTime();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
     }
 
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    this.notificationService.showToast(`Initiating download: ${fileName}`, 'success');
+    this.fetchAndOpenFile(docName, 'download');
+  }
+
+  private async fetchAndOpenFile(serverPath: string, action: 'view' | 'download'): Promise<void> {
+    const displayName = this.extractFileName(serverPath);
+    this.notificationService.showToast(`Fetching: ${displayName}...`, 'info');
+
+    try {
+      const parts = serverPath.split(/[\\\/]/);
+      const fileName = parts.pop() || '';
+      const dirPath = parts.join('\\');
+
+      if (!fileName || !dirPath) {
+        this.notificationService.showToast('Invalid file path.', 'error');
+        return;
+      }
+
+      const base64Content = await this.requestService.downloadFileFromServer(fileName, dirPath);
+
+      if (!base64Content || base64Content.length < 10) {
+        this.notificationService.showToast('File content is empty or could not be retrieved.', 'error');
+        return;
+      }
+
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const mimeMap: { [key: string]: string } = {
+        'pdf': 'application/pdf', 'png': 'image/png',
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      };
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+      const byteChars = atob(base64Content);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNums)], { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+
+      if (action === 'view') {
+        window.open(blobUrl, '_blank');
+        this.notificationService.showToast(`Opened: ${displayName}`, 'success');
+      } else {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = displayName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.notificationService.showToast(`Downloaded: ${displayName}`, 'success');
+      }
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err: any) {
+      console.error('[PendingApprovals] File fetch failed:', err);
+      this.notificationService.showToast(`Failed to fetch file: ${err?.message || 'Unknown error'}`, 'error');
+    }
+  }
+
+  extractFileName(path: string): string {
+    if (!path) return 'attachment';
+    const parts = path.split(/[\\\/]/);
+    return parts[parts.length - 1] || 'attachment';
   }
 
 }
