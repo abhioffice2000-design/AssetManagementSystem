@@ -113,6 +113,19 @@ export class RequestAssetComponent implements OnInit {
   onFileSelected(event: any): void {
     const file = event.target.files[0];
     if (file) {
+      // Limit file size to 5 MB to avoid SOAP gateway payload limits
+      const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+      if (file.size > MAX_SIZE_BYTES) {
+        this.notificationService.showToast(
+          `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 5 MB.`,
+          'error'
+        );
+        this.selectedFileBase64 = null;
+        this.selectedFileName = null;
+        // Reset the file input so the user can re-select
+        event.target.value = '';
+        return;
+      }
       this.selectedFileName = file.name;
       const reader = new FileReader();
       reader.onload = () => {
@@ -162,70 +175,105 @@ export class RequestAssetComponent implements OnInit {
     const selectedSubCatObj = this.masterSubCategories.find(s => String(s.sub_category_id) === String(formVal.subCategory));
     const subCatName = selectedSubCatObj ? selectedSubCatObj.name : formVal.subCategory;
 
-    var request1 = {
-      tuple: {
-        new: {
-          t_asset_requests: {
-            user_id: user.id,
-            asset_type: typeName,
-            reason: formVal.justification,
-            urgency: formVal.urgency,
-            email_approval: String(formVal.hasEmailApproval),
-            status: 'Pending',
-            temp1: subCatName,
-            temp2: this.selectedFileName || '',
-            document: this.selectedFileBase64 ? 'ATTACHED' : ''
+    // Truncate filename for DB columns (temp2 max 50 chars)
+    let dbFileName = this.selectedFileName || '';
+    if (dbFileName.length > 50) {
+      const extIdx = dbFileName.lastIndexOf('.');
+      const ext = extIdx >= 0 ? dbFileName.substring(extIdx) : '';  // e.g. ".pdf"
+      dbFileName = dbFileName.substring(0, 50 - ext.length) + ext;
+    }
+
+    try {
+      var request1 = {
+        tuple: {
+          new: {
+            t_asset_requests: {
+              user_id: user.id,
+              asset_type: typeName,
+              reason: formVal.justification,
+              urgency: formVal.urgency,
+              email_approval: String(formVal.hasEmailApproval),
+              status: 'Pending',
+              temp1: subCatName,
+              temp2: dbFileName,
+              document: dbFileName
+            }
+          }
+        }
+      };
+      console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
+      
+      var res = await this.requestService.submitNewRequestForm(request1 as any);
+      console.log("res", res)
+      let newrequestid = res.new.t_asset_requests.request_id;
+      console.log("newrequestid", newrequestid)
+
+      // Step 2: Upload the file to the Cordys server filesystem
+      if (this.selectedFileBase64) {
+        try {
+          const serverPath = await this.requestService.uploadFileToServer(
+            this.selectedFileName!,
+            this.selectedFileBase64
+          );
+          console.log('[RequestAsset] File uploaded to server at:', serverPath);
+
+          // Store the server file path in the document column
+          if (serverPath) {
+            await this.requestService.updateRequestDocumentPath(newrequestid, serverPath);
+            console.log('[RequestAsset] File path saved to database');
+          }
+        } catch (uploadErr: any) {
+          console.error('[RequestAsset] File upload failed:', uploadErr);
+          const uploadErrMsg = uploadErr?.responseText || uploadErr?.errorThrown || uploadErr?.message || 'Unknown upload error';
+          alert('FILE UPLOAD FAILED: ' + uploadErrMsg);
+          this.notificationService.showToast(`File upload failed: ${uploadErrMsg}`, 'error');
+          // Continue with submission even if file upload fails
+        }
+      }
+      var request2 = {
+        tuple: {
+          new: {
+            t_request_approvals: {
+              request_id: `${newrequestid}`,
+              approver_id: formVal.hasEmailApproval ? 'usr_004' : 'usr_003',
+              role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
+              status: 'Pending'
+            }
           }
         }
       }
-    };
-    // this.requestService.addRequest(newReq as any);
-    console.log('[RequestAsset] Submitting Request Tuple (REQ1):', JSON.parse(JSON.stringify(request1)));
-    
-    var res = await this.requestService.submitNewRequestForm(request1 as any);
-    console.log("res", res)
-    let newrequestid = res.new.t_asset_requests.request_id;
-    console.log("newrequestid", newrequestid)
-    var request2 = {
-      tuple: {
-        new: {
-          t_request_approvals: {
-            request_id: `${newrequestid}`,
-            approver_id: formVal.hasEmailApproval ? 'usr_004' : 'usr_003',
-            role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
-            status: 'Pending'
-          }
-        }
+      var res2 = await this.requestService.createEntryForTeamLead(request2 as any);
+      console.log("res2", res2)
+      let newapprovalid = res2.new.t_request_approvals.approval_id;
+      console.log("newapprovalid", newapprovalid)
+      let request3 = {
+        InputDoc: this.selectedFileBase64 ? `${this.selectedFileName}|${this.selectedFileBase64}` : formVal.hasEmailApproval.toString(),
+        Inputusrid: user.id,
+        Inputrequestapprovalid: `${newapprovalid}`,
+        Inputrequestid: `${newrequestid}`
       }
+      await this.requestService.callBPMForRequest(request3 as any);
+      
+      // Trigger notification email
+      this.mailService.sendAssetRequestConfirmation({
+        employeeName: user.name,
+        employeeEmail: user.email,
+        assetType: typeName,
+        category: subCatName,
+        requestId: `${newrequestid}`,
+        justification: formVal.justification,
+        urgency: formVal.urgency,
+        teamLeadName: user.teamLeadName
+      });
+
+      this.notificationService.showToast(`Request Raised Successfully! (ID: ${newrequestid})`, 'success');
+      this.notificationService.addNotification('Request Submitted', `Your asset request has been submitted.`, 'info');
+
+      this.router.navigate(['/employee/my-requests']);
+    } catch (error: any) {
+      console.error('[RequestAsset] Submission failed:', error);
+      const errorMsg = error?.responseText || error?.errorThrown || error?.message || 'Unknown error';
+      this.notificationService.showToast(`Failed to submit request: ${errorMsg}`, 'error');
     }
-    var res2 = await this.requestService.createEntryForTeamLead(request2 as any);
-    console.log("res2", res2)
-    let newapprovalid = res2.new.t_request_approvals.approval_id;
-    console.log("newapprovalid", newapprovalid)
-    let request3 = {
-      InputDoc: this.selectedFileBase64 ? `${this.selectedFileName}|${this.selectedFileBase64}` : formVal.hasEmailApproval.toString(),
-      Inputusrid: user.id,
-      Inputrequestapprovalid: `${newapprovalid}`,
-      Inputrequestid: `${newrequestid}`
-    }
-    this.requestService.callBPMForRequest(request3 as any)
-    
-    // Trigger notification email
-    this.mailService.sendAssetRequestConfirmation({
-      employeeName: user.name,
-      employeeEmail: user.email,
-      assetType: typeName,
-      category: subCatName,
-      requestId: `${newrequestid}`,
-      justification: formVal.justification,
-      urgency: formVal.urgency,
-      teamLeadName: user.teamLeadName
-    });
-
-    this.notificationService.showToast(`Request Raised Successfully! (ID: ${newrequestid})`, 'success');
-    this.notificationService.addNotification('Request Submitted', `Your asset request has been submitted.`, 'info');
-
-
-    this.router.navigate(['/employee/my-requests']);
   }
 }

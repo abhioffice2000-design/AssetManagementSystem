@@ -309,51 +309,82 @@ export class AssetTransactionComponent implements OnInit {
     return 'Pending';
   }
 
-  downloadDocument(doc: string): void {
-    if (!doc) {
-      this.notificationService.showToast('No document attachment found for this request.', 'error');
+  async downloadDocument(doc: string, requestId?: string): Promise<void> {
+    console.log('[AssetTransaction] downloadDocument called. doc:', doc, '| requestId:', requestId);
+
+    if (!requestId) {
+      this.notificationService.showToast('No request ID available for download.', 'error');
       return;
     }
 
-    console.log('[AssetTransaction] Attempting to download:', doc.substring(0, 50) + '...');
+    this.notificationService.showToast('Fetching attachment...', 'info');
 
-    let fileName = 'attachment_' + new Date().getTime();
-    let fileUrl = doc;
-
-    // 1. Handle Pipe Format (filename|data)
-    if (doc.includes('|')) {
-      const parts = doc.split('|');
-      fileName = parts.shift() || 'document.bin';
-      fileUrl = parts.join('|');
-      console.log('[AssetTransaction] Pipe format detected. Filename:', fileName);
-    }
-
-    // 2. Ensure fileUrl is a valid data URL or relative path
-    if (fileUrl.startsWith('data:') || fileUrl.startsWith('assets/')) {
-       // Already a valid format
-    } else if (fileUrl.length > 100) { 
-      // Heuristic: If it's a long string without "data:", it's likely raw base64
-      console.log('[AssetTransaction] Raw base64 detected (no prefix). Adding prefix...');
-      fileUrl = 'data:application/octet-stream;base64,' + fileUrl;
-    } else {
-      // Short string, treat as filename in assets folder
-      fileName = fileUrl;
-      fileUrl = `assets/documents/${fileUrl}`;
-      console.log('[AssetTransaction] Short string detected. Treating as assets path:', fileUrl);
-    }
-    
     try {
-      // Create an invisible link to trigger the download
+      // Step 1: Get the stored file path and filename from the database
+      const docInfo = await this.requestService.getRequestDocumentInfo(requestId);
+      console.log('[AssetTransaction] Document info:', docInfo);
+
+      let { filePath, fileName } = docInfo;
+
+      if (!filePath || filePath === 'null') {
+        this.notificationService.showToast('No attachment file path found for this request.', 'error');
+        return;
+      }
+
+      // Extract directory and filename from the full path
+      // The upload returns full path like: C:\...\AMS_Uploads\filename.pdf
+      let dirPath = filePath;
+      let downloadName = fileName || 'attachment';
+
+      // If filePath contains a file (has extension), split into dir and name
+      const lastSlash = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+      if (lastSlash >= 0) {
+        dirPath = filePath.substring(0, lastSlash);
+        const serverFileName = filePath.substring(lastSlash + 1);
+        if (serverFileName) {
+          downloadName = serverFileName;
+        }
+      }
+
+      console.log('[AssetTransaction] Downloading from dir:', dirPath, '| file:', downloadName);
+
+      // Step 2: Call the server-side DownloadFile service to get base64 content
+      const base64Content = await this.requestService.downloadFileFromServer(downloadName, dirPath);
+
+      if (!base64Content || base64Content.length < 10) {
+        this.notificationService.showToast('File content is empty or could not be retrieved.', 'error');
+        return;
+      }
+
+      // Step 3: Determine MIME type from file extension
+      const ext = downloadName.split('.').pop()?.toLowerCase() || '';
+      const mimeTypes: { [key: string]: string } = {
+        'pdf': 'application/pdf',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'eml': 'message/rfc822',
+        'msg': 'application/vnd.ms-outlook'
+      };
+      const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+      // Step 4: Create a data URL and trigger browser download
+      const dataUrl = `data:${mimeType};base64,${base64Content}`;
       const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = fileName;
+      link.href = dataUrl;
+      link.download = fileName || downloadName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      this.notificationService.showToast(`Downloading: ${fileName}`, 'success');
+
+      this.notificationService.showToast(`Downloading: ${fileName || downloadName}`, 'success');
     } catch (err) {
       console.error('[AssetTransaction] Download failed:', err);
-      this.notificationService.showToast('Failed to initiate download. The data might be corrupted.', 'error');
+      this.notificationService.showToast('Failed to download attachment. Please try again.', 'error');
     }
   }
 
