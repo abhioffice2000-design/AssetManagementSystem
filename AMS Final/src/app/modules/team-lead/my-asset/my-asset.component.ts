@@ -40,6 +40,10 @@ export class MyAssetComponent implements OnInit {
     requestId: ''
   };
 
+  responseData = '';
+  approval_id = '';
+  task_id = '';
+
   // Assets Pagination
   assetsCurrentPage = 1;
   assetsPageSize = 5;
@@ -169,18 +173,20 @@ export class MyAssetComponent implements OnInit {
   PendingRequestsForTeamLead(userId?: string): void {
     if (!userId) return;
     this.isLoadingRequests = true;
-    this.requestService.getRequestsByUserIdFromCordys(userId)
+
+    // Fetch requests for the logged-in user
+    this.requestService.getAllRequestsBasedOnLoggedInUser(userId)
       .then((requests: AssetRequest[]) => {
         // Include 'Approved' status as well, as these are ready for confirmation
-        this.pendingRequests = requests.filter(req => 
-          req.status === 'Pending' || 
-          req.status === 'In Progress' || 
+        this.pendingRequests = requests.filter((req: AssetRequest) =>
+          req.status === 'Pending' ||
+          req.status === 'In Progress' ||
           req.status === 'Approved'
         );
         this.requestsCurrentPage = 1;
+        console.log('[MyAsset] PendingRequestsForTeamLead count:', this.pendingRequests.length);
         this.isLoadingRequests = false;
-      })
-      .catch(() => this.isLoadingRequests = false);
+      }).catch(() => this.isLoadingRequests = false);
   }
 
   async returnAsset(asset: Asset) {
@@ -408,51 +414,69 @@ export class MyAssetComponent implements OnInit {
     this.confirmationRemarks = '';
   }
 
+  Getassetidbyapprovalid(request_id: any) {
+    return this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      { Request_id: request_id }
+    ).then((resp: any) => {
+      this.responseData = resp.tuple.old.t_request_approvals.temp1;
+      this.approval_id = resp.tuple.old.t_request_approvals.approval_id;
+      this.task_id = resp.tuple.old.t_request_approvals.temp2;
+      console.log("approval id.......................", this.approval_id);
+    });
+  }
+
   async submitConfirmation() {
     if (!this.selectedConfirmRequest) return;
     
+    console.log('[MyAsset] Confirmation process started for:', this.selectedConfirmRequest);
     this.isLoading = true;
     try {
       const requestId = this.selectedConfirmRequest.requestNumber;
       
+      // Fetch dynamic details first (like asset_id, approval_id, task_id)
+      await this.Getassetidbyapprovalid(requestId);
+
       const updateReq = {
         tuple: {
           old: { t_asset_requests: { request_id: requestId } },
-          new: { t_asset_requests: { status: 'Completed' } }
+          new: { t_asset_requests: { status: 'Approved' } }
         }
       };
 
+      console.log('[MyAsset] Updating request status to Approved:', requestId);
       await this.requestService.submitNewRequestForm(updateReq);
       
-      // Update the approval record if a confirmation step exists
-      if (this.selectedConfirmRequest.approvalId) {
-        const approvalUpdate = {
-          tuple: {
-            old: { t_request_approvals: { approval_id: this.selectedConfirmRequest.approvalId } },
-            new: { t_request_approvals: { status: 'Completed', remarks: this.confirmationRemarks || 'Asset received by Team Lead' } }
-          }
-        };
-        await this.requestService.updateEntryForTeamLead(approvalUpdate);
-      }
-
-      // Update the master asset status to Allocated if available
-      if (this.selectedConfirmRequest.allocatedAssetId) {
+      // Update the master asset status to Allocated
+      if (this.responseData) {
         const assetUpdateReq = {
           tuple: {
-            old: { m_assets: { asset_id: this.selectedConfirmRequest.allocatedAssetId } },
-            new: { m_assets: { status: 'Allocated' } }
+            old: { m_assets: { asset_id: this.responseData } },
+            new: { m_assets: { status: 'Allocated', temp1: this.authService.getCurrentUser()?.id } }
           }
         };
+        console.log('[MyAsset] Updating master asset status to Allocated for Asset ID:', this.responseData);
         await this.requestService.updateAssetStatus(assetUpdateReq);
       }
 
+      // Update the approval record status to Approved (equivalent to Employee's createEntryForRequestor logic)
+      if (this.approval_id) {
+        const updateReq2 = {
+          tuple: {
+            old: { t_request_approvals: { approval_id: this.approval_id } },
+            new: { t_request_approvals: { status: 'Approved' } }
+          }
+        };
+        console.log('[MyAsset] Updating approval record to Approved:', this.approval_id);
+        await this.requestService.updateEntryForTeamLead(updateReq2);
+      }
+
       // Complete the BPM task
-      var taskid = this.selectedRequest?.taskid;
-      if (taskid) {
-        var req3 = {
-          TaskId: `${taskid}`,
+      if (this.task_id) {
+        const req3 = {
+          TaskId: `${this.task_id}`,
           Action: 'COMPLETE'
         };
+        console.log('[MyAsset] Completing BPM Task:', this.task_id);
         await this.requestService.completeUserTask(req3 as any);
       }
 

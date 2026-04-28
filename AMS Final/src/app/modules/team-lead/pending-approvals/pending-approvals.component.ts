@@ -25,6 +25,7 @@ export class PendingApprovalsComponent implements OnInit {
   pageSize = 5;
   searchTerm = '';
   tl_remarks = '';
+  task_id_latest = '';
 
   constructor(
     private hs: HeroService,
@@ -223,6 +224,23 @@ export class PendingApprovalsComponent implements OnInit {
     this.selectedRequest = null;
   }
 
+  async Getassetidbyapprovalid(request_id: any) {
+    try {
+      const resp: any = await this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
+        { Request_id: request_id }
+      );
+      const data = this.hs.xmltojson(resp, 'tuple');
+      if (data) {
+        const parent = data.old || data;
+        const approval = parent.t_request_approvals || {};
+        this.task_id_latest = approval.temp2 || '';
+        console.log("[PendingApprovals] Latest Task ID fetched:", this.task_id_latest);
+      }
+    } catch (err) {
+      console.error("[PendingApprovals] Error fetching latest task ID:", err);
+    }
+  }
+
   markAsAccept(): void {
     if (this.selectedRequest) {
       this.handleApprove();
@@ -264,8 +282,10 @@ export class PendingApprovalsComponent implements OnInit {
       var newrequestid = this.selectedRequest.requestNumber;
       console.log("Taskid response is", res2);
       
-      var taskid = this.selectedRequest?.taskid;
-      console.log("taskid", taskid);
+      // Fetch latest task ID dynamically to ensure we have it for completion
+      await this.Getassetidbyapprovalid(newrequestid);
+      const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+      console.log("taskid to complete", taskid);
       
       var request2 = {
         tuple: {
@@ -348,10 +368,10 @@ export class PendingApprovalsComponent implements OnInit {
 
       var req4 = {
         tuple: {
-          
           new: {
             "t_request_approvals": {
               request_id: this.selectedRequest.requestNumber,
+              approver_id: this.selectedRequest.requesterId,
               role: "Employee",
               status: "Pending"
             }
@@ -360,6 +380,7 @@ export class PendingApprovalsComponent implements OnInit {
       };
 
       await this.requestService.updateEntryForTeamLead(req1 as any);
+      await this.requestService.updateEntryForTeamLead(req4 as any);
 
       // Update the master asset request status to Rejected
       var req2 = {
@@ -378,10 +399,10 @@ export class PendingApprovalsComponent implements OnInit {
       };
       await this.requestService.submitNewRequestForm(req2 as any);
       
-
-      // Complete the BPM task
-      var taskid = this.selectedRequest?.taskid;
-      console.log("taskid", taskid);
+      // Fetch latest task ID dynamically to ensure we have it for completion
+      await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
+      const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+      console.log("taskid to complete", taskid);
       
       if (taskid) {
         var req3 = {
