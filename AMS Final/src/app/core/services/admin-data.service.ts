@@ -86,6 +86,7 @@ export interface AssetTypeAssignment {
   id: string;
   name: string;
   assetManager: string;
+  assetManagerId?: string;
   teamMembers: string;
 }
 
@@ -363,6 +364,7 @@ export class AdminDataService {
       id: this.normalizeNullable(assetTypeData.type_id, assetTypeData.type_name),
       name: this.normalizeNullable(assetTypeData.type_name, 'Unnamed Asset Type'),
       assetManager: this.normalizeSoapNullable(assetTypeData.asset_manager, ''),
+      assetManagerId: this.normalizeSoapNullable(assetTypeData.asset_manager_id || assetTypeData.am_id || assetTypeData.manager_id, ''),
       teamMembers: this.normalizeSoapNullable(assetTypeData.team_members, '')
     })) as AssetTypeAssignment[];
   }
@@ -628,6 +630,21 @@ export class AdminDataService {
         ...(updates.assetTypeId !== undefined ? { assetTypeId: updates.assetTypeId } : {})
       });
     }
+  }
+
+  /**
+   * Helper to find a user ID by their full name from the cache.
+   * Useful when an API returns only a name but we need an ID for approvals.
+   */
+  findUserIdByName(name: string): string | undefined {
+    if (!name) return undefined;
+    const searchName = name.toLowerCase().trim();
+    for (const record of this.userMasterCache.values()) {
+      if (record.name.toLowerCase().trim() === searchName) {
+        return record.userId;
+      }
+    }
+    return undefined;
   }
 
   private mapRoleIdToCordysRole(roleId: string): string {

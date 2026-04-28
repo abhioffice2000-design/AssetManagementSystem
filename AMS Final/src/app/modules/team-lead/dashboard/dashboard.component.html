@@ -152,7 +152,13 @@
         <textarea readonly
           style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box; resize: none;" rows="3">{{selectedRequest.justification}}</textarea>
       </div>
+      <div *ngIf="selectedRequest.status === 'Rejected'" style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;">
+        <label style="font-size: 13px; font-weight: 600; color: #ef4444;">Rejected Reason</label>
+        <textarea readonly
+          style="padding: 10px; border: 1px solid #fecaca; border-radius: 4px; background: #fef2f2; width: 100%; box-sizing: border-box; color: #b91c1c; font-weight: 500; resize: none;" rows="2">{{selectedRequest.remarks || 'No reason specified by approver'}}</textarea>
+      </div>
     </div>
+
 
     <div
       style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee;">

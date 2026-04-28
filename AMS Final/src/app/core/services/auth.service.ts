@@ -110,7 +110,8 @@ export class AuthService {
       joinDate: userData.created_at || new Date().toISOString().split('T')[0],
       projectId: userData.project_id,
       projectName: (userData.m_projects && userData.m_projects.project_name && typeof userData.m_projects.project_name === 'string') ? userData.m_projects.project_name : undefined,
-      teamLeadName: (userData.m_projects && (userData.m_projects.team_lead || userData.m_projects.tl_id) && typeof (userData.m_projects.team_lead || userData.m_projects.tl_id) === 'string') ? (userData.m_projects.team_lead || userData.m_projects.tl_id) : undefined
+      teamLeadName: (userData.m_projects && (userData.m_projects.team_lead || userData.m_projects.tl_id) && typeof (userData.m_projects.team_lead || userData.m_projects.tl_id) === 'string') ? (userData.m_projects.team_lead || userData.m_projects.tl_id) : undefined,
+      teamLeadId: (userData.m_projects && userData.m_projects.tl_id && typeof userData.m_projects.tl_id === 'string') ? userData.m_projects.tl_id : undefined
     };
 
     // Block login if user account is inactive
@@ -164,6 +165,7 @@ export class AuthService {
         projectId: item.project_id,
         projectName: (item.m_projects && item.m_projects.project_name && typeof item.m_projects.project_name === 'string') ? item.m_projects.project_name : (item.projectName || item.team),
         teamLeadName: (item.m_projects && (item.m_projects.team_lead || item.m_projects.tl_id) && typeof (item.m_projects.team_lead || item.m_projects.tl_id) === 'string') ? (item.m_projects.team_lead || item.m_projects.tl_id) : undefined,
+        teamLeadId: (item.m_projects && item.m_projects.tl_id && typeof item.m_projects.tl_id === 'string') ? item.m_projects.tl_id : undefined,
         designation: item.designation || 'Specialist',
         isActive: item.status === 'Active',
         joinDate: item.created_at || new Date().toISOString().split('T')[0]
@@ -210,17 +212,17 @@ export class AuthService {
           
           // Resolve teamLeadName. Cordys might return an object for nulls. 
           // We check if it's a string, otherwise fallback to undefined.
-          let resolvedTeamLead = matchingProject.team_lead || matchingProject.tl_id;
-          if (resolvedTeamLead && typeof resolvedTeamLead === 'object') {
-            resolvedTeamLead = undefined;
-          }
-
-          user.teamLeadName = resolvedTeamLead;
+          user.teamLeadName = matchingProject.team_lead || matchingProject.tl_id;
+          user.teamLeadId = matchingProject.tl_id || matchingProject.team_lead;
+          
+          // Final sanity check for objects
+          if (user.teamLeadName && typeof user.teamLeadName === 'object') user.teamLeadName = undefined;
+          if (user.teamLeadId && typeof user.teamLeadId === 'object') user.teamLeadId = undefined;
           
           // Update subject if this is the current user
           const current = this.currentUserSubject.value;
           if (current && current.id === user.id) {
-            const updatedUser = {...current, projectName: user.projectName, teamLeadName: user.teamLeadName};
+            const updatedUser = {...current, projectName: user.projectName, teamLeadName: user.teamLeadName, teamLeadId: user.teamLeadId};
             this.currentUserSubject.next(updatedUser);
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
           }

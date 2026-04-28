@@ -29,6 +29,7 @@ export class AssetRequestsComponent implements OnInit {
   selectedUrgency = '';
   statuses = Object.values(RequestStatus);
   urgencies = Object.values(RequestUrgency);
+  RequestStatus = RequestStatus; // Add this to use in template
   availableAssets: any[] = [];
   selectedAssetId = '';
   allocationTeamMemberList: any[] = [];
@@ -691,20 +692,20 @@ export class AssetRequestsComponent implements OnInit {
     try {
       const progress = await this.requestService.getRequestProgress(request.id);
       if (progress && progress.length > 0) {
-        // Find the Team Lead approval in the history
-        const tlApproval = progress.find(p =>
-          p.stage.toLowerCase().includes('team lead') ||
-          p.stage.toLowerCase().includes('manager') // Sometimes Team Lead is called Manager in DB
-        );
-
-        // Update the detail request's approval chain
+        // Update the detail request's approval chain with real-time data
         this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
-          if (entry.stage === ApprovalStage.TEAM_LEAD) {
+          const stageProgress = progress.find(p => 
+            p.stage === entry.stage || 
+            (entry.stage === ApprovalStage.TEAM_LEAD && (p.stage.toLowerCase().includes('team lead') || p.stage.toLowerCase().includes('manager')))
+          );
+
+          if (stageProgress) {
             return {
               ...entry,
-              action: 'Approved' as any,
-              approverName: tlApproval?.approverName || entry.approverName || 'Team Lead',
-              timestamp: tlApproval?.timestamp || entry.timestamp
+              action: (stageProgress.status === 'Approved' || stageProgress.status === 'Rejected') ? stageProgress.status : entry.action,
+              approverName: stageProgress.approverName || entry.approverName,
+              timestamp: stageProgress.timestamp || entry.timestamp,
+              comments: stageProgress.comments || entry.comments
             };
           }
           return entry;
@@ -720,12 +721,26 @@ export class AssetRequestsComponent implements OnInit {
       }
     } catch (err) {
       console.warn('Failed to load dynamic progress for tracker:', err);
-      // Basic fallback
-      this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
-        if (entry.stage === ApprovalStage.TEAM_LEAD) return { ...entry, action: 'Approved' as any };
-        return entry;
-      });
     }
+  }
+
+  getRejectionReason(req: AssetRequest): string {
+    if (req.status !== RequestStatus.REJECTED) return '';
+    
+    // 1. Check if it's already in the request object
+    if (req.reason) return req.reason;
+    if (req.remarks) return req.remarks;
+    
+    // 2. Check the approval chain for a rejected stage
+    const rejectedStage = req.approvalChain?.find(a => a.action === 'Rejected');
+    if (rejectedStage && rejectedStage.comments) return rejectedStage.comments;
+    
+    return 'No rejection reason provided.';
+  }
+
+  getAssetManagerRemarks(req: AssetRequest): string {
+    const amStage = req.approvalChain?.find(a => a.stage === ApprovalStage.ASSET_MANAGER);
+    return amStage?.comments || req.remarks || '';
   }
 
   closeDetailModal(): void {

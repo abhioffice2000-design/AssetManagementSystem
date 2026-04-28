@@ -783,8 +783,9 @@ export class RequestService {
     // Determine request type from asset_type or default
     const requestType = this.mapToRequestType(reqData?.request_type || reqData?.asset_type || '');
 
-    // Determine current approval stage based on status
-    const currentStage = this.determineStage(status);
+    // Determine current approval stage based on status and role
+    const role = parent?.t_request_approvals?.role || reqData?.t_request_approvals?.role || '';
+    const currentStage = this.determineStage(status, role);
 
     // Parse email approval
     const hasEmailApproval = reqData?.email_approval === 'true' || reqData?.email_approval === true;
@@ -967,9 +968,14 @@ export class RequestService {
     return RequestType.NEW_ASSET; // default
   }
 
-  private determineStage(status: RequestStatus): ApprovalStage {
+  private determineStage(status: RequestStatus, role: string = ''): ApprovalStage {
+    const r = role.toLowerCase();
+    if (r.includes('team lead')) return ApprovalStage.TEAM_LEAD;
+    if (r.includes('asset manager')) return ApprovalStage.ASSET_MANAGER;
+    if (r.includes('allocation')) return ApprovalStage.ALLOCATION;
+
     switch (status) {
-      case RequestStatus.PENDING: return ApprovalStage.ASSET_MANAGER;
+      case RequestStatus.PENDING: return ApprovalStage.TEAM_LEAD;
       case RequestStatus.APPROVED: return ApprovalStage.ALLOCATION;
       case RequestStatus.COMPLETED: return ApprovalStage.COMPLETED;
       default: return ApprovalStage.TEAM_LEAD;

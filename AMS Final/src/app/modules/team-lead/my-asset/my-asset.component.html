@@ -72,7 +72,14 @@
             </tbody>
           </table>
         </div>
+        <!-- Pagination for Assets -->
+        <div class="pagination-controls" *ngIf="totalAssetsPages > 1" style="display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee;">
+          <button [disabled]="assetsCurrentPage === 1" (click)="changeAssetsPage(assetsCurrentPage - 1)" class="btn btn-outline btn-sm" style="min-width: 100px;">Previous</button>
+          <span style="font-size: 14px; color: #64748b;">Page <strong>{{assetsCurrentPage}}</strong> of {{totalAssetsPages}}</span>
+          <button [disabled]="assetsCurrentPage === totalAssetsPages" (click)="changeAssetsPage(assetsCurrentPage + 1)" class="btn btn-outline btn-sm" style="min-width: 100px;">Next</button>
+        </div>
       </div>
+
 
       <!-- My Pending Requests Tab -->
       <div *ngIf="activeTab === 'requests'">
@@ -121,7 +128,14 @@
             </tbody>
           </table>
         </div>
+        <!-- Pagination for Requests -->
+        <div class="pagination-controls" *ngIf="totalRequestsPages > 1" style="display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee;">
+          <button [disabled]="requestsCurrentPage === 1" (click)="changeRequestsPage(requestsCurrentPage - 1)" class="btn btn-outline btn-sm" style="min-width: 100px;">Previous</button>
+          <span style="font-size: 14px; color: #64748b;">Page <strong>{{requestsCurrentPage}}</strong> of {{totalRequestsPages}}</span>
+          <button [disabled]="requestsCurrentPage === totalRequestsPages" (click)="changeRequestsPage(requestsCurrentPage + 1)" class="btn btn-outline btn-sm" style="min-width: 100px;">Next</button>
+        </div>
       </div>
+
     </div>
   </div>
 </div>

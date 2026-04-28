@@ -16,6 +16,7 @@ export interface User {
   projectId?: string;
   projectName?: string;
   teamLeadName?: string;
+  teamLeadId?: string;
   assetTypeId?: string;
   assetTypeName?: string;
 }

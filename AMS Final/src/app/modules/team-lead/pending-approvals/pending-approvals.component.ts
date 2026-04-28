@@ -321,7 +321,7 @@ export class PendingApprovalsComponent implements OnInit {
         assetType: this.selectedRequest.assetType
       });
 
-      this.notificationService.showToast('Request Approved successfully', 'success');
+      this.notificationService.showToast(`Request ${this.selectedRequest.requestNumber} Approved successfully`, 'success');
 
 
       this.selectedRequest = null;
@@ -412,7 +412,7 @@ export class PendingApprovalsComponent implements OnInit {
         await this.requestService.completeUserTask(req3 as any);
       }
 
-      this.notificationService.showToast('Request Rejected successfully', 'success');
+      this.notificationService.showToast(`Request ${this.selectedRequest.requestNumber} Rejected successfully`, 'success');
 
       // Trigger status update email
       this.mailService.sendAssetRequestStatusUpdate({
