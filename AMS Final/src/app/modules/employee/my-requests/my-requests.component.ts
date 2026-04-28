@@ -41,6 +41,17 @@ export class MyRequestsComponent implements OnInit {
     { label: 'Return Requests', value: RequestType.RETURN_ASSET }
   ];
 
+  // Filters
+  // searchTerm = '';
+  // selectedType = '';
+
+  // types = [
+  //   { label: 'All Requests', value: '' },
+  //   { label: 'New Asset Requests', value: RequestType.NEW_ASSET },
+  //   { label: 'Warranty Requests', value: RequestType.EXTEND_WARRANTY },
+  //   { label: 'Return Requests', value: RequestType.RETURN_ASSET }
+  // ];
+
   // Resubmit Modal Data
   resubmitForm!: FormGroup;
   masterAssetTypes: any[] = [];
@@ -107,6 +118,7 @@ export class MyRequestsComponent implements OnInit {
 
   get filteredRequests(): AssetRequest[] {
     const filtered = this.requests.filter(req => {
+      //   const matchesSearch = !this.searchTerm ||
       const matchesSearch = !this.searchTerm ||
         req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
@@ -470,7 +482,9 @@ export class MyRequestsComponent implements OnInit {
             new: {
               m_assets: {
                 status: 'Allocated',
-                temp1: this.authService.getCurrentUser()?.id
+                temp1: this.authService.getCurrentUser()?.id,
+                // temp1: this.selectedRequest.requesterId,
+                temp2: this.selectedRequest.id
               }
             }
           }

@@ -3,6 +3,10 @@ import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { HeroService } from '../../../core/services/hero.service';
 import { Asset } from '../../../core/models/asset.model';
+import { AssetRequest } from '../../../core/models/request.model';
+import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { Chart, ChartConfiguration, ChartData, ChartType, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -55,10 +59,19 @@ export class AllocationDashboardComponent implements OnInit {
   isModalOpen = false;
   selectedAsset: any = null;
 
+  // Warranty Extension State
+  pendingWarrantyRequests: AssetRequest[] = [];
+  isWarrantyModalOpen = false;
+  selectedWarrantyRequest: AssetRequest | null = null;
+  newWarrantyDate: string = '';
+
   constructor(
     private requestService: RequestService,
     private assetService: AssetService,
-    private hs: HeroService
+    private hs: HeroService,
+    private notificationService: NotificationService,
+    private mailService: MailService,
+    private authService: AuthService
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -68,17 +81,19 @@ export class AllocationDashboardComponent implements OnInit {
   async loadTaskConsole(): Promise<void> {
     this.loading = true;
     try {
-      const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+      const currentUser = this.authService.getCurrentUser();
       const approverId = currentUser?.id ?? 'usr_007';
 
-      const [resRequests, resInventory] = await Promise.all([
+      const [resRequests, resInventory, resWarranty] = await Promise.all([
         this.hs.ajax('GetallpendingrequestsForAllocationTeamMemberwithTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: approverId }),
-        this.assetService.fetchAssetsFromService()
+        this.assetService.fetchAssetsFromService(),
+        this.requestService.fetchPendingWarrantyApprovalsFromService(approverId)
       ]);
 
       const requestTuples = this.hs.xmltojson(resRequests, 'tuple');
       const allRequests = Array.isArray(requestTuples) ? requestTuples : (requestTuples ? [requestTuples] : []);
       const allAssets: Asset[] = resInventory || [];
+      this.pendingWarrantyRequests = resWarranty || [];
 
       // 1. Asset Type Donut Chart
       const typeMap = new Map<string, number>();
@@ -158,5 +173,66 @@ export class AllocationDashboardComponent implements OnInit {
   closeModal(): void {
     this.isModalOpen = false;
     this.selectedAsset = null;
+  }
+
+  openWarrantyModal(request: AssetRequest): void {
+    this.selectedWarrantyRequest = request;
+    this.newWarrantyDate = ''; // Reset date
+    this.isWarrantyModalOpen = true;
+  }
+
+  closeWarrantyModal(): void {
+    this.isWarrantyModalOpen = false;
+    this.selectedWarrantyRequest = null;
+    this.newWarrantyDate = '';
+  }
+
+  async approveWarrantyExtension(): Promise<void> {
+    if (!this.selectedWarrantyRequest || !this.newWarrantyDate) {
+      alert('Please select a new warranty date.');
+      return;
+    }
+
+    try {
+      const requestId = this.selectedWarrantyRequest.id;
+      const approvalId = this.selectedWarrantyRequest.approvalId;
+      const assetId = this.selectedWarrantyRequest.assignedAssetId;
+
+      if (!approvalId) {
+        this.notificationService.showToast('Approval context missing. Cannot proceed.', 'error');
+        return;
+      }
+
+      // 1. Update status in t_extend_request_approvals to 'Approved'
+      await this.requestService.updateWarrantyRequestApproval(
+        approvalId,
+        'Approved',
+        'Warranty extended by Allocation Team',
+        assetId
+      );
+
+      // 2. Update status in t_extend_asset_requests to 'Approved'
+      await this.requestService.updateExtendAssetRequest(requestId, 'Approved');
+
+      // 3. Update m_assets with the new warranty date
+      if (assetId) {
+        await this.requestService.updateAssetWarrantyDate(assetId, this.newWarrantyDate);
+      }
+
+      // 4. Send email to employee
+      await this.mailService.sendWarrantyExtensionConfirmation({
+        employeeName: this.selectedWarrantyRequest.requesterName,
+        assetName: this.selectedWarrantyRequest.assetName || 'Asset',
+        newExpiryDate: this.newWarrantyDate,
+        requestId: requestId
+      });
+
+      this.notificationService.showToast('Warranty extension approved and updated successfully!', 'success');
+      this.closeWarrantyModal();
+      await this.loadTaskConsole(); // Refresh dashboard
+    } catch (error) {
+      console.error('Failed to approve warranty extension:', error);
+      this.notificationService.showToast('Failed to complete approval. Please try again.', 'error');
+    }
   }
 }

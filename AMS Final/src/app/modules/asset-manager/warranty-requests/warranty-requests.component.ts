@@ -20,8 +20,11 @@ export class WarrantyRequestsComponent implements OnInit {
   selectedStatus = '';
   selectedUrgency = '';
 
+  activeTab: 'pending' | 'resolved' = 'pending';
   statuses = Object.values(RequestStatus);
   urgencies = Object.values(RequestUrgency);
+
+  allWarrantyRequests: AssetRequest[] = [];
 
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
@@ -62,13 +65,18 @@ export class WarrantyRequestsComponent implements OnInit {
       const approverId = currentUser?.id || 'usr_004';
       console.log("user id", currentUser?.id)
 
-      const [warrantyReqs, memberResult] = await Promise.all([
+      const [pendingReqs, allReqs, memberResult] = await Promise.all([
         this.requestService.fetchPendingWarrantyApprovalsFromService(approverId),
+        this.requestService.fetchAllWarrantyRequests(),
         this.requestService.getAllocationTeamMemberAccordingtoManager(approverId)
       ]);
 
-      this.warrantyRequests = warrantyReqs;
-      console.log("warrantyReqs", warrantyReqs)
+      this.warrantyRequests = pendingReqs;
+      this.allWarrantyRequests = allReqs;
+      
+      console.log("warrantyReqs", pendingReqs);
+      console.log("allWarrantyRequests", allReqs);
+
       // Normalize team members to a flat structure
       const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
       this.allocationTeamMemberList = rawMembers.map((m: any) => ({
@@ -87,7 +95,9 @@ export class WarrantyRequestsComponent implements OnInit {
   }
 
   applyFilters(): void {
-    this.filteredWarrantyRequests = this.warrantyRequests.filter(req => {
+    const source = this.activeTab === 'pending' ? this.warrantyRequests : this.resolvedWarrantyRequests;
+
+    this.filteredWarrantyRequests = source.filter(req => {
       const matchesSearch = !this.searchTerm ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requesterName.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
@@ -98,6 +108,19 @@ export class WarrantyRequestsComponent implements OnInit {
     }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
     this.currentPage = 1;
+  }
+
+  get resolvedWarrantyRequests(): AssetRequest[] {
+    return this.allWarrantyRequests.filter(req => 
+      req.status === RequestStatus.COMPLETED || 
+      req.status === RequestStatus.REJECTED || 
+      req.status === RequestStatus.CANCELLED
+    );
+  }
+
+  setTab(tab: 'pending' | 'resolved'): void {
+    this.activeTab = tab;
+    this.applyFilters();
   }
 
   get paginatedRequests(): AssetRequest[] {

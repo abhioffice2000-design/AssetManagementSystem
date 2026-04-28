@@ -85,6 +85,14 @@ export class MyAssetsComponent implements OnInit {
         this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
       }
       // Fetch allocated assets and requests in parallel for joining
+      // const [assets, requests] = await Promise.all([
+      //   this.assetService.getAllocatedAssetsByUserId(user.id),
+      //   this.requestService.getRequestsByUserIdFromCordys(user.id)
+      // ]);
+
+      // this.myAssets = assets;
+
+      // Fetch allocated assets and requests in parallel for joining
       const [assets, requests] = await Promise.all([
         this.assetService.getAllocatedAssetsByUserId(user.id),
         this.requestService.getRequestsByUserIdFromCordys(user.id)
@@ -110,6 +118,7 @@ export class MyAssetsComponent implements OnInit {
             const rAllocId = (r.allocatedAssetId || '').toLowerCase().trim();
             const rAssignedId = ((r as any).assignedAssetId || '').toLowerCase().trim();
 
+
             // Look into raw request data too if available (sometimes hidden in temp fields)
             const raw = (r as any).rawRequest || {};
             const rTemp1 = (raw.temp1 || '').toLowerCase().trim();
@@ -117,6 +126,9 @@ export class MyAssetsComponent implements OnInit {
 
             return (rAllocId && (rAllocId === aId || rAllocId === aTag || rAllocId === aSerial)) ||
               (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
+              (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
+              (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
+            (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
               (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
               (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
           });

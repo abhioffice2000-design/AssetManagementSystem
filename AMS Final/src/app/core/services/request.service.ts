@@ -305,6 +305,35 @@ export class RequestService {
   }
 
   /**
+   * Fetches ALL warranty extension requests from the Cordys SOAP service (GetT_extend_asset_requests).
+   * Used for the "Resolved" tab in Warranty Extensions.
+   */
+  async fetchAllWarrantyRequests(): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_extend_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetT_extend_asset_requests response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch all warranty requests from GetT_extend_asset_requests:', err);
+      return [];
+    }
+  }
+
+  /**
    * Fetches the full object for a specific warranty extension request.
    * Based on USER provided SOAP request structure.
    */
@@ -400,20 +429,109 @@ export class RequestService {
   }
 
   /**
+   * Updates the main warranty extension request record.
+   */
+  async updateExtendAssetRequest(requestId: string, status: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_extend_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_extend_asset_requests qConstraint="0">
+            <request_id>${requestId}</request_id>
+          </t_extend_asset_requests>
+        </old>
+        <new>
+          <t_extend_asset_requests qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <status>${status}</status>
+          </t_extend_asset_requests>
+        </new>
+      </tuple>
+    </UpdateT_extend_asset_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      return await this.hs.ajax(null, null, {}, soapRequest);
+    } catch (err) {
+      console.error('Failed to update extend asset request:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Updates the warranty expiry date of an asset in the master table.
+   */
+  async updateAssetWarrantyDate(assetId: string, newExpiryDate: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_assets qConstraint="0">
+            <asset_id>${assetId}</asset_id>
+          </m_assets>
+        </old>
+        <new>
+          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <warranty_expiry>${newExpiryDate}</warranty_expiry>
+          </m_assets>
+        </new>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      return await this.hs.ajax(null, null, {}, soapRequest);
+    } catch (err) {
+      console.error('Failed to update asset warranty date:', err);
+      throw err;
+    }
+  }
+
+
+  /**
    * Specialized mapping for warranty requests (t_extend_asset_requests).
    */
   private mapWarrantyTupleToRequest(tuple: any): AssetRequest {
     const parent = tuple?.old || tuple;
-    const approvalData = parent?.t_extend_request_approvals || parent;
+    
+    // In Cordys join queries, tables can be siblings or nested.
+    // Try to find approval data in both common patterns.
+    const approvalData = parent?.t_extend_request_approvals || 
+                         parent?.t_extend_asset_requests?.t_extend_request_approvals || 
+                         parent;
 
-    // Attempt to find the request data at different nesting levels
-    const reqData = approvalData?.t_extend_asset_requests || parent?.t_extend_asset_requests || (parent.request_id ? parent : {});
+    const reqData = parent?.t_extend_asset_requests || 
+                    approvalData?.t_extend_asset_requests || 
+                    (parent.request_id ? parent : {});
+                    
     const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || {};
-    const assetInfo = parent?.m_assets || approvalData?.m_assets || reqData?.m_assets || {};
+    
+    // Asset metadata can be in multiple places depending on the join depth
+    const assetInfo = parent?.m_assets || 
+                     reqData?.m_assets || 
+                     approvalData?.m_assets || 
+                     parent?.t_extend_asset_requests?.m_assets || 
+                     parent?.t_extend_request_approvals?.m_assets ||
+                     {};
 
     // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
     const assetName = this.getNullableValue(reqData?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
-    const serialNumber = this.getNullableValue(reqData?.temp2 || assetInfo?.serial_number) || 'N/A';
+    const serialNumber = this.getNullableValue(
+      reqData?.temp2 || 
+      parent?.temp2 || 
+      reqData?.serial_number || 
+      reqData?.asset_tag || 
+      assetInfo?.serial_number || 
+      assetInfo?.asset_tag || 
+      assetInfo?.serial_no || 
+      assetInfo?.Serial_number || 
+      parent?.serial_number
+    ) || 'N/A';
     const expiryDate = this.getNullableValue(reqData?.temp3 || assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
     const assetId = this.getNullableValue(reqData?.asset_id || assetInfo?.asset_id || reqData?.asset_type) || 'N/A';
 
@@ -421,11 +539,11 @@ export class RequestService {
     const currentStage = ApprovalStage.ASSET_MANAGER;
 
     return {
-      taskid: tuple?.old.t_extend_asset_requests.t_extend_request_approvals.temp1 || '',
-      document: this.getNullableValue(reqData?.temp2) || '',
-      approvalId: tuple?.old.t_extend_asset_requests.t_extend_request_approvals.approval_id || '',
-      id: reqData?.request_id || '',
-      requestNumber: reqData?.request_id || '',
+      taskid: this.getNullableValue(approvalData?.temp1 || parent?.temp1 || parent?.t_extend_asset_requests?.t_extend_request_approvals?.temp1) || '',
+      document: this.getNullableValue(reqData?.document) || '',
+      approvalId: approvalData?.approval_id || parent?.approval_id || parent?.t_extend_asset_requests?.t_extend_request_approvals?.approval_id || '',
+      id: reqData?.request_id || parent?.request_id || '',
+      requestNumber: reqData?.request_id || parent?.request_id || '',
       requesterId: reqData?.user_id || userInfo?.user_id || '',
       requesterName: userInfo?.name || '',
       requesterEmail: userInfo?.email || '',

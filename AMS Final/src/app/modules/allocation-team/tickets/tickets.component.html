@@ -12,7 +12,7 @@
       <div class="header-stats">
         <div class="stat-pill unresolved-pill">
           <span class="material-icons">pending_actions</span>
-          <span>{{ unresolvedTickets.length }} Unresolved</span>
+          <span>{{ unresolvedTickets.length }} Pending Requests</span>
         </div>
         <div class="stat-pill resolved-pill">
           <span class="material-icons">task_alt</span>
@@ -25,7 +25,7 @@
     <div class="tabs-navigation">
       <button [class.active]="activeTab === 'unresolved'" (click)="setTab('unresolved')">
         <span class="material-icons">pending_actions</span>
-        Unresolved
+        Pending Requests
         <span class="tab-count" *ngIf="unresolvedTickets.length > 0">{{ unresolvedTickets.length }}</span>
       </button>
       <button [class.active]="activeTab === 'resolved'" (click)="setTab('resolved')">
@@ -42,17 +42,30 @@
           <input type="text" [(ngModel)]="searchTerm" (ngModelChange)="onFilterChange()" placeholder="Search..." 
                  style="padding: 8px 8px 8px 32px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s; width: 200px;">
         </div>
-        <select class="asset-filter" [(ngModel)]="selectedRequestType" (ngModelChange)="onFilterChange()"
-                style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
-          <option value="">All Requests</option>
-          <option value="new">New Asset Requests</option>
-          <option value="warranty">Extend Warranty Requests</option>
-        </select>
-        <select class="asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="onFilterChange()"
-                style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
-          <option value="">All Types</option>
-          <option *ngFor="let opt of assetTypeOptions" [value]="opt">{{ opt }}</option>
-        </select>
+
+        <!-- Filters for Unresolved Tab -->
+        <ng-container *ngIf="activeTab === 'unresolved'">
+          <select class="asset-filter" [(ngModel)]="selectedRequestType" (ngModelChange)="onFilterChange()"
+                  style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+            <option value="">All Requests</option>
+            <option value="new">New Asset Requests</option>
+          </select>
+          <select class="asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="onFilterChange()"
+                  style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+            <option value="">All Types</option>
+            <option *ngFor="let opt of assetTypeOptions" [value]="opt">{{ opt }}</option>
+          </select>
+        </ng-container>
+
+        <!-- Filter for Resolved Tab -->
+        <ng-container *ngIf="activeTab === 'resolved'">
+          <select class="asset-filter" [(ngModel)]="selectedResolvedStatus" (ngModelChange)="onFilterChange()"
+                  style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+            <option value="">All Resolved</option>
+            <option value="Approved">Approved Requests</option>
+            <option value="Rejected">Rejected Requests</option>
+          </select>
+        </ng-container>
       </div>
     </div>
 
@@ -98,11 +111,11 @@
                   <span class="material-icons">visibility</span>
                   View Details
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')" 
+                <button *ngIf="activeTab === 'unresolved'" 
                         class="btn-allocate" (click)="allocate(ticket)">
                   <span class="material-icons">check_circle</span>
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')" 
+                <button *ngIf="activeTab === 'unresolved'" 
                         class="btn-reject" (click)="reject(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
@@ -147,8 +160,6 @@
         </div>
       </div>
     </div>
-
-
   </div>
 
   <!-- ─── Details Drawer ───────────────────────────────────────────────────── -->
@@ -240,7 +251,7 @@
       </div>
 
       <!-- Action Buttons inside Drawer -->
-      <div class="drawer-actions" *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
+      <div class="drawer-actions" *ngIf="activeTab === 'unresolved'">
         <button class="drawer-btn-allocate" (click)="allocate(selectedTicket); closeDetails()">
           <span class="material-icons">check_circle</span>
           {{ selectedTicket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate' }}
