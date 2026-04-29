@@ -1,0 +1,142 @@
+.scheduler-card {
+  max-width: 800px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+
+  .card-header {
+    padding: 32px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    background: linear-gradient(to right, #f8fafc, #ffffff);
+
+    .header-icon {
+      width: 56px;
+      height: 56px;
+      background: #eff6ff;
+      color: #2563eb;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      span { font-size: 32px; }
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    p { margin: 4px 0 0; }
+  }
+
+  .card-body { padding: 32px; }
+
+  .scheduler-form {
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    .form-group {
+      label {
+        display: block;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 12px;
+        font-size: 0.95rem;
+      }
+    }
+
+    .select-wrapper {
+      position: relative;
+      
+      .select-icon {
+        position: absolute;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+        pointer-events: none;
+      }
+
+      .form-control {
+        padding-left: 48px;
+        height: 56px;
+        border-radius: 12px;
+        border: 2px solid #e2e8f0;
+        font-size: 1rem;
+        font-weight: 500;
+        color: #1e293b;
+        transition: all 0.2s ease;
+
+        &:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+      }
+    }
+
+    .form-hint {
+      margin-top: 10px;
+      font-size: 0.875rem;
+      color: #64748b;
+    }
+  }
+
+  .scheduler-preview {
+    background: #f1f5f9;
+    padding: 24px;
+    border-radius: 16px;
+    
+    .preview-info {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      color: #475569;
+      
+      span { color: #3b82f6; }
+      p { margin: 0; font-size: 0.95rem; }
+      strong { color: #1e293b; }
+    }
+  }
+
+  .card-footer {
+    padding: 24px 32px;
+    background: #f8fafc;
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.btn-lg {
+  padding: 14px 28px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+  .scheduler-form .form-row {
+    grid-template-columns: 1fr;
+  }
+}

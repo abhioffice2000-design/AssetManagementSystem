@@ -1,0 +1,63 @@
+<div class="page-container">
+  <div class="page-header mb-24">
+    <div>
+      <h2 class="page-title">Warranty Extension Scheduler</h2>
+      <p class="page-subtitle">Configure automated reminder schedules for asset warranty extensions</p>
+    </div>
+  </div>
+
+  <div class="card scheduler-card animate-slide-up">
+    <div class="card-header border-0">
+      <div class="header-icon">
+        <span class="material-icons-outlined">alarm</span>
+      </div>
+      <div>
+        <h3>Automation Settings</h3>
+        <p class="text-muted">Set the frequency and time for automated warranty notifications</p>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div class="scheduler-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Reminder Frequency (Days Before)</label>
+            <div class="select-wrapper">
+              <span class="material-icons-outlined select-icon">event</span>
+              <select class="form-control" [(ngModel)]="selectedDays">
+                <option *ngFor="let day of dayOptions" [value]="day">{{ day }} Days Before</option>
+              </select>
+            </div>
+            <p class="form-hint">System will trigger reminders this many days before expiry.</p>
+          </div>
+
+          <div class="form-group">
+            <label>Execution Time</label>
+            <div class="select-wrapper">
+              <span class="material-icons-outlined select-icon">schedule</span>
+              <select class="form-control" [(ngModel)]="selectedTime">
+                <option *ngFor="let time of timeOptions" [value]="time">{{ time }}</option>
+              </select>
+            </div>
+            <p class="form-hint">Preferred time for the automation job to run daily.</p>
+          </div>
+        </div>
+
+        <div class="scheduler-preview mt-32">
+          <div class="preview-info">
+            <span class="material-icons-outlined">info</span>
+            <p>Reminders will be sent at <strong>{{ selectedTime }}</strong>, precisely <strong>{{ selectedDays }} days</strong> before the asset's warranty expires.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-footer border-top">
+      <button class="btn btn-primary btn-lg" [disabled]="isSaving" (click)="saveSchedule()">
+        <span class="material-icons-outlined" *ngIf="!isSaving">save</span>
+        <span class="spinner" *ngIf="isSaving"></span>
+        {{ isSaving ? 'Saving Schedule...' : 'Save Configuration' }}
+      </button>
+    </div>
+  </div>
+</div>
