@@ -17,7 +17,7 @@ interface NavItem {
   styleUrls: ['./sidebar.component.scss']
 })
 export class SidebarComponent implements OnInit, OnDestroy {
-  currentUser!: User;
+  currentUser: User | null = null;
   isCollapsed = false;
   currentRoute = '';
   navItems: NavItem[] = [];
@@ -27,6 +27,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
   constructor(private authService: AuthService, private router: Router) {}
 
   ngOnInit(): void {
+    this.currentRoute = this.router.url;
     this.subscriptions.push(
       this.authService.currentUser$.subscribe(user => {
         this.currentUser = user;
@@ -44,16 +45,20 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   buildNavItems(): void {
+    if (!this.currentUser) {
+      this.navItems = [];
+      return;
+    }
     const role = this.currentUser.role;
     const base = this.authService.getRoleRoute(role);
-
     switch (role) {
       case UserRole.ADMINISTRATOR:
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'User Management', icon: 'people', route: `${base}/users` },
           { label: 'Master Data', icon: 'settings', route: `${base}/master-data` },
-          { label: 'Asset Configuration', icon: 'inventory_2', route: `${base}/asset-config` }
+          { label: 'Asset Transactions', icon: 'sync_alt', route: `${base}/transactions` },
+          { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
       case UserRole.ASSET_MANAGER:
@@ -61,6 +66,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'Asset Inventory', icon: 'inventory', route: `${base}/inventory` },
           { label: 'Asset Requests', icon: 'assignment', route: `${base}/requests` },
+          { label: 'Warranty Requests', icon: 'security', route: `${base}/warranty` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
@@ -69,21 +75,22 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'Asset Inventory', icon: 'inventory', route: `${base}/inventory` },
           { label: 'Tickets', icon: 'confirmation_number', route: `${base}/tickets` },
+          { label: 'Warranty Extensions', icon: 'security', route: `${base}/warranty` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
       case UserRole.TEAM_LEAD:
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
-          { label: 'Pending Approvals', icon: 'fact_check', route: `${base}/approvals` },
-          { label: 'Team Assets', icon: 'devices', route: `${base}/team-assets` }
+          { label: 'Pending Approvals', icon: 'fact_check', route: `${base}/pending-approval` },
+          { label: 'My Asset', icon: 'devices', route: `${base}/my-asset` }
         ];
         break;
       case UserRole.EMPLOYEE:
         this.navItems = [
-          { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'My Assets', icon: 'devices', route: `${base}/my-assets` },
-          { label: 'Request Asset', icon: 'add_circle', route: `${base}/request-asset` },
+          { label: 'My Requests', icon: 'assignment', route: `${base}/my-requests` },
+
           { label: 'Return Asset', icon: 'assignment_return', route: `${base}/return-asset` },
           { label: 'Extend Warranty', icon: 'security', route: `${base}/extend-warranty` }
         ];
@@ -92,7 +99,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   isActive(route: string): boolean {
-    return this.currentRoute.startsWith(route);
+    if (!this.currentRoute || !route) return false;
+    
+    // Normalize both routes to remove triple slashes and ensure leading slash
+    const normalizedCurrent = ('/' + this.currentRoute).replace(/\/+/g, '/');
+    const normalizedRoute = ('/' + route).replace(/\/+/g, '/');
+    
+    // For exact dashboard match or sub-routes
+    return normalizedCurrent === normalizedRoute || normalizedCurrent.startsWith(normalizedRoute + '/');
   }
 
   toggleCollapse(): void {
@@ -108,7 +122,6 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   logout(): void {
-    // In a real app, this would call auth service logout
-    this.router.navigate(['/']);
+    this.authService.logout();
   }
 }

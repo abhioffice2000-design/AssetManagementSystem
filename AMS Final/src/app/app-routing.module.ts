@@ -7,6 +7,11 @@ import { UserRole } from './core/models/user.model';
 const routes: Routes = [
   {
     path: '',
+    redirectTo: 'home',
+    pathMatch: 'full'
+  },
+  {
+    path: '',
     component: MainLayoutComponent,
     children: [
       {
@@ -39,12 +44,15 @@ const routes: Routes = [
         canActivate: [RoleGuard],
         data: { role: UserRole.EMPLOYEE }
       },
-      {
-        path: '',
-        redirectTo: 'admin',
-        pathMatch: 'full'
-      }
     ]
+  },
+  {
+    path: 'home',
+    loadChildren: () => import('./modules/home/home.module').then(m => m.HomeModule)
+  },
+  {
+    path: 'auth',
+    loadChildren: () => import('./modules/auth/auth.module').then(m => m.AuthModule)
   }
 ];
 

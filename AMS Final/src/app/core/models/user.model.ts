@@ -1,5 +1,7 @@
 export interface User {
   id: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   email: string;
   role: UserRole;
@@ -11,6 +13,12 @@ export interface User {
   isActive: boolean;
   joinDate: string;
   managerId?: string;
+  projectId?: string;
+  projectName?: string;
+  teamLeadName?: string;
+  teamLeadId?: string;
+  assetTypeId?: string;
+  assetTypeName?: string;
 }
 
 export enum UserRole {

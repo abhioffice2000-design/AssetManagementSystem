@@ -1,8 +1,11 @@
 export interface AssetRequest {
+  approvalId?: string; // ID for the specific approval record
+  returnapprovalId?: string;
   id: string;
   requestNumber: string;
   requesterId: string;
   requesterName: string;
+  requesterEmail?: string;
   requesterDepartment: string;
   requesterTeam: string;
   assetType: string;
@@ -16,11 +19,29 @@ export interface AssetRequest {
   emailApprovalDoc?: string;
   requestDate: string;
   lastUpdated: string;
+  document?: string;
   approvalChain: ApprovalEntry[];
   assignedAllocationTeamId?: string;
   allocatedAssetId?: string;
   comments: RequestComment[];
   requestType: RequestType;
+  assignedAssetId?: string;
+  assignedTypeId?: string;
+  assignedSubCategoryId?: string;
+  assignedSerial?: string;
+  assignedPurchaseDate?: string;
+  assignedWarrantyExpiry?: string;
+  requesterStatus?: string;
+  requesterProject?: string;
+  requesterRole?: string;
+  requesterProjectName?: string;
+  requesterRoleName?: string;
+  teamLeadJustification?: string;
+  taskid?: string;
+  assetName?: string;
+  reason?: string;
+  remarks?: string;
+  reqStatus?: string;
 }
 
 export enum RequestType {

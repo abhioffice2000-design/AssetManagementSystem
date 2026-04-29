@@ -53,7 +53,10 @@
             "styles": [
               "src/styles.scss"
             ],
-            "scripts": []
+            "scripts": [
+              "src/assets/js/jquery-3.6.1.min.js",
+              "src/assets/js/cordys.html5sdk.js"
+            ]
           },
           "configurations": {
             "production": {
@@ -65,8 +68,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "2kb",
-                  "maximumError": "4kb"
+                  "maximumWarning": "40kb",
+                  "maximumError": "80kb"
                 }
               ],
               "outputHashing": "all"
@@ -84,6 +87,9 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          },
           "configurations": {
             "production": {
               "browserTarget": "ams:build:production"
@@ -115,7 +121,10 @@
             "styles": [
               "src/styles.scss"
             ],
-            "scripts": []
+            "scripts": [
+              "src/assets/js/jquery-3.6.1.min.js",
+              "src/assets/js/cordys.html5sdk.js"
+            ]
           }
         }
       }

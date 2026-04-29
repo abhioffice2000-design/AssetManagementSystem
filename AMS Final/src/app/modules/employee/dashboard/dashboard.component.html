@@ -20,23 +20,6 @@
     </app-stat-card>
   </div>
 
-  <div class="card mb-24 animate-slide-up">
-    <div class="card-header pb-0 border-0">
-      <h3>Quick Actions</h3>
-    </div>
-    <div class="card-body grid grid-3 gap-16">
-      <button class="btn btn-primary w-full" routerLink="/employee/request-asset">
-        <span class="material-icons-outlined">add_circle</span> Request New Asset
-      </button>
-      <button class="btn btn-outline w-full" routerLink="/employee/return-asset">
-        <span class="material-icons-outlined">assignment_return</span> Return Asset
-      </button>
-      <button class="btn btn-outline w-full" routerLink="/employee/extend-warranty">
-        <span class="material-icons-outlined">security</span> Extend Warranty
-      </button>
-    </div>
-  </div>
-
   <div class="card animate-slide-up">
     <div class="card-header">
       <h3>My Current Assets</h3>
@@ -47,20 +30,16 @@
         <table class="data-table">
           <thead>
             <tr>
-              <th>Asset Tag</th>
               <th>Name</th>
               <th>Category</th>
-              <th>Condition</th>
               <th>Warranty</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let asset of myAssets | slice:0:5">
-              <td class="text-bold">{{ asset.assetTag }}</td>
-              <td>{{ asset.name }}</td>
-              <td>{{ asset.category }}</td>
-              <td><app-status-badge [status]="asset.condition" [showIcon]="false"></app-status-badge></td>
+              <td><span class="text-bold">{{ asset.name }}</span></td>
+              <td>{{ formatSubcategory(asset.subCategory && asset.subCategory !== 'N/A' ? asset.subCategory : asset.category, asset.type) }}</td>
               <td>{{ asset.warrantyExpiry | date }}</td>
               <td><app-status-badge [status]="asset.status" [showIcon]="false"></app-status-badge></td>
             </tr>

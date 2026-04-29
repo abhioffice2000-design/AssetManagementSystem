@@ -1,0 +1,52 @@
+<div class="card animate-fade-in" style="max-width: 800px; margin: 0 auto; overflow: hidden;">
+  <div class="card-header" style="background: linear-gradient(135deg, #2b6cb0 0%, #3182ce 60%, #4299e1 100%); color: white; border: none; padding: 20px 24px;">
+    <h3 class="m-0" style="color: white;">Return Asset</h3>
+    <p style="color: #e2e8f0; margin-top: 8px; margin-bottom: 0;">Submit a request to return an asset assigned to you.</p>
+  </div>
+  <div class="card-body">
+    <form [formGroup]="returnForm" (ngSubmit)="onSubmit()">
+      <div class="form-group mb-16">
+        <label class="form-label">Select Asset to Return *</label>
+        <select formControlName="assetId" class="form-control" (change)="onAssetSelect()">
+          <option value="" disabled>Select Asset</option>
+          <option *ngFor="let asset of myAssets" [value]="asset.id">
+            {{ asset.assetTag }} - {{ asset.name }}
+          </option>
+        </select>
+        <div *ngIf="isLoading" class="mt-8 text-sm text-primary">
+            <div class="spinner-sm"></div> Loading your assets...
+        </div>
+        <p *ngIf="!isLoading && myAssets.length === 0" class="text-danger text-sm mt-8">
+          You don't have any assets assigned to return.
+        </p>
+      </div>
+
+      <div *ngIf="selectedAsset" class="selected-asset-details mb-24 animate-slide-up">
+        <div class="details-grid">
+          <div class="detail-item">
+            <span class="label">Category:</span>
+            <span class="value">{{ selectedAsset.category }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">Sub-Category:</span>
+            <span class="value">{{ selectedAsset.subCategory }}</span>
+          </div>
+          <div class="detail-item">
+            <span class="label">Serial Number:</span>
+            <span class="value">{{ selectedAsset.serialNumber || 'N/A' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group mb-24">
+        <label class="form-label">Justification for Return *</label>
+        <textarea formControlName="justification" class="form-control" placeholder="Please explain why you are returning this asset..." rows="4"></textarea>
+      </div>
+
+      <div class="mt-24 pt-16" style="border-top: 1px solid #edf2f7; display: flex; justify-content: flex-end; gap: 12px;">
+        <button type="button" class="btn btn-outline" routerLink="/team-lead/my-asset">Cancel</button>
+        <button type="submit" class="btn btn-primary" [disabled]="returnForm.invalid || !selectedAsset">Submit Return Request</button>
+      </div>
+    </form>
+  </div>
+</div>

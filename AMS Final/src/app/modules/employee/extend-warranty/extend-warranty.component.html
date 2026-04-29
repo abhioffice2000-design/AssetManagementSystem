@@ -11,7 +11,7 @@
         <select formControlName="assetId" class="form-control" (change)="onAssetSelect()">
           <option value="" disabled>Select an Asset</option>
           <option *ngFor="let asset of eligibleAssets" [value]="asset.id">
-            {{ asset.assetTag }} - {{ asset.name }} (Exp: {{ asset.warrantyExpiry | date }})
+            {{ asset.name }} ({{ asset.warrantyExpiry | date: 'dd MMM yyyy' }})
           </option>
         </select>
       </div>
