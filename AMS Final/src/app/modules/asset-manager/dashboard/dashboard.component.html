@@ -38,7 +38,7 @@
     <div class="grid grid-4 gap-24 mb-24 animate-slide-up">
       <app-stat-card label="Total Inventory" [value]="totalInventory" icon="inventory_2" color="blue"></app-stat-card>
       <app-stat-card label="Allocated Assets" [value]="allocatedAssets" icon="assignment_ind" color="green"></app-stat-card>
-      <app-stat-card label="Pending Requests" [value]="pendingRequests" icon="pending_actions" color="amber"></app-stat-card>
+      <app-stat-card label="Move to Allocation Team" [value]="allocationTeamAssets" icon="hub" color="purple"></app-stat-card>
       <app-stat-card label="Available Assets" [value]="availableAssets" icon="check_circle" color="teal"></app-stat-card>
     </div>
 
@@ -174,15 +174,7 @@
             </div>
           </div>
 
-          <!-- No sub-categories -->
-          <div class="subcat-list" *ngIf="!item.subCategories || item.subCategories.length === 0">
-            <div class="subcat-item">
-              <div class="subcat-info">
-                <span class="subcat-dot" [style.background]="item.color" style="opacity:0.4"></span>
-                <span class="subcat-name text-muted">No sub-categories available</span>
-              </div>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

@@ -31,6 +31,7 @@ export class LeadDashboardComponent implements OnInit {
   showTeamModal = false;
   approvalChain: any[] = [];
   loadingProgress = false;
+  tl_remarks = ''; // For potential use in modal
 
   constructor(
     private authService: AuthService,
@@ -116,19 +117,18 @@ export class LeadDashboardComponent implements OnInit {
     
     // Standard template
     const standardChain = [
-      { stage: 'Team Lead Approval', stageKey: 'Team Lead', status: 'Pending' },
-      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending' },
-      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending' }
+      { stage: 'Team Lead Approval', stageKey: 'Team Lead', status: 'Pending', approverName: '', timestamp: '' },
+      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending', approverName: '', timestamp: '' },
+      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending', approverName: '', timestamp: '' }
     ];
 
-    // Self-request template (Asset Manager -> Allocation)
     const selfChain = [
-      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending' },
-      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending' }
+      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending', approverName: '', timestamp: '' },
+      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending', approverName: '', timestamp: '' }
     ];
 
     // Select base template based on requester
-    const isSelfRequest = this.selectedRequest?.requesterId === 'usr_003';
+    const isSelfRequest = this.selectedRequest?.requesterId === this.userDetails?.user_id;
     const baseTemplate = isSelfRequest ? selfChain : standardChain;
 
     try {
@@ -144,7 +144,8 @@ export class LeadDashboardComponent implements OnInit {
           return {
             ...step,
             status: match.status,
-            approverName: match.approverName
+            approverName: match.approverName,
+            timestamp: match.timestamp
           };
         }
         return step;
@@ -208,35 +209,47 @@ export class LeadDashboardComponent implements OnInit {
       const result = this.hs.xmltojson(resp, "tuple") || this.hs.xmltojson(resp, "t_request_approvals");
       const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
       console.log("rawData", rawData);
-
-      // Map database fields to the AssetRequest interface fields used in the template
-      this.teamRequests = rawData.map((item: any) => {
-        // Safe check for the data container
+      
+      const mappedRequests = rawData.map((item: any) => {
         const parent = item.old || item;
         const request = this.requestService.mapTupleToRequest(item);
         
-        // Explicitly extract data from all possible joined tables with fallbacks
-        const reqItem = parent.t_request_approvals.t_asset_requests || {};
+        // Extract approval and request info
         const approvalItem = parent.t_request_approvals || parent;
-        const userInfo = parent.t_request_approvals.m_users || reqItem.m_users || {};
-        const assetInfo = parent.t_request_approvals.m_assets || reqItem.m_assets || {};
-        const typeInfo = parent.t_request_approvals.m_asset_types || reqItem.m_asset_types || {};
+        const reqItem = approvalItem.t_asset_requests || parent.t_asset_requests || parent;
 
         return {
           ...request,
-          // Robust mapping for critical fields to ensure they are never empty
+          id: reqItem.request_id || approvalItem.request_id || parent.request_id || request.id,
           requestNumber: reqItem.request_id || approvalItem.request_id || parent.request_id || request.requestNumber,
-          requesterName: userInfo.name,
-          category: reqItem.asset_type,
-          assetType: reqItem.temp1,
-          justification: reqItem.reason || reqItem.purpose || parent.reason || request.justification,
-          reqStatus: reqItem.status || parent.status || request.status,
-          status: approvalItem.status || parent.status || request.status,
-          remarks: approvalItem.remarks || '',
-          requestDate: reqItem.created_at || parent.created_at || request.requestDate
+          requesterName: reqItem.m_users?.name || reqItem.requester_name || 'Team Member',
+          assetType: reqItem.asset_type || request.assetType,
+          category: reqItem.temp1 || request.category,
+          urgency: reqItem.urgency || request.urgency,
+          requestDate: reqItem.created_at || request.requestDate,
+          reqStatus: reqItem.status || request.reqStatus, // Main Status
+          status: approvalItem.status || request.status, // Approval Action
+          approverId: approvalItem.approver_id || '',
+          role: approvalItem.role || ''
         };
+      });
 
-      }).sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
+      // De-duplicate by request ID, preferring the Team Lead's own record for the Action column
+      const uniqueRequestsMap = new Map();
+      mappedRequests.forEach(req => {
+        const existing = uniqueRequestsMap.get(req.id);
+        if (!existing) {
+          uniqueRequestsMap.set(req.id, req);
+        } else {
+          // If we find a record belonging to the current Team Lead, prefer its action status
+          if (req.approverId === this.userDetails?.user_id) {
+            uniqueRequestsMap.set(req.id, req);
+          }
+        }
+      });
+
+      this.teamRequests = Array.from(uniqueRequestsMap.values())
+        .sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
 
       this.data.table = rawData;
       

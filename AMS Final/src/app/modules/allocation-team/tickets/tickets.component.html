@@ -119,12 +119,12 @@
                   <span class="material-icons">visibility</span>
                   View Details
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')"
+                <button *ngIf="activeTab === 'unresolved'"
                   class="btn-allocate"
                   (click)="ticket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(ticket) : allocate(ticket)">
                   <span class="material-icons">check_circle</span>
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')"
+                <button *ngIf="activeTab === 'unresolved'"
                   class="btn-reject" (click)="handleTableRejectClick(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
@@ -272,7 +272,7 @@
 
       <!-- Action Buttons inside Drawer -->
       <div class="drawer-actions"
-        *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
+        *ngIf="activeTab === 'unresolved'">
         <button class="drawer-btn-allocate"
           (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(selectedTicket) : allocate(selectedTicket); closeDetails()">
           <span class="material-icons">check_circle</span>

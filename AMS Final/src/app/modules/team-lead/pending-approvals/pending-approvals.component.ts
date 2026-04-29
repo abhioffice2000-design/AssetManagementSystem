@@ -4,6 +4,7 @@ import { HeroService } from '../../../core/services/hero.service';
 import { RequestService } from '../../../core/services/request.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 
 @Component({
@@ -31,7 +32,8 @@ export class PendingApprovalsComponent implements OnInit {
     private hs: HeroService,
     private requestService: RequestService,
     private notificationService: NotificationService,
-    private mailService: MailService
+    private mailService: MailService,
+        private adminService: AdminDataService,
   ) { }
 
 
@@ -78,7 +80,7 @@ export class PendingApprovalsComponent implements OnInit {
         .map((tuple: any) => {
           // If tuple has "old", it's a join; otherwise it might be a flat object
           const parent = tuple.old || tuple;
-          
+
           // Data is either inside t_asset_requests or flat in parent
           const reqItem = parent.t_asset_requests || parent;
           const userInfo = parent.m_users || reqItem.m_users || {};
@@ -106,7 +108,7 @@ export class PendingApprovalsComponent implements OnInit {
             taskid: approvalInfo.temp2 || ''
           } as unknown as AssetRequest;
 
-        }).sort((a: any, b: any) => b.requestNumber.localeCompare(a.requestNumber));
+        }).sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
 
       this.isLoading = false;
     }).catch(err => {
@@ -161,7 +163,7 @@ export class PendingApprovalsComponent implements OnInit {
 
   async fetchApprovalProgress(requestId: string) {
     this.loadingProgress = true;
-    
+
     // Standard template for employee requests seen by Team Lead
     const standardChain = [
       { stage: 'Team Lead Approval', stageKey: 'Team Lead', status: 'Pending', approverName: '' },
@@ -176,8 +178,8 @@ export class PendingApprovalsComponent implements OnInit {
       // Merge real progress into template
       this.approvalChain = standardChain.map(step => {
         // Try to find matching progress entry
-        const match = progress.find(p => 
-          p.stage.toLowerCase().includes(step.stageKey.toLowerCase()) || 
+        const match = progress.find(p =>
+          p.stage.toLowerCase().includes(step.stageKey.toLowerCase()) ||
           step.stage.toLowerCase().includes(p.stage.toLowerCase())
         );
 
@@ -191,7 +193,7 @@ export class PendingApprovalsComponent implements OnInit {
         }
         return step;
       });
-      
+
     } catch (err) {
       console.error('[PendingApprovals] Failed to fetch progress:', err);
       this.approvalChain = standardChain;
@@ -240,10 +242,11 @@ export class PendingApprovalsComponent implements OnInit {
       console.error("[PendingApprovals] Error fetching latest task ID:", err);
     }
   }
-
+assetmanagerid:any;
   markAsAccept(): void {
     if (this.selectedRequest) {
-      this.handleApprove();
+    
+      this.handleApprove(this.selectedRequest.assetType);
     }
   }
 
@@ -252,7 +255,7 @@ export class PendingApprovalsComponent implements OnInit {
       this.handleReject();
     }
   }
-  async handleApprove() {
+  async handleApprove(assettype:any) {
     console.log(this.selectedRequest);
     if (!this.selectedRequest?.approvalId) {
       this.notificationService.showToast("No approval record found for this request", "error");
@@ -281,33 +284,38 @@ export class PendingApprovalsComponent implements OnInit {
       var res2 = await this.requestService.updateEntryForTeamLead(req1 as any);
       var newrequestid = this.selectedRequest.requestNumber;
       console.log("Taskid response is", res2);
-      
+
       // Fetch latest task ID dynamically to ensure we have it for completion
       await this.Getassetidbyapprovalid(newrequestid);
       const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+        const assignment = await this.adminService.getAssignmentByAssetType(assettype);
       console.log("taskid to complete", taskid);
-      
+
+      if (assignment) {
+          this.assetmanagerid=assignment.assetManagerId;
+        }
+
       var request2 = {
         tuple: {
           new: {
             t_request_approvals: {
               request_id: `${newrequestid}`,
-              approver_id: 'usr_004',
+              approver_id: this.assetmanagerid,
               role: 'Asset Manager',
               status: 'Pending'
             }
           }
         }
       };
-      
+
       var res3 = await this.requestService.updateEntryForTeamLead(request2 as any);
       console.log("res3", res3);
-      
+
       var req3 = {
         TaskId: `${taskid}`,
         Action: 'COMPLETE'
       };
-      
+
       await this.requestService.completeUserTask(req3 as any);
 
       // Trigger status update email
@@ -398,12 +406,12 @@ export class PendingApprovalsComponent implements OnInit {
         }
       };
       await this.requestService.submitNewRequestForm(req2 as any);
-      
+
       // Fetch latest task ID dynamically to ensure we have it for completion
       await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
       const taskid = this.task_id_latest || this.selectedRequest?.taskid;
       console.log("taskid to complete", taskid);
-      
+
       if (taskid) {
         var req3 = {
           TaskId: `${taskid}`,
@@ -444,7 +452,7 @@ export class PendingApprovalsComponent implements OnInit {
 
   viewDocument(docName: string): void {
     if (!docName) return;
-    
+
     if (docName.startsWith('data:')) {
       const newTab = window.open();
       if (newTab) {

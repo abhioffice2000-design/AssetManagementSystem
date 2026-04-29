@@ -91,7 +91,7 @@ export class AllocationInventoryComponent implements OnInit {
       const subCat = asset.category || 'Uncategorized';
       const statusValue = (asset.status || '').toLowerCase().trim();
       
-      const isAvailable = statusValue === 'available';
+      const isAvailable = statusValue === 'available' || statusValue === 'movetoallocationteam';
       const isAssigned = statusValue === 'allocated' || statusValue === 'assigned';
 
       if (!typesMap.has(type)) {
@@ -158,7 +158,11 @@ export class AllocationInventoryComponent implements OnInit {
     let results = [...this.allAssets];
 
     if (this.statusFilter) {
-      results = results.filter(a => a.status === this.statusFilter);
+      if (this.statusFilter === 'Available') {
+        results = results.filter(a => a.status === 'Available' || a.status === 'MoveToAllocationTeam');
+      } else {
+        results = results.filter(a => a.status === this.statusFilter);
+      }
     }
 
     if (this.searchText.trim()) {
@@ -261,7 +265,7 @@ export class AllocationInventoryComponent implements OnInit {
 
   getStatusClass(status: string): string {
     const s = status?.toLowerCase() || '';
-    if (s.includes('available')) return 'status-available';
+    if (s.includes('available') || s.includes('movetoallocationteam')) return 'status-available';
     if (s.includes('allocated') || s.includes('assigned')) return 'status-allocated';
     if (s.includes('repair')) return 'status-maintenance';
     return 'status-other';

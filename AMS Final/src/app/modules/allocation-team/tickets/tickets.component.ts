@@ -174,7 +174,7 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async loadReturnTickets(): Promise<void> {
-    const request = { Approver_id: 'usr_007' };
+    const request = { Approver_id: this.currentUser?.id };
 
     try {
       const res = await this.hs.ajax(
@@ -230,6 +230,11 @@ export class AllocationTicketsComponent implements OnInit {
             t.status === RequestStatus.REJECTED ||
             t.status === RequestStatus.CANCELLED
           );
+
+        // Enrich with asset details if missing
+        for (const ticket of this.resolvedTickets) {
+          await this.enrichTicketWithAssetDetails(ticket);
+        }
       }
 
       // Fetch Warranty Extension Resolved Tickets
@@ -272,6 +277,11 @@ export class AllocationTicketsComponent implements OnInit {
             t.status === RequestStatus.REJECTED || 
             t.status === RequestStatus.CANCELLED
           );
+        
+        // Enrich with asset details if missing
+        for (const ticket of this.resolvedReturnTickets) {
+          await this.enrichTicketWithAssetDetails(ticket);
+        }
         console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets`);
       } else {
         this.resolvedReturnTickets = [];
@@ -387,7 +397,7 @@ export class AllocationTicketsComponent implements OnInit {
       subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',
 
-      assetId: this.getVal(assetData?.asset_id) ?? '—',
+      assetId: this.getVal(assetData?.asset_id) ?? this.getVal(reqData?.asset_id) ?? this.getVal(parent?.asset_id) ?? '—',
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '—',
       availabilityStatus: this.getVal(assetData?.status) ?? '—',
       assignedDate: this.getVal(reqData?.created_at) ?? '',
@@ -442,6 +452,28 @@ export class AllocationTicketsComponent implements OnInit {
       status: req.status,
       rawRequest: req
     };
+  }
+
+  private async enrichTicketWithAssetDetails(ticket: EnrichedTicket): Promise<void> {
+    if (ticket.assetId && ticket.assetId !== '—') {
+      // If basic details are missing, fetch them
+      if (ticket.assetName === '—' || ticket.subCategory === '—' || ticket.subCategory === 'N/A') {
+        try {
+          const asset = await this.requestService.getAssetDetailsById(ticket.assetId);
+          if (asset) {
+            ticket.assetName = asset.asset_name || ticket.assetName;
+            ticket.assetType = asset.type_id || ticket.assetType;
+            ticket.subCategory = this.subCategoryMap.get(asset.sub_category_id) || asset.sub_category_id || ticket.subCategory;
+            ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
+            if (ticket.availabilityStatus === '—' || ticket.availabilityStatus === 'N/A') {
+              ticket.availabilityStatus = asset.status || ticket.availabilityStatus;
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to enrich ticket ${ticket.ticketId}:`, err);
+        }
+      }
+    }
   }
 
   /** Safely extracts a string value; returns undefined for xsi:nil / null objects or blanks. */
@@ -787,7 +819,7 @@ export class AllocationTicketsComponent implements OnInit {
         }
       };
 
-      console.log("Step 2: Creating entry for Asset Manager (usr_004)...", req12);
+      // console.log("Step 2: Creating entry for Asset Manager (usr_004)...", req12);
       const res2 = await this.requestService.createNewEntryForAssetManagerConfirmationAssetReturn(req12 as any);
       console.log("Step 2 Complete. Response:", res2);
 
