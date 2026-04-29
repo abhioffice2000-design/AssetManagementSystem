@@ -200,85 +200,136 @@
         </div>
       </div>
 
-      <!-- Resubmit Form (Show only if rejected) -->
-      <div class="resubmit-form-container animate-fade-in" *ngIf="selectedRequest?.status === 'Rejected'">
-        <div class="alert alert-danger mb-20" style="display: flex; gap: 12px; align-items: center;">
-          <span class="material-icons-outlined">warning</span>
-          <div>
-            <strong>Request Rejected:</strong> This request was rejected by an approver. You can update the details and resubmit it for a fresh approval cycle.
-          </div>
-        </div>
-
-        <form [formGroup]="resubmitForm" class="resubmit-form">
-          <div class="grid grid-2 gap-16">
-            <div class="form-group">
-              <label>Request ID</label>
-              <input type="text" formControlName="requestNumber" class="form-control" readonly style="background: #f1f5f9;">
+        <div class="resubmit-form-container animate-fade-in" *ngIf="selectedRequest?.status === 'Rejected'">
+          <!-- Rejection Reason Card -->
+          <div class="rejection-details-card mb-24" *ngIf="rejectionInfo">
+            <div class="rejection-header">
+              <div class="rejection-icon-box">
+                <span class="material-icons-outlined">gpp_bad</span>
+              </div>
+              <div class="rejection-title-group">
+                <h4 class="rejection-title">Rejection Details</h4>
+                <p class="rejection-subtitle">Please review the reason below before updating your request.</p>
+              </div>
             </div>
-            <div class="form-group">
-              <label>Requester Name</label>
-              <input type="text" formControlName="requesterName" class="form-control" readonly style="background: #f1f5f9;">
-            </div>
-          </div>
-
-          <div class="grid grid-2 gap-16 mt-16">
-            <div class="form-group">
-              <label>Asset Type *</label>
-              <select formControlName="assetType" class="form-control" (change)="onResubmitTypeChange()">
-                <option value="" disabled>Select Type</option>
-                <option *ngFor="let type of masterAssetTypes" [value]="type.type_id">
-                  {{ type.type_name }}
-                </option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Urgency *</label>
-              <select formControlName="urgency" class="form-control">
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group mt-16">
-            <label>Sub-Category *</label>
-            <select formControlName="subCategory" class="form-control">
-              <option value="" disabled>Select Sub-Category</option>
-              <option *ngFor="let sub of availableSubCategories" [value]="sub.name">
-                {{ sub.name }}
-              </option>
-            </select>
-          </div>
-
-          <div class="form-group mt-16">
-            <label>Justification *</label>
-            <textarea formControlName="justification" class="form-control" rows="3" placeholder="Explain why you need this asset..."></textarea>
-          </div>
-
-          <div class="form-group mt-16 p-12 radius-md border-dashed" style="background: #f8fafc;">
-            <div style="display: flex; gap: 12px; align-items: flex-start;">
-              <input type="checkbox" formControlName="hasEmailApproval" id="resubmitEmailApproval">
-              <div>
-                <label for="resubmitEmailApproval" class="mb-4">I have pre-approval email</label>
-                <p class="text-xs text-muted">Bypasses Team Lead approval if checked.</p>
+            <div class="rejection-content">
+              <div class="rejection-info-row">
+                <div class="info-item">
+                  <span class="info-label">REJECTED AT STAGE</span>
+                  <span class="info-value highlighted-stage">{{ rejectionInfo.stage }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">REJECTED BY</span>
+                  <span class="info-value">{{ rejectionInfo.approver }}</span>
+                </div>
+              </div>
+              <div class="rejection-reason-box mt-16">
+                <span class="reason-label">REJECTION REMARKS:</span>
+                <p class="reason-text">"{{ rejectionInfo.reason }}"</p>
               </div>
             </div>
           </div>
-          
-          <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; gap: 12px;">
-            <button class="btn btn-danger" style="flex: 1;" (click)="withdrawRequest(selectedRequest!)">
-              <span class="material-icons-outlined">delete_forever</span>
-              Withdraw Request
-            </button>
-            <button class="btn btn-primary" style="flex: 1;" (click)="submitResubmit()">
-              <span class="material-icons-outlined">send</span>
-              Resubmit Request
-            </button>
+
+          <div class="alert alert-info mb-20" style="display: flex; gap: 12px; align-items: center; background: #eff6ff; border-color: #bfdbfe; color: #1e40af;">
+            <span class="material-icons-outlined">edit_note</span>
+            <div style="font-size: 0.9rem;">
+              <strong>Action Required:</strong> You can update the details below and resubmit for a fresh approval cycle.
+            </div>
           </div>
-        </form>
+
+          <form [formGroup]="resubmitForm" class="resubmit-form">
+            <div class="grid grid-2 gap-16">
+              <div class="form-group">
+                <label>Request ID</label>
+                <input type="text" formControlName="requestNumber" class="form-control" readonly style="background: #f1f5f9;">
+              </div>
+              <div class="form-group">
+                <label>Requester Name</label>
+                <input type="text" formControlName="requesterName" class="form-control" readonly style="background: #f1f5f9;">
+              </div>
+            </div>
+
+            <div class="grid grid-2 gap-16 mt-16">
+              <div class="form-group">
+                <label>Asset Type *</label>
+                <select formControlName="assetType" class="form-control" (change)="onResubmitTypeChange()">
+                  <option value="" disabled>Select Type</option>
+                  <option *ngFor="let type of masterAssetTypes" [value]="type.type_id">
+                    {{ type.type_name }}
+                  </option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Urgency *</label>
+                <select formControlName="urgency" class="form-control">
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group mt-16">
+              <label>Sub-Category *</label>
+              <select formControlName="subCategory" class="form-control">
+                <option value="" disabled>Select Sub-Category</option>
+                <option *ngFor="let sub of availableSubCategories" [value]="sub.name">
+                  {{ sub.name }}
+                </option>
+              </select>
+            </div>
+
+            <div class="form-group mt-16">
+              <label>Justification *</label>
+              <textarea formControlName="justification" class="form-control" rows="3" placeholder="Explain why you need this asset..."></textarea>
+            </div>
+
+            <div class="form-group mt-16 p-16 radius-md border-dashed" 
+                 [style.background]="resubmitForm.get('hasEmailApproval')?.value ? '#f0f9ff' : '#f8fafc'"
+                 [style.border-color]="resubmitForm.get('hasEmailApproval')?.value ? '#bae6fd' : '#e2e8f0'">
+              <div style="display: flex; gap: 12px; align-items: flex-start;">
+                <input type="checkbox" formControlName="hasEmailApproval" id="resubmitEmailApproval" style="margin-top: 4px; width: 18px; height: 18px;">
+                <div style="flex: 1;">
+                  <label for="resubmitEmailApproval" style="font-weight: 700; color: #1e293b; cursor: pointer; display: block; margin-bottom: 2px;">I have pre-approval email</label>
+                  <p class="text-xs text-muted">Checking this will bypass the Team Lead approval stage.</p>
+                  
+                <!-- Dynamic File Upload Field -->
+                <div class="file-upload-container mt-12 animate-slide-up" *ngIf="resubmitForm.get('hasEmailApproval')?.value">
+                  <div class="file-input-wrapper">
+                    <input type="file" (change)="onFileSelected($event)" accept=".pdf,.png,.jpg,.jpeg,.eml,.msg" id="fileResubmit" class="hidden-input">
+                    <label for="fileResubmit" class="file-label">
+                      <span class="material-icons-outlined">upload_file</span>
+                      <span class="file-text">{{ selectedFileName || 'Upload email approval (PDF, JPG, PNG)' }}</span>
+                    </label>
+                  </div>
+                  
+                  <div class="file-status-hint mt-8" *ngIf="selectedFileName">
+                    <span class="status-dot"></span>
+                    <span>New file selected: <strong>{{ selectedFileName }}</strong></span>
+                  </div>
+
+                  <div class="existing-file-hint mt-8" *ngIf="selectedRequest?.emailApprovalDoc && !selectedFileName">
+                    <span class="material-icons-outlined">history</span>
+                    <span>Current file: {{ selectedRequest?.emailApprovalDoc }}</span>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; gap: 12px;">
+              <button class="btn btn-danger" style="flex: 1; padding: 12px; font-weight: 600;" (click)="withdrawRequest(selectedRequest!)">
+                <span class="material-icons-outlined">delete_forever</span>
+                Withdraw Request
+              </button>
+              <button class="btn btn-primary" style="flex: 1; padding: 12px; font-weight: 600;" (click)="submitResubmit()" [disabled]="loading">
+                <span class="material-icons-outlined">{{ loading ? 'sync' : 'send' }}</span>
+                {{ loading ? 'Resubmitting...' : 'Resubmit Request' }}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
 
     <div class="modal-footer p-24 text-right">
       <button class="btn-primary" (click)="closeTrackingModal()">Close Tracker</button>
