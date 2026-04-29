@@ -1,463 +1,82 @@
-<div class="reports-container">
-  <!-- Page Header -->
-  <div class="page-header animate-slide-up">
-    <div class="page-title">
-      <span class="material-icons-outlined title-icon">assessment</span>
-      <div>
-        <h2>Reports & Analytics</h2>
-        <p class="text-muted">Comprehensive asset and request analytics overview</p>
+<div class="reports-container p-24">
+  <div class="reports-header mb-24">
+    <div class="header-left">
+      <div class="header-icon">
+        <span class="material-icons-outlined">analytics</span>
+      </div>
+      <div class="header-text">
+        <h1>Reports & Analytics</h1>
+        <p>Comprehensive asset and request analytics overview</p>
       </div>
     </div>
   </div>
 
-
-  <!-- Asset Type Distribution — Full Width Pie Chart -->
+  <!-- Strategic Reports Section -->
   <div class="card section-card animate-slide-up mb-24">
     <div class="section-header">
       <div class="section-title">
-        <span class="material-icons-outlined">donut_large</span>
-        <h3>Asset Type Distribution</h3>
+        <span class="material-icons-outlined">insights</span>
+        <h3>Strategic Reports</h3>
       </div>
-      <span class="section-subtitle" *ngIf="grandTotal > 0">Distribution of {{ grandTotal }} assets across types</span>
     </div>
     <div class="section-body">
-      <!-- Loading -->
-      <div class="pie-loading" *ngIf="isLoadingPieChart">
-        <div class="spinner"></div>
-        <p class="text-muted">Loading asset data...</p>
-      </div>
-
-      <!-- Empty -->
-      <div class="empty-state" *ngIf="!isLoadingPieChart && typeBreakdown.length === 0">
-        <span class="material-icons-outlined" style="font-size: 40px; color: var(--text-muted);">inventory_2</span>
-        <p class="text-muted">No asset data available</p>
-      </div>
-
-      <!-- Pie Chart + Legend -->
-      <div class="pie-chart-wrapper" *ngIf="!isLoadingPieChart && typeBreakdown.length > 0">
-        <div class="pie-chart-container">
-          <div class="pie-chart" [ngStyle]="{'background': getPieChartGradient()}"></div>
-          <div class="donut-hole">
-            <span class="donut-total">{{ grandTotal }}</span>
-            <span class="donut-label">Total</span>
+      <div class="reports-grid">
+        <div class="report-selection-card" *ngFor="let report of reports" [class.active]="selectedReport === report.id" (click)="generateReport(report.id)">
+          <div class="report-icon-box">
+            <span class="material-icons-outlined">{{ report.icon }}</span>
           </div>
-        </div>
-        <div class="pie-legend-list">
-          <div class="pie-legend-item" *ngFor="let item of typeBreakdown">
-            <div class="pie-legend-header">
-              <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
-                <span class="material-icons-outlined">{{ item.icon }}</span>
-              </div>
-              <div class="pie-legend-text">
-                <span class="type-name">{{ item.type }}</span>
-                <span class="type-count">{{ item.count }} assets ({{ getPiePercentage(item.count) }}%)</span>
-              </div>
-            </div>
+          <div class="report-details">
+            <h4>{{ report.title }}</h4>
+            <p>{{ report.description }}</p>
+          </div>
+          <div class="report-action">
+            <span class="material-icons-outlined">chevron_right</span>
           </div>
         </div>
       </div>
 
-      <!-- Sub-Category Breakdown -->
-      <div class="subcat-breakdown-section" *ngIf="!isLoadingPieChart && typeBreakdown.length > 0">
-        <div class="type-group" *ngFor="let item of typeBreakdown">
-          <div class="type-group-header">
-            <div class="type-group-title">
-              <div class="type-icon-wrap" [style.background]="item.bgColor" [style.color]="item.color">
-                <span class="material-icons-outlined">{{ item.icon }}</span>
-              </div>
-              <span class="type-group-name">{{ item.type }}</span>
-            </div>
-            <div class="type-group-stats">
-              <span class="type-group-count" [style.background]="item.bgColor" [style.color]="item.color">{{ item.count
-                }}</span>
-              <span class="type-group-pct">{{ getPiePercentage(item.count) }}% of total</span>
-            </div>
+      <!-- Report Content Display -->
+      <div class="report-viewer mt-24" *ngIf="selectedReport">
+        <div class="viewer-header">
+          <div class="viewer-title">
+            <span class="material-icons-outlined">table_chart</span>
+            <h4>{{ getSelectedReportTitle() }}</h4>
           </div>
-          <div class="subcat-list" *ngIf="item.subCategories && item.subCategories.length > 0">
-            <div class="subcat-item" *ngFor="let sub of item.subCategories">
-              <div class="subcat-info">
-                <span class="subcat-dot" [style.background]="item.color"></span>
-                <span class="subcat-name">{{ sub.name }}</span>
-              </div>
-              <div class="subcat-bar-wrap">
-                <div class="subcat-bar-track">
-                  <div class="subcat-bar-fill" [style.width.%]="getSubCatPercentage(sub.count, item.count)"
-                    [style.background]="item.color"></div>
-                </div>
-              </div>
-              <span class="subcat-count">{{ sub.count }}</span>
-            </div>
-          </div>
-          <div class="subcat-list" *ngIf="!item.subCategories || item.subCategories.length === 0">
-            <div class="subcat-item">
-              <div class="subcat-info">
-                <span class="subcat-dot" [style.background]="item.color" style="opacity:0.4"></span>
-                <span class="subcat-name text-muted">No sub-categories available</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Asset Status Distribution -->
-  <div class="mb-24">
-    <div class="card chart-card animate-slide-up">
-      <div class="card-header">
-        <h3>
-          <span class="material-icons-outlined">pie_chart</span>
-          Asset Status Breakdown
-        </h3>
-      </div>
-      <div class="card-body">
-        <div class="status-grid">
-          <div class="status-item" *ngFor="let item of statusDistribution">
-            <div class="status-dot" [style.background]="item.color"></div>
-            <div class="status-info">
-              <span class="status-name">{{ item.status }}</span>
-              <span class="status-count">{{ item.count }} assets</span>
-            </div>
-            <div class="status-percentage">
-              <div class="progress-ring">
-                <svg viewBox="0 0 36 36">
-                  <path class="progress-bg"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                  <path class="progress-fill" [style.stroke]="item.color"
-                    [attr.stroke-dasharray]="item.percentage + ', 100'"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                </svg>
-              </div>
-              <span class="pct-text">{{ item.percentage }}%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Request Summary -->
-  <div class="mb-24">
-
-    <!-- Request Summary -->
-    <div class="card animate-slide-up">
-      <div class="card-header">
-        <h3>
-          <span class="material-icons-outlined">assignment</span>
-          Request Summary
-        </h3>
-      </div>
-      <div class="card-body">
-        <div class="request-stats-grid">
-          <div class="req-stat-item">
-            <span class="req-stat-value text-blue">{{ requestStats.total }}</span>
-            <span class="req-stat-label">Total</span>
-          </div>
-          <div class="req-stat-item">
-            <span class="req-stat-value text-amber">{{ requestStats.pending }}</span>
-            <span class="req-stat-label">Pending</span>
-          </div>
-          <div class="req-stat-item">
-            <span class="req-stat-value text-green">{{ requestStats.approved }}</span>
-            <span class="req-stat-label">Approved</span>
-          </div>
-          <div class="req-stat-item">
-            <span class="req-stat-value text-red">{{ requestStats.rejected }}</span>
-            <span class="req-stat-label">Rejected</span>
-          </div>
-          <div class="req-stat-item">
-            <span class="req-stat-value text-teal">{{ requestStats.completed }}</span>
-            <span class="req-stat-label">Completed</span>
-          </div>
-          <div class="req-stat-item">
-            <span class="req-stat-value text-purple">{{ requestStats.inProgress }}</span>
-            <span class="req-stat-label">In Progress</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <!-- Team Holdings & Warranty Alerts -->
-  <div class="grid grid-2 gap-24 mb-24">
-    <!-- Team-wise Holdings -->
-    <div class="card animate-slide-up">
-      <div class="card-header">
-        <h3>
-          <span class="material-icons-outlined">groups</span>
-          Team-wise Asset Holdings
-        </h3>
-      </div>
-      <div class="card-body p-0">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Department</th>
-              <th>Team</th>
-              <th>Assets</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let holding of paginatedTeamHoldings">
-              <td>{{ holding.department }}</td>
-              <td>{{ holding.team }}</td>
-              <td><span class="count-badge">{{ holding.count }}</span></td>
-              <td class="value-cell">{{ formatCurrency(holding.value) }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <!-- Pagination for Team Holdings Table -->
-        <div class="pagination-controls mini" *ngIf="teamHoldings.length > pageSize">
-          <div class="pagination-info">{{ getPaginationRange(currentPageHoldings, totalHoldingsPages,
-            teamHoldings.length) }}</div>
-          <div class="pagination-actions">
-            <button class="btn-page-sm" [disabled]="currentPageHoldings === 1"
-              (click)="setHoldingsPage(currentPageHoldings - 1)">
-              <span class="material-icons-outlined">chevron_left</span>
-            </button>
-            <span class="page-indicator-sm">{{ currentPageHoldings }} / {{ totalHoldingsPages }}</span>
-            <button class="btn-page-sm" [disabled]="currentPageHoldings === totalHoldingsPages"
-              (click)="setHoldingsPage(currentPageHoldings + 1)">
-              <span class="material-icons-outlined">chevron_right</span>
+          <div class="viewer-actions">
+            <button class="btn btn-outline btn-sm" (click)="downloadCSV()" [disabled]="loadingReport || reportData.length === 0">
+              <span class="material-icons-outlined">download</span>
+              Export CSV
             </button>
           </div>
         </div>
-        <div class="empty-state" *ngIf="teamHoldings.length === 0">
-          <p class="text-muted">No team holdings data available</p>
-        </div>
-      </div>
-    </div>
 
-    <!-- Warranty Alerts -->
-    <div class="card animate-slide-up">
-      <div class="card-header">
-        <h3>
-          <span class="material-icons-outlined text-amber">security</span>
-          Upcoming Warranty Expirations
-        </h3>
-      </div>
-      <div class="card-body p-0">
-        <div class="warranty-item" *ngFor="let asset of paginatedWarrantyAlerts"
-          [ngClass]="getExpiryUrgency(asset.warrantyExpiry)">
-          <div class="warranty-info">
-            <span class="warranty-name">{{ asset.name }}</span>
-            <span class="warranty-tag">{{ asset.assetTag }}</span>
+        <div class="viewer-body">
+          <div class="report-loader" *ngIf="loadingReport">
+            <div class="spinner"></div>
+            <p>Generating report data...</p>
           </div>
-          <div class="warranty-date">
-            <span class="material-icons-outlined">event</span>
-            <span>{{ asset.warrantyExpiry }}</span>
+
+          <div class="table-container" *ngIf="!loadingReport && reportData.length > 0">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th *ngFor="let header of getHeaders()">{{ header }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of reportData">
+                  <td *ngFor="let header of getHeaders()">{{ row[header] }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <span class="warranty-days">
-            {{ getDaysUntilExpiry(asset.warrantyExpiry) }} days left
-          </span>
-        </div>
-        <!-- Pagination for Warranty Alerts -->
-        <div class="pagination-controls mini" *ngIf="warrantyAlerts.length > pageSize">
-          <div class="pagination-info">{{ getPaginationRange(currentPageWarranty, totalWarrantyPages,
-            warrantyAlerts.length) }}</div>
-          <div class="pagination-actions">
-            <button class="btn-page-sm" [disabled]="currentPageWarranty === 1"
-              (click)="setWarrantyPage(currentPageWarranty - 1)">
-              <span class="material-icons-outlined">chevron_left</span>
-            </button>
-            <span class="page-indicator-sm">{{ currentPageWarranty }} / {{ totalWarrantyPages }}</span>
-            <button class="btn-page-sm" [disabled]="currentPageWarranty === totalWarrantyPages"
-              (click)="setWarrantyPage(currentPageWarranty + 1)">
-              <span class="material-icons-outlined">chevron_right</span>
-            </button>
+
+          <div class="empty-report" *ngIf="!loadingReport && reportData.length === 0">
+            <span class="material-icons-outlined">find_in_page</span>
+            <p>No data found for this report period.</p>
           </div>
-        </div>
-        <div class="empty-state" *ngIf="warrantyAlerts.length === 0">
-          <span class="material-icons-outlined" style="font-size: 40px; color: var(--text-muted);">verified</span>
-          <p class="text-muted">No upcoming warranty expirations</p>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- ===== Monthly & Yearly Report: Requested vs Approved vs Rejected ===== -->
-  <div class="card section-card animate-slide-up mb-24">
-    <div class="section-header">
-      <div class="section-title">
-        <span class="material-icons-outlined">bar_chart</span>
-        <h3>Requested vs Approved vs Rejected</h3>
-      </div>
-      <div class="report-tabs">
-        <button class="report-tab" [class.active]="activeReportTab === 'monthly'" (click)="switchReportTab('monthly')">
-          <span class="material-icons-outlined">calendar_month</span> Monthly
-        </button>
-        <button class="report-tab" [class.active]="activeReportTab === 'yearly'" (click)="switchReportTab('yearly')">
-          <span class="material-icons-outlined">date_range</span> Yearly
-        </button>
-      </div>
-    </div>
-
-    <div class="section-body">
-      <!-- Legend -->
-      <div class="chart-legend">
-        <div class="legend-item">
-          <span class="legend-dot" style="background: #3b82f6;"></span> Requested
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot" style="background: #10b981;"></span> Approved
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot" style="background: #ef4444;"></span> Rejected
-        </div>
-      </div>
-
-      <!-- Monthly View -->
-      <div class="report-chart" *ngIf="activeReportTab === 'monthly'">
-        <div class="report-row" *ngFor="let row of monthlyData">
-          <span class="report-label">{{ row.month }}</span>
-          <div class="report-bars">
-            <div class="report-bar-group">
-              <div class="report-bar requested" [style.width.%]="getBarWidth(row.requested)">
-                <span class="bar-val">{{ row.requested }}</span>
-              </div>
-            </div>
-            <div class="report-bar-group">
-              <div class="report-bar approved" [style.width.%]="getBarWidth(row.approved)">
-                <span class="bar-val">{{ row.approved }}</span>
-              </div>
-            </div>
-            <div class="report-bar-group">
-              <div class="report-bar rejected" [style.width.%]="getBarWidth(row.rejected)">
-                <span class="bar-val">{{ row.rejected }}</span>
-              </div>
-            </div>
-          </div>
-          <span class="report-rate" title="Approval Rate">{{ getApprovalRate(row.approved, row.requested) }}%</span>
-        </div>
-      </div>
-
-      <!-- Yearly View -->
-      <div class="report-chart" *ngIf="activeReportTab === 'yearly'">
-        <div class="report-row" *ngFor="let row of yearlyData">
-          <span class="report-label report-label-wide">{{ row.year }}</span>
-          <div class="report-bars">
-            <div class="report-bar-group">
-              <div class="report-bar requested" [style.width.%]="getBarWidth(row.requested)">
-                <span class="bar-val">{{ row.requested }}</span>
-              </div>
-            </div>
-            <div class="report-bar-group">
-              <div class="report-bar approved" [style.width.%]="getBarWidth(row.approved)">
-                <span class="bar-val">{{ row.approved }}</span>
-              </div>
-            </div>
-            <div class="report-bar-group">
-              <div class="report-bar rejected" [style.width.%]="getBarWidth(row.rejected)">
-                <span class="bar-val">{{ row.rejected }}</span>
-              </div>
-            </div>
-          </div>
-          <span class="report-rate" title="Approval Rate">{{ getApprovalRate(row.approved, row.requested) }}%</span>
-        </div>
-      </div>
-
-      <!-- Summary Footer -->
-      <div class="report-summary">
-        <div class="summary-item">
-          <span class="summary-label">Total Requested</span>
-          <span class="summary-value text-blue">{{ activeReportTab === 'monthly' ? monthlyTotals.requested :
-            yearlyTotals.requested }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Total Approved</span>
-          <span class="summary-value text-green">{{ activeReportTab === 'monthly' ? monthlyTotals.approved :
-            yearlyTotals.approved }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Total Rejected</span>
-          <span class="summary-value text-red">{{ activeReportTab === 'monthly' ? monthlyTotals.rejected :
-            yearlyTotals.rejected }}</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-label">Approval Rate</span>
-          <span class="summary-value text-teal">{{ getApprovalRate(
-            activeReportTab === 'monthly' ? monthlyTotals.approved : yearlyTotals.approved,
-            activeReportTab === 'monthly' ? monthlyTotals.requested : yearlyTotals.requested
-            ) }}%</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== Team-wise Asset Holding ===== -->
-  <div class="card section-card animate-slide-up mb-24">
-    <div class="section-header">
-      <div class="section-title">
-        <span class="material-icons-outlined">groups</span>
-        <h3>Team-wise Asset Holding</h3>
-      </div>
-      <span class="section-subtitle">{{ teamHoldingTotal.assets }} assets across {{ teamAssetHoldings.length }}
-        teams</span>
-    </div>
-    <div class="section-body">
-      <div class="team-holding-list">
-        <div class="team-holding-card" *ngFor="let team of paginatedTeamAssetHoldings">
-          <div class="team-card-header">
-            <div class="team-info">
-              <div class="team-avatar">
-                <span class="material-icons-outlined">group</span>
-              </div>
-              <div class="team-details">
-                <span class="team-name">{{ team.team }}</span>
-                <span class="team-dept">{{ team.department }} · Lead: {{ team.lead }}</span>
-              </div>
-            </div>
-            <div class="team-stats-right">
-              <span class="team-total-badge">{{ team.totalAssets }} assets</span>
-              <span class="team-value">{{ formatCurrency(team.totalValue) }}</span>
-            </div>
-          </div>
-          <div class="team-card-body">
-            <div class="team-breakdown">
-              <div class="breakdown-item">
-                <span class="material-icons-outlined" style="color: #3b82f6; font-size: 18px;">computer</span>
-                <span class="breakdown-label">Hardware</span>
-                <span class="breakdown-count">{{ team.hardware }}</span>
-              </div>
-              <div class="breakdown-item">
-                <span class="material-icons-outlined" style="color: #8b5cf6; font-size: 18px;">code</span>
-                <span class="breakdown-label">Software</span>
-                <span class="breakdown-count">{{ team.software }}</span>
-              </div>
-              <div class="breakdown-item">
-                <span class="material-icons-outlined" style="color: #10b981; font-size: 18px;">mouse</span>
-                <span class="breakdown-label">Peripheral</span>
-                <span class="breakdown-count">{{ team.peripheral }}</span>
-              </div>
-              <div class="breakdown-item">
-                <span class="material-icons-outlined" style="color: #6b7280; font-size: 18px;">person</span>
-                <span class="breakdown-label">Per Member</span>
-                <span class="breakdown-count">{{ getAssetsPerMember(team.totalAssets, team.members) }}</span>
-              </div>
-            </div>
-            <div class="team-bar-track">
-              <div class="team-bar-fill" [style.width.%]="getTeamPercentage(team.totalAssets)"></div>
-            </div>
-            <span class="team-pct">{{ getTeamPercentage(team.totalAssets) }}% of total</span>
-          </div>
-        </div>
-      </div>
-      <!-- Pagination for Team Asset Holdings (Detailed Cards) -->
-      <div class="pagination-controls" style="margin-top: 24px;" *ngIf="teamAssetHoldings.length > pageSize">
-        <div class="pagination-info">Showing <strong>{{ getPaginationRange(currentPageTeams, totalTeamsPages,
-            teamAssetHoldings.length) }}</strong></div>
-        <div class="pagination-actions">
-          <button class="btn-page" [disabled]="currentPageTeams === 1" (click)="setTeamsPage(currentPageTeams - 1)">
-            <span class="material-icons-outlined">chevron_left</span> Previous
-          </button>
-          <span class="page-indicator">Page {{ currentPageTeams }} of {{ totalTeamsPages }}</span>
-          <button class="btn-page" [disabled]="currentPageTeams === totalTeamsPages"
-            (click)="setTeamsPage(currentPageTeams + 1)">
-            Next <span class="material-icons-outlined">chevron_right</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
 </div>

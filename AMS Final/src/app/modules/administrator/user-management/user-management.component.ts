@@ -4,6 +4,7 @@ import { AssetService } from '../../../core/services/asset.service';
 import { Asset } from '../../../core/models/asset.model';
 import { AdminDataService, Role, Project, Allocation, AssetTypeAssignment, AssignedAsset } from '../../../core/services/admin-data.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
 
 type UserTab = 'users' | 'roles' | 'projects' | 'assignments';
 
@@ -49,12 +50,14 @@ export class UserManagementComponent implements OnInit {
   newUser: {
     name: string;
     email: string;
+    password: string;
     roleName: string;
     projectId: string;
     assetTypeId: string;
   } = {
     name: '',
     email: '',
+    password: '',
     roleName: '',
     projectId: '',
     assetTypeId: ''
@@ -106,7 +109,8 @@ export class UserManagementComponent implements OnInit {
   constructor(
     private assetService: AssetService,
     private adminDataService: AdminDataService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private mailService: MailService
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -496,6 +500,17 @@ export class UserManagementComponent implements OnInit {
     this.addUserEmailError = this.isDuplicateEmail(email.trim())
       ? 'This email already exists. Same user cannot be added again.'
       : '';
+
+    // Generate password from email prefix
+    if (email.trim() && email.includes('@')) {
+      const emailPrefix = email.split('@')[0].replace(/\s+/g, '').toLowerCase();
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      this.newUser.password = `${emailPrefix}@ams${randomSuffix}`;
+    }
+  }
+
+  onAddUserNameChange(name: string): void {
+    this.newUser.name = name;
   }
 
   async saveNewUser(): Promise<void> {
@@ -525,21 +540,31 @@ export class UserManagementComponent implements OnInit {
 
     try {
       const userId = this.generateNextUserId();
+      
+      const generatedPassword = this.newUser.password || 'Qwerty@1234';
+
       await this.adminDataService.addUser({
         userId,
         name,
         email,
         roleId: selectedRole.id,
+        password: generatedPassword,
         projectId: this.newUser.projectId || undefined,
         assetTypeId: this.newUser.assetTypeId || undefined
       });
+
       if (roleName === this.teamLeadRoleName && this.newUser.projectId) {
         await this.adminDataService.assignTeamLeadToProject(this.newUser.projectId, userId);
       }
+
       await this.loadUsers();
       await this.loadProjects();
       this.filterUsers();
       this.notificationService.showToast(`User '${name}' created successfully!`, 'success');
+      
+      // Send Welcome Email (replicating self-registration behavior with the NEW generated password)
+      this.mailService.sendWelcomeEmail(email, name, generatedPassword);
+      
       this.closeAddUserModal();
 
     } catch (error) {
@@ -776,6 +801,7 @@ export class UserManagementComponent implements OnInit {
     this.newUser = {
       name: '',
       email: '',
+      password: '',
       roleName: '',
       projectId: '',
       assetTypeId: ''

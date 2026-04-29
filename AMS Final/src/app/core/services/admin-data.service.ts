@@ -269,6 +269,7 @@ export class AdminDataService {
     name: string;
     email: string;
     roleId: string;
+    password?: string;
     projectId?: string;
     assetTypeId?: string;
   }): Promise<void> {
@@ -276,6 +277,7 @@ export class AdminDataService {
     const name = this.normalizeNullable(user.name, '');
     const email = this.normalizeNullable(user.email, '');
     const roleId = this.normalizeNullable(user.roleId, '');
+    const password = user.password || 'Qwerty@1234';
     const projectId = this.normalizeNullable(user.projectId, '');
     const assetTypeId = this.normalizeNullable(user.assetTypeId, '');
 
@@ -294,7 +296,7 @@ export class AdminDataService {
         <Credentials allowDuplicate="true">
           <UserIDPassword>
             <UserID>${this.xmlEscape(email)}</UserID>
-            <Password>Qwerty@1234</Password>
+            <Password>${this.xmlEscape(password)}</Password>
           </UserIDPassword>
         </Credentials>
         <Roles>
@@ -328,9 +330,10 @@ export class AdminDataService {
             <email>${this.xmlEscape(email)}</email>
             <role_id>${this.xmlEscape(roleId)}</role_id>
             <status>Active</status>
-            <temp1>Qwerty@1234</temp1>
+            <temp1>${this.xmlEscape(password)}</temp1>
             ${projectId ? `<project_id>${this.xmlEscape(projectId)}</project_id>` : ''}
             ${assetTypeId ? `<asset_type_id>${this.xmlEscape(assetTypeId)}</asset_type_id>` : ''}
+            <created_at>${new Date().toISOString()}</created_at>
           </m_users>
         </new>
       </tuple>

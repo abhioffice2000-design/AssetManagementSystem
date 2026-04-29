@@ -90,6 +90,8 @@ export class MasterDataComponent implements OnInit {
   assetsInSelectedSub: Asset[] = [];
   subDetailsCurrentPage = 1;
   subDetailsPageSize = 5;
+  subCatCurrentPage = 1;
+  subCatPageSize = 5;
   assetTypeChartData: ChartData<'bar', number[], string> = {
     labels: [],
     datasets: [{ data: [] }]
@@ -215,7 +217,7 @@ export class MasterDataComponent implements OnInit {
     const serviceCategories = this.assetService.getCategories();
     this.assetCategories = [...serviceCategories];
     
-    // Augment assetCategories with empty subcategories from DB
+    // Augment assetCategories with IDs from DB
     dbSubCats.forEach(dbCat => {
       const catName = dbCat.name || dbCat.sub_category_name || dbCat.SUB_CATEGORY_NAME || '';
       const dbCatTypeId = dbCat.type_id || dbCat.Type_id || dbCat.TYPE_ID || '';
@@ -229,7 +231,10 @@ export class MasterDataComponent implements OnInit {
       const typeName = typeObj ? (typeObj.type_name || typeObj.name || typeObj.TYPE_NAME) : dbCatTypeId;
 
       let existingCategory = this.assetCategories.find(c => c.type === typeName && (c.name === catName || c.subCategories.includes(catName)));
-      if (!existingCategory) {
+      if (existingCategory) {
+        // Sync the actual DB ID to avoid collision during next generation
+        existingCategory.id = dbCat.sub_category_id || existingCategory.id;
+      } else {
          this.assetCategories.push({
            id: dbCat.sub_category_id || `cat_db_${Math.random()}`,
            name: catName,
@@ -392,8 +397,9 @@ export class MasterDataComponent implements OnInit {
     
     this.isSaving = true;
     try {
-      // Simulate/Generate ID (e.g. typ_01, typ_06)
-      const nextId = `typ_${String(this.assetTypes.length + 1).padStart(2, '0')}`;
+      // Use timestamp-based unique ID to avoid any PK collision
+      const nextId = `typ_${Date.now().toString().slice(-5)}`;
+      
       await this.assetService.addAssetType(nextId, this.newTypeName.trim());
       this.notificationService.showToast(`Asset Type '${this.newTypeName}' created successfully!`, 'success');
       this.closeAddTypeModal();
@@ -419,13 +425,8 @@ export class MasterDataComponent implements OnInit {
 
     this.isSaving = true;
     try {
-      // Robust Max ID increment
-      const catNumericIds = this.assetCategories.map(c => {
-        const match = (c.id || '').match(/\d+/);
-        return match ? parseInt(match[0], 10) : 0;
-      });
-      const maxCatId = catNumericIds.length > 0 ? Math.max(...catNumericIds) : 0;
-      const nextId = `cat_${String(maxCatId + 1).padStart(3, '0')}`;
+      // Use timestamp-based unique ID to avoid any PK collision
+      const nextId = `cat_${Date.now().toString().slice(-6)}`;
       await this.assetService.addAssetSubCategory(nextId, this.newSubCategoryName.trim(), this.selectedTypeIdForSubCategory);
       this.notificationService.showToast(`Subcategory '${this.newSubCategoryName}' added successfully!`, 'success');
       this.closeAddSubCategoryModal();
@@ -447,6 +448,26 @@ export class MasterDataComponent implements OnInit {
     
     if (isDuplicate) {
       this.notificationService.showToast(`An asset with the name '${trimmedName}' already exists. Asset names must be unique.`, 'error');
+      return;
+    }
+
+    // Check for unique serial number
+    const trimmedSerial = (this.newAsset.serialNumber || '').trim();
+    if (trimmedSerial) {
+      const isSerialDuplicate = this.assets.some(a => (a.serialNumber || '').toLowerCase() === trimmedSerial.toLowerCase());
+      if (isSerialDuplicate) {
+        this.notificationService.showToast(`An asset with serial number '${trimmedSerial}' already exists. Serial numbers must be unique.`, 'error');
+        return;
+      }
+    }
+
+    if (this.isPurchaseDateFuture()) {
+      this.notificationService.showToast('Purchase Date cannot be in the future.', 'error');
+      return;
+    }
+
+    if (this.isWarrantyExpiryPast()) {
+      this.notificationService.showToast('Warranty Expiry Date cannot be in the past.', 'error');
       return;
     }
 
@@ -655,7 +676,37 @@ export class MasterDataComponent implements OnInit {
   }
 
   isFieldInvalid(field: keyof typeof this.newAsset): boolean {
-    return this.submittedAssetForm && !this.newAsset[field];
+    if (this.submittedAssetForm) {
+      if (!this.newAsset[field]) return true;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (field === 'purchaseDate' && this.newAsset.purchaseDate) {
+        const pDate = new Date(this.newAsset.purchaseDate);
+        if (pDate > today) return true;
+      }
+
+      if (field === 'warrantyExpiry' && this.newAsset.warrantyExpiry) {
+        const wDate = new Date(this.newAsset.warrantyExpiry);
+        if (wDate < today) return true;
+      }
+    }
+    return false;
+  }
+
+  isPurchaseDateFuture(): boolean {
+    if (!this.newAsset.purchaseDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(this.newAsset.purchaseDate) > today;
+  }
+
+  isWarrantyExpiryPast(): boolean {
+    if (!this.newAsset.warrantyExpiry) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(this.newAsset.warrantyExpiry) < today;
   }
 
   filterAssets(): void {
@@ -866,12 +917,32 @@ export class MasterDataComponent implements OnInit {
   }
 
   filterSubcategories() {
+    this.subCatCurrentPage = 1;
     if (!this.selectedSubCategoryTypeFilter) {
       this.filteredEnrichedSubcategories = [...this.enrichedSubcategories];
     } else {
       this.filteredEnrichedSubcategories = this.enrichedSubcategories.filter(sub => 
         String(sub.type).trim().toLowerCase() === String(this.selectedSubCategoryTypeFilter).trim().toLowerCase()
       );
+    }
+  }
+
+  get paginatedSubcategories() {
+    const startIndex = (this.subCatCurrentPage - 1) * this.subCatPageSize;
+    return this.filteredEnrichedSubcategories.slice(startIndex, startIndex + this.subCatPageSize);
+  }
+
+  get totalSubCatPages() {
+    return Math.ceil(this.filteredEnrichedSubcategories.length / this.subCatPageSize);
+  }
+
+  get subCatPageNumbers() {
+    return Array.from({ length: this.totalSubCatPages }, (_, i) => i + 1);
+  }
+
+  setSubCatPage(page: number) {
+    if (page >= 1 && page <= this.totalSubCatPages) {
+      this.subCatCurrentPage = page;
     }
   }
 
