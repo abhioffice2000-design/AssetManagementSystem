@@ -377,11 +377,14 @@ export class AssetRequestsComponent implements OnInit {
           await this.requestService.updateReturnAssetStatus(req6 as any);
 
           // Check if this is the final confirmation stage
-          const isFinalConfirmation = this.selectedRequest.remarks === "Waiting for Hand-off Confirmation" || 
-                                      this.selectedRequest.currentStage?.toString().includes("Waiting") ||
-                                      (this.selectedRequest as any).status === "Pending" && (this.selectedRequest as any).role === "Asset Manager" && (this.selectedRequest as any).approverId === "usr_004" && this.selectedRequest.requesterId !== "usr_004"; // fallback heuristics
+          // The approval remarks from Allocation Team set "Waiting for Hand-off Confirmation"
+          const approvalRemarks = this.selectedRequest.approvalChain?.[0]?.comments || '';
+          const isFinalConfirmation = approvalRemarks === "Waiting for Hand-off Confirmation" || 
+                                      this.selectedRequest.currentStage?.toString().includes("Waiting");
 
-          if (isFinalConfirmation || this.selectedRequest.remarks === "Waiting for Hand-off Confirmation") {
+          console.log(`[ReturnApproval] approvalRemarks="${approvalRemarks}", isFinalConfirmation=${isFinalConfirmation}`);
+
+          if (isFinalConfirmation) {
             // This is the final stage. Complete the request.
             console.log("Executing Final Return Confirmation...");
             
@@ -396,6 +399,22 @@ export class AssetRequestsComponent implements OnInit {
               await this.requestService.createEntryForReturn(updateReturnReq as any);
             } catch (e) {
               console.error("Failed to update t_asset_returns status to Completed:", e);
+            }
+
+            // Update asset status to 'Available' and clear assignment
+            if (this.selectedRequest.assignedAssetId) {
+              try {
+                const updateAssetReq = {
+                  tuple: {
+                    old: { m_assets: { asset_id: this.selectedRequest.assignedAssetId } },
+                    new: { m_assets: { status: 'Available', temp1: '' } }
+                  }
+                };
+                await this.requestService.updateAssetStatus(updateAssetReq as any);
+                console.log(`[ReturnApproval] Asset ${this.selectedRequest.assignedAssetId} set to Available`);
+              } catch (e) {
+                console.error("Failed to update asset status to Available:", e);
+              }
             }
 
             const taskid = this.selectedRequest?.taskid;
