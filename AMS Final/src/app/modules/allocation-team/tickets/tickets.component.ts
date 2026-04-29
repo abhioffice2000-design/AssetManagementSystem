@@ -34,10 +34,11 @@ export interface EnrichedTicket {
 })
 export class AllocationTicketsComponent implements OnInit {
   RequestType = RequestType;
-  activeTab: 'unresolved' | 'resolved' = 'unresolved';
+  activeTab: 'unresolved' | 'resolved' | 'resolvedReturn' = 'unresolved';
   loading = true;
   allTickets: EnrichedTicket[] = [];
   resolvedTickets: EnrichedTicket[] = [];
+  resolvedReturnTickets: EnrichedTicket[] = [];
   currentUser: any;
   returnTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
@@ -162,6 +163,8 @@ export class AllocationTicketsComponent implements OnInit {
       this.allTickets = [...this.allTickets, ...this.returnTickets];
       // Load resolved history
       await this.loadResolvedTickets();
+      // Load resolved return history
+      await this.loadResolvedReturnTickets();
     } catch (err) {
       console.error('Failed to load allocation tickets:', err);
       this.allTickets = [];
@@ -251,7 +254,35 @@ export class AllocationTicketsComponent implements OnInit {
     }
   }
 
-  setTab(tab: 'unresolved' | 'resolved'): void {
+  async loadResolvedReturnTickets(): Promise<void> {
+    try {
+      const res = await this.hs.ajax(
+        'Getallreturnrequests',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        {}
+      );
+      const tuples = this.hs.xmltojson(res, 'tuple');
+      if (tuples) {
+        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
+        this.resolvedReturnTickets = tupleArray
+          .map((t: any) => this.mapReturnTupleToEnrichedTicket(t))
+          .filter(t => 
+            t.status === RequestStatus.COMPLETED || 
+            t.status === RequestStatus.APPROVED || 
+            t.status === RequestStatus.REJECTED || 
+            t.status === RequestStatus.CANCELLED
+          );
+        console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets`);
+      } else {
+        this.resolvedReturnTickets = [];
+      }
+    } catch (err) {
+      console.error('Failed to load resolved return tickets:', err);
+      this.resolvedReturnTickets = [];
+    }
+  }
+
+  setTab(tab: 'unresolved' | 'resolved' | 'resolvedReturn'): void {
     this.activeTab = tab;
     this.currentPage = 1;
   }
@@ -466,7 +497,14 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   get filteredTickets(): EnrichedTicket[] {
-    const source = this.activeTab === 'unresolved' ? this.unresolvedTickets : this.resolvedTickets;
+    let source: EnrichedTicket[] = [];
+    if (this.activeTab === 'unresolved') {
+      source = this.unresolvedTickets;
+    } else if (this.activeTab === 'resolved') {
+      source = this.resolvedTickets;
+    } else if (this.activeTab === 'resolvedReturn') {
+      source = this.resolvedReturnTickets;
+    }
 
     // Apply Search
     let filtered = source.filter(t => {
@@ -482,7 +520,7 @@ export class AllocationTicketsComponent implements OnInit {
         (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY) ||
         (this.selectedRequestType === 'return' && t.rawRequest.requestType === RequestType.RETURN_ASSET);
 
-      const matchesResolvedStatus = this.activeTab !== 'resolved' || !this.selectedResolvedStatus ||
+      const matchesResolvedStatus = (this.activeTab !== 'resolved' && this.activeTab !== 'resolvedReturn') || !this.selectedResolvedStatus ||
         (this.selectedResolvedStatus === 'Approved' && (t.status === RequestStatus.COMPLETED || t.status === RequestStatus.APPROVED)) ||
         (this.selectedResolvedStatus === 'Rejected' && t.status === RequestStatus.REJECTED);
 
