@@ -68,10 +68,14 @@ export class WarrantyTicketsComponent implements OnInit {
       const matchesType = !this.selectedAssetType || req.assetType === this.selectedAssetType;
       
       const matchesStatus = this.activeTab === 'pending' ? true : 
-        (!this.selectedResolvedStatus || req.status === this.selectedResolvedStatus);
+        (!this.selectedResolvedStatus || (this.selectedResolvedStatus === 'Approved' ? (req.status === 'Approved' || req.status === 'Completed') : req.status === this.selectedResolvedStatus));
       
       return matchesSearch && matchesType && matchesStatus;
     });
+  }
+
+  get pendingWarrantyCount(): number {
+    return this.warrantyTickets.filter(req => req.status === 'Pending' || req.status === 'In Progress').length;
   }
 
   get resolvedWarrantyRequests(): AssetRequest[] {
@@ -80,11 +84,18 @@ export class WarrantyTicketsComponent implements OnInit {
       req.status === 'Approved' || 
       req.status === 'Rejected' || 
       req.status === 'Cancelled'
-    );
+    ).sort((a, b) => {
+      const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
+      const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+      return dateB - dateA;
+    });
   }
 
   setTab(tab: 'pending' | 'resolved'): void {
     this.activeTab = tab;
+    if (tab === 'resolved') {
+      this.selectedAssetType = '';
+    }
   }
 
   async loadWarrantyTickets(): Promise<void> {
@@ -98,7 +109,7 @@ export class WarrantyTicketsComponent implements OnInit {
         this.requestService.fetchAllWarrantyRequests()
       ]);
 
-      this.warrantyTickets = pendingRes || [];
+      this.warrantyTickets = (pendingRes || []).filter(req => req.status === 'Pending' || req.status === 'In Progress');
       this.allWarrantyRequests = allRes || [];
       
       console.log('Pending Warranty Tickets:', this.warrantyTickets.length);
