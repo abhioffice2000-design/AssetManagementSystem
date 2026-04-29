@@ -278,11 +278,21 @@ export class MyRequestsComponent implements OnInit {
       if (request.requestType === RequestType.RETURN_ASSET) {
         // Fetch ALL approvals from t_asset_return_approvals for return requests
         const returnApprovals = await this.requestService.getReturnRequestProgress(request.id);
+
+        // Fetch all users to resolve approver_id → name
+        let allUsers: any[] = [];
+        try {
+          allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        } catch (e) {
+          console.warn('Failed to fetch users for name resolution:', e);
+        }
+        const userMap = new Map(allUsers.map((u: any) => [u.id, u.name]));
+
         progressData = returnApprovals.map((a: any) => ({
           stage: a.role || 'Unknown',
           status: a.status || 'Pending',
           approverId: a.approver_id,
-          approverName: a.role || 'Assigned Approver',
+          approverName: userMap.get(a.approver_id) || 'Assigned Approver',
           timestamp: a.action_date,
           comments: a.remarks
         }));
@@ -389,6 +399,12 @@ export class MyRequestsComponent implements OnInit {
       this.trackingSteps = this.trackingSteps.filter(step =>
         step.name !== 'To be Assigned'
       );
+
+      // 6. If any step was rejected, remove all subsequent steps (they were never reached)
+      const rejectedIndex = this.trackingSteps.findIndex(s => s.status === 'Rejected');
+      if (rejectedIndex !== -1) {
+        this.trackingSteps = this.trackingSteps.slice(0, rejectedIndex + 1);
+      }
 
       // Extract rejection info if the request is rejected
       if (request.status === 'Rejected') {

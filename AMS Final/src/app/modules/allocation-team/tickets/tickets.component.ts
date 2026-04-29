@@ -815,6 +815,17 @@ export class AllocationTicketsComponent implements OnInit {
         console.warn("Skipping Step 3: No valid TaskID found in initial data or Step 1 response.");
       }
 
+      // Send email to Asset Manager for final confirmation
+      this.mailService.sendReturnRequestNotification({
+        stage: 'alloc_approved',
+        returnId: ticket.ticketId,
+        employeeName: ticket.requestorName,
+        assetName: ticket.assetName,
+        remarks: "Allocated to Asset Manager",
+        actionByName: 'Allocation Team Member',
+        nextApproverName: 'Asset Manager'
+      });
+
       console.log("All steps finished for return ticket:", ticket.ticketId);
       this.loadTickets();
 
@@ -879,6 +890,16 @@ export class AllocationTicketsComponent implements OnInit {
         await this.requestService.completeUserTask(req4 as any);
         console.log("Step 3: BPM task completed");
       }
+
+      // Send email to Employee about rejection
+      this.mailService.sendReturnRequestNotification({
+        stage: 'alloc_rejected',
+        returnId: ticket.ticketId,
+        employeeName: ticket.requestorName,
+        assetName: ticket.assetName,
+        remarks: remarks,
+        actionByName: 'Allocation Team Member'
+      });
 
       this.notificationService.showToast(`Return request ${ticket.ticketId} rejected.`, 'info');
     } catch (error) {

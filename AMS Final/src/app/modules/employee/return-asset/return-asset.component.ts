@@ -5,8 +5,10 @@ import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
 import { Asset } from '../../../core/models/asset.model';
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 @Component({
   selector: 'app-return-asset',
@@ -24,6 +26,8 @@ export class ReturnAssetComponent implements OnInit {
     private requestService: RequestService,
     private authService: AuthService,
     private notificationService: NotificationService,
+    private mailService: MailService,
+    private adminService: AdminDataService,
     private router: Router
   ) { }
 
@@ -112,6 +116,16 @@ export class ReturnAssetComponent implements OnInit {
       };
       console.log("request5", request5);
       await this.requestService.callBPMForReturn(request5 as any);
+
+      // Send email notification to Asset Manager
+      this.mailService.sendReturnRequestNotification({
+        stage: 'submitted',
+        returnId: return_id,
+        employeeName: user.name,
+        assetName: this.selectedAsset.name || this.selectedAsset.assetTag,
+        remarks: formVal.justification,
+        nextApproverName: 'Asset Manager'
+      });
 
       const newReq = {
         id: `REQ${Date.now()}`,
