@@ -224,6 +224,46 @@ export class AssetService {
        throw err;
      }
    }
+   async fetchAllocationTeamAssetsFromService(): Promise<any[]> {
+     const soapRequest = `
+ <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getmovetoallocatedasset xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+ 
+     try {
+       const response = await this.hs.ajax(null, null, {}, soapRequest);
+       const tuples = this.hs.xmltojson(response, 'tuple');
+ 
+       if (!tuples) {
+         console.warn('No tuples found in Getallocatedasset response');
+         return [];
+       }
+ 
+       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+ 
+       const allocationTeamAssets = tupleArray.map((tuple: any) => {
+         const data = tuple?.old?.m_assets || tuple?.m_assets || tuple;
+         return {
+           asset_id: data?.asset_id || '',
+           asset_name: data?.asset_name || '',
+           type_id: data?.type_id || '',
+           sub_category_id: data?.sub_category_id || '',
+           serial_number: this.getNullableValue(data?.serial_number) || '',
+           purchase_date: data?.purchase_date || '',
+           warranty_expiry: data?.warranty_expiry || '',
+           status: data?.status || ''
+         };
+       });
+ 
+       console.log(`Fetched ${allocationTeamAssets.length} Move to Allocation Team assets from Getmovetoallocatedasset`);
+       return allocationTeamAssets;
+     } catch (err) {
+       console.error('Failed to fetch Move to Allocation Team assets from Getmovetoallocatedasset:', err);
+       throw err;
+     }
+   }
  
    /**
     * Fetches asset counts grouped by type from the Cordys SOAP service (GetAssetTypeWiseCount).

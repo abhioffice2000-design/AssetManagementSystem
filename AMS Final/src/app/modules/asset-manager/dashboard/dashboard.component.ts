@@ -11,7 +11,7 @@ export class ManagerDashboardComponent implements OnInit {
   // Top-level stats
   totalInventory = 0;
   allocatedAssets = 0;
-  pendingRequests = 0;
+  allocationTeamAssets = 0;
   availableAssets = 0;
 
   // Type breakdown
@@ -70,81 +70,73 @@ export class ManagerDashboardComponent implements OnInit {
     this.loadError = '';
 
     try {
-      // Fetch type-wise counts AND subcategory counts in parallel
-      const [typeCounts, subCategoryCounts, softwareSubCategoryCounts] = await Promise.all([
+      // Fetch everything we need in parallel for efficiency
+      const [typeCounts, allAssets, allocatedAssets, allocationTeamAssets] = await Promise.all([
         this.assetService.fetchAssetTypeWiseCount(),
-        this.assetService.fetchDashboardData(),
-        this.assetService.fetchSoftwareTypeData()
+        this.assetService.fetchAssetsFromService(),
+        this.assetService.fetchAllocatedAssetsFromService(),
+        this.assetService.fetchAllocationTeamAssetsFromService()
       ]);
 
-      const allSubcategoryCounts = [...subCategoryCounts, ...softwareSubCategoryCounts];
+      // 1. Calculate Top-Level Stat Cards
+      this.totalInventory = allAssets.length;
+      this.allocatedAssets = allocatedAssets.length;
+      this.allocationTeamAssets = allocationTeamAssets.length;
+      
+      // Calculate Available from the full asset list
+      this.availableAssets = allAssets.filter(
+        a => a.status && a.status.toLowerCase() === 'available'
+      ).length;
 
-      // Build a map of type → subcategories from GetDashboardData and GetSoftwareTypeData
-      const typeSubCatMap: Record<string, { name: string; count: number }[]> = {};
-      for (const sub of allSubcategoryCounts) {
-        const subNameLower = (sub.name || '').toLowerCase();
-        const typeKey = this.subCategoryTypeMapping[subNameLower] || this.guessTypeFromName(subNameLower);
-        if (!typeSubCatMap[typeKey]) {
-          typeSubCatMap[typeKey] = [];
+      // 2. Build the Breakdown Data
+      // Group assets by type and then by subcategory for the breakdown section
+      const breakdownMap: Record<string, { count: number, subCats: Record<string, number> }> = {};
+      
+      allAssets.forEach(asset => {
+        const type = (asset.type || 'Other').toString();
+        const typeKey = type.toLowerCase().trim();
+        const subCat = asset.subCategory || 'Uncategorized';
+
+        if (!breakdownMap[typeKey]) {
+          breakdownMap[typeKey] = { count: 0, subCats: {} };
         }
         
-        // Merge identical subcategory names (in case both queries return them)
-        const existingSub = typeSubCatMap[typeKey].find(s => s.name.toLowerCase() === sub.name.toLowerCase());
-        if (existingSub) {
-          existingSub.count += sub.asset_count;
-        } else {
-          typeSubCatMap[typeKey].push({ name: sub.name, count: sub.asset_count });
-        }
-      }
+        breakdownMap[typeKey].count++;
+        breakdownMap[typeKey].subCats[subCat] = (breakdownMap[typeKey].subCats[subCat] || 0) + 1;
+      });
 
-      // Build typeBreakdown from service response
+      // 3. Map to TypeBreakdown array using typeCounts from DB as the master list
       let fallbackIndex = 0;
-      this.typeBreakdown = typeCounts.map(item => {
-        const key = (item.type_name || '').toLowerCase();
+      this.typeBreakdown = typeCounts.map(tc => {
+        const typeName = tc.type_name;
+        const key = typeName.toLowerCase().trim();
         const style = this.typeStyleMap[key] || this.fallbackColors[fallbackIndex++ % this.fallbackColors.length];
+        
+        // Use data from our calculated breakdownMap if available
+        const calculatedData = breakdownMap[key];
+        
+        // Convert subCats record to an array of {name, count}
+        const subCategoriesArray = calculatedData 
+          ? Object.keys(calculatedData.subCats).map(name => ({
+              name: name,
+              count: calculatedData.subCats[name]
+            })).sort((a, b) => b.count - a.count)
+          : [];
 
         return {
-          type: item.type_name,
+          type: typeName,
           icon: style.icon,
           color: style.color,
           bgColor: style.bgColor,
-          count: item.asset_count,
-          subCategories: typeSubCatMap[key] || []
+          count: tc.asset_count, // Use DB aggregate for header total
+          subCategories: subCategoriesArray
         };
       });
 
-      // Sort by count descending
+      // Sort types by count descending
       this.typeBreakdown.sort((a, b) => b.count - a.count);
+      this.grandTotal = this.totalInventory;
 
-      // Calculate totals
-      this.grandTotal = this.typeBreakdown.reduce((sum, t) => sum + t.count, 0);
-      this.totalInventory = this.grandTotal;
-
-      this.allocatedAssets = 0;
-      this.availableAssets = 0;
-      
-      try {
-        const [pendingReqs, assetDetails, allocatedAssets] = await Promise.all([
-          this.requestService.fetchPendingRequestsFromService(),
-          this.assetService.fetchAssetDetailsFromService(),
-          this.assetService.fetchAllocatedAssetsFromService()
-        ]);
-        
-        this.pendingRequests = pendingReqs.length;
-        
-        // Calculate Available from Getassetdetails
-        this.availableAssets = assetDetails.filter(
-          (a) => a.status && a.status.toLowerCase() === 'available'
-        ).length;
-        
-        // Use Getallocatedasset for Allocated Assets
-        this.allocatedAssets = allocatedAssets.length;
-      } catch (err) {
-        console.error('Failed to load stat card counts:', err);
-        this.pendingRequests = 0;
-        this.availableAssets = 0;
-        this.allocatedAssets = 0;
-      }
     } catch (err: any) {
       console.error('Failed to load dashboard data:', err);
       this.loadError = err?.message || err?.errorThrown || 'Failed to load dashboard data. Please try again.';

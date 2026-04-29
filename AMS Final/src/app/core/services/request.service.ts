@@ -797,18 +797,22 @@ export class RequestService {
 
       if (!data) return [];
       const tupleArray = Array.isArray(data) ? data : [data];
-
-      return tupleArray.map((tuple: any) => {
+      
+      // Map and then sort/reverse to ensure we have the latest status for each role
+      const results = tupleArray.map((tuple: any) => {
         const approvalData = tuple?.old?.t_request_approvals || tuple?.t_request_approvals || tuple;
         return {
           stage: approvalData?.role || approvalData?.temp1 || 'Unknown Role/Stage',
           status: approvalData?.status || 'Pending',
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
-          timestamp: approvalData?.created_at,
+          timestamp: approvalData?.action_date || approvalData?.created_at || '',
           comments: approvalData?.remarks || approvalData?.reason || approvalData?.temp2 || ''
         };
       });
+
+      // Reverse the array so that progress.find() gets the most recent action for a stage
+      return results.reverse();
     } catch (err) {
       console.error('Error fetching request progress:', err);
       return [];
@@ -1247,14 +1251,26 @@ export class RequestService {
 
   private determineStage(status: RequestStatus, role: string = ''): ApprovalStage {
     const r = role.toLowerCase();
-    if (r.includes('team lead')) return ApprovalStage.TEAM_LEAD;
-    if (r.includes('asset manager')) return ApprovalStage.ASSET_MANAGER;
-    if (r.includes('allocation')) return ApprovalStage.ALLOCATION;
+    
+    // If we have an approval record and it's already approved, the current stage is the NEXT one
+    const isApproved = status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED;
 
+    if (r.includes('team lead')) {
+      return isApproved ? ApprovalStage.ASSET_MANAGER : ApprovalStage.TEAM_LEAD;
+    }
+    if (r.includes('asset manager')) {
+      return isApproved ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER;
+    }
+    if (r.includes('allocation')) {
+      return isApproved ? ApprovalStage.COMPLETED : ApprovalStage.ALLOCATION;
+    }
+
+    // Fallback logic based on status if role is ambiguous
     switch (status) {
       case RequestStatus.PENDING: return ApprovalStage.TEAM_LEAD;
-      case RequestStatus.APPROVED: return ApprovalStage.ALLOCATION;
+      case RequestStatus.APPROVED: return ApprovalStage.ASSET_MANAGER;
       case RequestStatus.COMPLETED: return ApprovalStage.COMPLETED;
+      case RequestStatus.REJECTED: return ApprovalStage.REJECTED;
       default: return ApprovalStage.TEAM_LEAD;
     }
   }

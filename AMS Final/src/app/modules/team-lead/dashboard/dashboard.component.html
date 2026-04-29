@@ -39,7 +39,7 @@
               <th><span class="material-icons-outlined">person</span> Requester Name</th>
               <th><span class="material-icons-outlined">category</span> Category</th>
               <th><span class="material-icons-outlined">devices</span> Asset Name</th>
-              <th><span class="material-icons-outlined">chat_bubble_outline</span> Reason</th>
+              <!-- <th><span class="material-icons-outlined">chat_bubble_outline</span> Reason</th> -->
               <th><span class="material-icons-outlined">info</span> Status</th>
               <th><span class="material-icons-outlined">pending_actions</span> Action</th>
               <th><span class="material-icons-outlined">event</span> Date</th>
@@ -51,7 +51,6 @@
                 <td>{{req.requesterName}}</td>
                 <td>{{req.category}}</td>
                 <td>{{req.assetType}}</td>
-                <td>{{((req.justification.length || 0) > 25) ? (req.justification | slice:0:25) + '...' : (req.justification || 'No reason provided')}}</td>
                 <td>
                   <span class="badge" [ngClass]="{
                         'badge-warning': req.reqStatus === 'Pending' || req.reqStatus === 'In Progress', 
@@ -119,11 +118,15 @@
           <div class="hz-timeline-content">
             <span class="hz-timeline-stage">{{ entry.stage }}</span>
             <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.status)">{{ entry.status }}</span>
+            <div class="hz-timeline-meta" *ngIf="entry.approverName && entry.status !== 'Pending'">
+              <span class="material-icons-outlined">person</span> {{ entry.approverName }}
+            </div>
           </div>
         </div>
       </div>
-      <div *ngIf="loadingProgress" class="text-center p-8">
-        <div class="spinner-sm" style="width: 20px; height: 20px;"></div>
+      <div *ngIf="loadingProgress" class="text-center p-16">
+        <div class="spinner-small" style="width: 24px; height: 24px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 2s linear infinite; margin: 0 auto;"></div>
+        <p class="text-xs text-muted mt-8">Loading real-time progress...</p>
       </div>
     </div>
     <div class="grid grid-2 gap-16" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">

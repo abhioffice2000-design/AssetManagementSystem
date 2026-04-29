@@ -181,7 +181,8 @@ export class MyAssetComponent implements OnInit {
         this.pendingRequests = requests.filter((req: AssetRequest) =>
           req.status === 'Pending' ||
           req.status === 'In Progress' ||
-          req.status === 'Approved'
+          req.status === 'Approved' ||
+          req.status === 'Rejected'
         );
         this.requestsCurrentPage = 1;
         console.log('[MyAsset] PendingRequestsForTeamLead count:', this.pendingRequests.length);
@@ -529,10 +530,10 @@ export class MyAssetComponent implements OnInit {
             t_asset_requests: { 
               status: 'Pending', // Reset to pending for re-approval
               urgency: this.editForm.urgency,
-              justification: this.editForm.justification,
+              reason: this.editForm.justification,
               asset_type: this.editForm.assetType,
-              category: this.editForm.category,
-              updated_at: new Date().toISOString()
+              temp1: this.editForm.category,
+              created_at: new Date().toISOString()
             } 
           }
         }
