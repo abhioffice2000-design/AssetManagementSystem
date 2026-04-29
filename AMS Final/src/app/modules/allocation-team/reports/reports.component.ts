@@ -106,8 +106,7 @@ export class AllocationReportsComponent implements OnInit {
               'Assigned Date': formatDate(r.created_at),
               'Employee': u.name || 'N/A',
               'Asset': r.asset_type,
-              'Asset Name': assetName,
-              'Return Date': r.temp4 && r.temp4 !== 'null' ? formatDate(r.temp4) : 'N/A'
+              'Asset Name': assetName
             };
           })
           .filter(r => r['Assigned Date'] !== 'N/A');
