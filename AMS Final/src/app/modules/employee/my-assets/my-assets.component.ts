@@ -30,6 +30,11 @@ export class MyAssetsComponent implements OnInit {
   assetTypes: AssetTypeOption[] = [];
   typeMap: Record<string, string> = {}; // type_id → type_name
 
+  // Pagination
+  currentPage = 1;
+  pageSize = 5;
+  Math = Math;
+
   // Modal states
   isReturnModalOpen = false;
   isWarrantyModalOpen = false;
@@ -85,6 +90,14 @@ export class MyAssetsComponent implements OnInit {
         this.myAssets = await this.assetService.getAssetsByUserIdFromCordys(user.id);
       }
       // Fetch allocated assets and requests in parallel for joining
+      // const [assets, requests] = await Promise.all([
+      //   this.assetService.getAllocatedAssetsByUserId(user.id),
+      //   this.requestService.getRequestsByUserIdFromCordys(user.id)
+      // ]);
+
+      // this.myAssets = assets;
+
+      // Fetch allocated assets and requests in parallel for joining
       const [assets, requests] = await Promise.all([
         this.assetService.getAllocatedAssetsByUserId(user.id),
         this.requestService.getRequestsByUserIdFromCordys(user.id)
@@ -110,6 +123,7 @@ export class MyAssetsComponent implements OnInit {
             const rAllocId = (r.allocatedAssetId || '').toLowerCase().trim();
             const rAssignedId = ((r as any).assignedAssetId || '').toLowerCase().trim();
 
+
             // Look into raw request data too if available (sometimes hidden in temp fields)
             const raw = (r as any).rawRequest || {};
             const rTemp1 = (raw.temp1 || '').toLowerCase().trim();
@@ -117,6 +131,9 @@ export class MyAssetsComponent implements OnInit {
 
             return (rAllocId && (rAllocId === aId || rAllocId === aTag || rAllocId === aSerial)) ||
               (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
+              (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
+              (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
+            (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
               (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
               (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
           });
@@ -171,6 +188,57 @@ export class MyAssetsComponent implements OnInit {
     }
 
     this.filteredAssets = result;
+    this.currentPage = 1; // Reset to first page on filter change
+  }
+
+  get paginatedAssets(): Asset[] {
+    const startIndex = (this.currentPage - 1) * this.pageSize;
+    return this.filteredAssets.slice(startIndex, startIndex + this.pageSize);
+  }
+
+  get totalPages(): number {
+    return Math.max(1, Math.ceil(this.filteredAssets.length / this.pageSize));
+  }
+
+  get totalFilteredCount(): number {
+    return this.filteredAssets.length;
+  }
+
+  get visiblePages(): (number | string)[] {
+    const total = this.totalPages;
+    const current = this.currentPage;
+    const maxVisible = 5;
+
+    if (total <= maxVisible + 2) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    const pages: (number | string)[] = [];
+    pages.push(1);
+
+    let start = Math.max(2, current - 1);
+    let end = Math.min(total - 1, current + 1);
+
+    if (current <= 3) {
+      start = 2;
+      end = Math.min(total - 1, maxVisible - 1);
+    } else if (current >= total - 2) {
+      start = Math.max(2, total - maxVisible + 2);
+      end = total - 1;
+    }
+
+    if (start > 2) pages.push('...');
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (end < total - 1) pages.push('...');
+    pages.push(total);
+
+    return pages;
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
   }
 
   onSearchChange(): void {

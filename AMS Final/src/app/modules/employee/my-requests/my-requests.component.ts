@@ -41,6 +41,17 @@ export class MyRequestsComponent implements OnInit {
     { label: 'Return Requests', value: RequestType.RETURN_ASSET }
   ];
 
+  // Filters
+  // searchTerm = '';
+  // selectedType = '';
+
+  // types = [
+  //   { label: 'All Requests', value: '' },
+  //   { label: 'New Asset Requests', value: RequestType.NEW_ASSET },
+  //   { label: 'Warranty Requests', value: RequestType.EXTEND_WARRANTY },
+  //   { label: 'Return Requests', value: RequestType.RETURN_ASSET }
+  // ];
+
   // Resubmit Modal Data
   resubmitForm!: FormGroup;
   masterAssetTypes: any[] = [];
@@ -115,6 +126,7 @@ export class MyRequestsComponent implements OnInit {
 
   get filteredRequests(): AssetRequest[] {
     const filtered = this.requests.filter(req => {
+      //   const matchesSearch = !this.searchTerm ||
       const matchesSearch = !this.searchTerm ||
         req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
@@ -265,19 +277,39 @@ export class MyRequestsComponent implements OnInit {
       const stages = this.getStagesForRequest(request);
 
       let availableProgress = [...progressData];
-      const resolvedNames = await this.resolveApproverNames(request);
+      const approverDetails = await this.resolveApproverDetails(request);
+      const resolvedNames: Record<string, string> = {};
+      Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
 
       this.trackingSteps = stages.map((stage, index) => {
         const isDistributionStep = index === (stages.length - 1) && stage.name === 'Asset Manager' && stages.length > 2;
 
-        const foundIndex = availableProgress.findIndex(p =>
-          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
-        );
+        let foundIndex = -1;
+        while (true) {
+          foundIndex = availableProgress.findIndex(p =>
+            stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+          );
+
+          // If we found a match and it's rejected, check if there's a LATER record for the same role(s)
+          // This allows the tracker to skip historical rejections from previous resubmission cycles.
+          if (foundIndex !== -1 && availableProgress[foundIndex].status === 'Rejected') {
+            const hasLaterMatch = availableProgress.slice(foundIndex + 1).some(p =>
+              stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+            );
+
+            if (hasLaterMatch) {
+              // Stale record detected. Remove it and look for the newer one in the next iteration.
+              availableProgress.splice(foundIndex, 1);
+              continue;
+            }
+          }
+          break;
+        }
 
         let data = null;
         if (foundIndex !== -1) {
           data = availableProgress[foundIndex];
-          // Remove it so the second Asset Manager matches the next DB entry
+          // Remove it so subsequent stages match the next DB entries
           availableProgress.splice(foundIndex, 1);
         }
 
@@ -346,8 +378,8 @@ export class MyRequestsComponent implements OnInit {
     }
   }
 
-  private async resolveApproverNames(request: AssetRequest): Promise<Record<string, string>> {
-    const resolvedNames: Record<string, string> = {};
+  private async resolveApproverDetails(request: AssetRequest): Promise<Record<string, { name: string, id: string }>> {
+    const details: Record<string, { name: string, id: string }> = {};
     let user = this.authService.getCurrentUser();
 
     try {
@@ -363,7 +395,10 @@ export class MyRequestsComponent implements OnInit {
       if (user?.projectId && user.projectId !== 'null') {
         const project = await this.adminService.getProjectById(user.projectId);
         if (project?.teamLead) {
-          resolvedNames['Team Lead'] = project.teamLead;
+          details['Team Lead'] = {
+            name: project.teamLead,
+            id: project.teamLeadId || this.adminService.findUserIdByName(project.teamLead) || 'usr_003'
+          };
         }
       }
 
@@ -371,15 +406,21 @@ export class MyRequestsComponent implements OnInit {
       if (request.assetType) {
         const assignment = await this.adminService.getAssignmentByAssetType(request.assetType);
         if (assignment) {
-          resolvedNames['Asset Manager'] = assignment.assetManager;
-          resolvedNames['Asset Allocation Team'] = assignment.teamMembers;
+          details['Asset Manager'] = {
+            name: assignment.assetManager,
+            id: assignment.assetManagerId || this.adminService.findUserIdByName(assignment.assetManager) || 'usr_004'
+          };
+          details['Asset Allocation Team'] = {
+            name: assignment.teamMembers,
+            id: '' // Typically resolved as a team, not a single user ID
+          };
         }
       }
     } catch (err) {
-      console.error('Failed to resolve approver names:', err);
+      console.error('Failed to resolve approver details:', err);
     }
 
-    return resolvedNames;
+    return details;
   }
 
   calculateOverallProgress(requestStatus: string): number {
@@ -412,15 +453,22 @@ export class MyRequestsComponent implements OnInit {
   approval_id = '';
   task_id = '';
 
-  Getassetidbyapprovalid(request_id: any) {
-    this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { Request_id: request_id }
-    ).then((resp: any) => {
-      this.responseData = resp.tuple.old.t_request_approvals.temp1;
-      this.approval_id = resp.tuple.old.t_request_approvals.approval_id;
-      this.task_id = resp.tuple.old.t_request_approvals.temp2;
-      console.log("approval id.......................", this.approval_id);
-    })
+  async Getassetidbyapprovalid(request_id: any) {
+    debugger
+    try {
+      const resp: any = await this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
+        { Request_id: request_id }
+      );
+      if (resp && resp.tuple && resp.tuple.old && resp.tuple.old.t_request_approvals) {
+        this.responseData = resp.tuple.old.t_request_approvals.temp1;
+        this.approval_id = resp.tuple.old.t_request_approvals.approval_id;
+        this.task_id = resp.tuple.old.t_request_approvals.temp2;
+        console.log("approval id.......................", this.approval_id);
+        console.log("task id fetched:", this.task_id);
+      }
+    } catch (error) {
+      console.error("Error in Getassetidbyapprovalid:", error);
+    }
   }
 
   async submitConfirmation() {
@@ -444,7 +492,7 @@ export class MyRequestsComponent implements OnInit {
           }
         }
       };
-      this.Getassetidbyapprovalid(requestId);
+      await this.Getassetidbyapprovalid(requestId);
       await this.requestService.submitNewRequestForm(updateReq);
 
       // Update the master asset status to Allocated
@@ -459,7 +507,9 @@ export class MyRequestsComponent implements OnInit {
             new: {
               m_assets: {
                 status: 'Allocated',
-                temp1: this.authService.getCurrentUser()?.id
+                temp1: this.authService.getCurrentUser()?.id,
+                // temp1: this.selectedRequest.requesterId,
+                temp2: this.selectedRequest.id
               }
             }
           }
@@ -498,17 +548,17 @@ export class MyRequestsComponent implements OnInit {
       console.log('Confirmation submitted for:', requestId);
 
       // Update UI
-      this.selectedRequest.status = RequestStatus.COMPLETED;
+      this.selectedRequest.status = RequestStatus.APPROVED;
       this.closeConfirmForm();
       this.closeTrackingModal();
 
       // Reload to ensure data consistency
       await this.loadRequests();
 
-      alert('Asset receipt confirmed successfully. The request is now marked as Completed.');
+      this.notificationService.showToast('Asset receipt confirmed successfully. The request is now marked as Approved.', 'success');
     } catch (error) {
       console.error('Error submitting confirmation:', error);
-      alert('Failed to confirm asset receipt. Please try again.');
+      this.notificationService.showToast('Failed to confirm asset receipt. Please try again.', 'error');
     } finally {
       this.loading = false;
     }
@@ -525,7 +575,7 @@ export class MyRequestsComponent implements OnInit {
           new: { t_asset_requests: { status: 'Rejected' } }
         }
       };
-      this.Getassetidbyapprovalid(request.requestNumber);
+      await this.Getassetidbyapprovalid(request.requestNumber);
       await this.requestService.submitNewRequestForm(updateReq);
       
 
@@ -540,7 +590,7 @@ export class MyRequestsComponent implements OnInit {
       var res3 = await this.requestService.createEntryForRequestor(updateReq2);
       console.log("response 3", res3);
 
-      this.Getassetidbyapprovalid(request.requestNumber);
+      await this.Getassetidbyapprovalid(request.requestNumber);
       console.log("response 4", this.task_id);
 
       // Complete the BPM task
@@ -639,15 +689,21 @@ export class MyRequestsComponent implements OnInit {
         }
       };
       await this.requestService.submitNewRequestForm(updateReq);
+      await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
 
       // 2. API: UpdateT_request_approvals
       // This adds a new entry (column/row) for the same request ID to restart approval flow
+      // Resolve dynamic approver IDs
+      const approverDetails = await this.resolveApproverDetails(this.selectedRequest);
+      const teamLeadId = approverDetails['Team Lead']?.id;
+      const assetManagerId = approverDetails['Asset Manager']?.id;
+
       const approvalEntry = {
         tuple: {
           new: {
             t_request_approvals: {
               request_id: this.selectedRequest.requestNumber,
-              approver_id: formVal.hasEmailApproval ? 'usr_004' : 'usr_003',
+              approver_id: formVal.hasEmailApproval ? assetManagerId : teamLeadId,
               role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
               status: 'Pending'
             }
@@ -657,14 +713,27 @@ export class MyRequestsComponent implements OnInit {
       const res2 = await this.requestService.createEntryForTeamLead(approvalEntry as any);
       const newapprovalid = res2.new.t_request_approvals.approval_id;
 
-      // 3. Call BPM
-      const bpmRequest = {
-        InputDoc: formVal.hasEmailApproval.toString(),
-        Inputusrid: user.id,
-        Inputrequestapprovalid: `${newapprovalid}`,
-        Inputrequestid: this.selectedRequest.requestNumber
+      const updateReq1 = {
+        tuple: {
+          old: { t_request_approvals: { approval_id: this.approval_id } },
+          new: {
+            t_request_approvals: {
+              status: 'Approved'
+            }
+          }
+        }
       }
-      await this.requestService.callBPMForRequest(bpmRequest as any);
+      await this.requestService.createEntryForTeamLead(updateReq1 as any);
+
+      // 3. Complete the current BPM task (the one that notified about rejection)
+      console.log('Taskid to complete:', this.task_id);
+      if (this.task_id) {
+        const reqTaskComplete = {
+          TaskId: `${this.task_id}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(reqTaskComplete as any);
+      }
 
       this.notificationService.showToast('Request resubmitted successfully.', 'success');
       this.closeTrackingModal();

@@ -16,6 +16,7 @@ type AddAssetForm = {
   serialNumber: string;
   purchaseDate: string;
   warrantyExpiry: string;
+  reminderDays: number;
 };
 type AssetCategoryGroup = {
   type: AssetType | string;
@@ -454,7 +455,8 @@ export class MasterDataComponent implements OnInit {
         vendor: 'Internal',
         serialNumber: this.newAsset.serialNumber,
         cost: 0,
-        condition: AssetCondition.GOOD
+        condition: AssetCondition.GOOD,
+        reminderDays: this.newAsset.reminderDays
       };
 
       // Securely fetch exact IDs from DB based on mapped name
@@ -871,7 +873,8 @@ export class MasterDataComponent implements OnInit {
       name: '',
       serialNumber: '',
       purchaseDate: '',
-      warrantyExpiry: ''
+      warrantyExpiry: '',
+      reminderDays: 30
     };
   }
 }

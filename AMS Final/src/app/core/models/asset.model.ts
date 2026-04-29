@@ -21,6 +21,7 @@ export interface Asset {
   condition: AssetCondition;
   notes?: string;
   requestId?: string;
+  reminderDays?: number;
 }
 
 export enum AssetType {

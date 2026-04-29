@@ -183,7 +183,7 @@
               </div>
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
               <p class="step-comments mt-8 italic" *ngIf="step.comments">"{{ step.comments }}"</p>
-              <div class="mt-12 pt-12" *ngIf="last && isFullyApproved() && selectedRequest?.status !== 'Completed'" style="border-top: 1px dashed var(--border-color);">
+              <div class="mt-12 pt-12" *ngIf="last && isFullyApproved() && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'" style="border-top: 1px dashed var(--border-color);">
                 <button class="btn btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;" (click)="openConfirmForm()">
                   <span class="material-icons-outlined">verified</span>
                   Confirm Asset Receipt

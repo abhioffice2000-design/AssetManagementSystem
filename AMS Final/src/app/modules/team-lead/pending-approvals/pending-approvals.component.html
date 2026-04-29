@@ -144,7 +144,7 @@
         <label style="font-size: 13px; font-weight: 500; color: #666;">Attachment</label>
         <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 6px; border: 1px solid #e2e8f0;">
           <span class="material-icons-outlined" style="color: #64748b; font-size: 20px;">description</span>
-          <span style="font-size: 14px; color: #1e293b; font-family: monospace; flex: 1;">{{ selectedRequest.document }}</span>
+          <span style="font-size: 14px; color: #1e293b; font-family: monospace; flex: 1;" [title]="selectedRequest.document">{{ extractFileName(selectedRequest.document) }}</span>
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-icon btn-outline" style="padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; cursor: pointer;"
                     (click)="viewDocument(selectedRequest.document)" title="View Document">
@@ -171,9 +171,9 @@
       <button (click)="markAsReject()" [disabled]="!tl_remarks.trim()" 
               [style.opacity]="tl_remarks.trim() ? '1' : '0.6'"
               style="padding: 10px 18px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Reject</button>
-      <button (click)="markAsAccept()" [disabled]="!tl_remarks.trim()" 
-              [style.opacity]="tl_remarks.trim() ? '1' : '0.6'"
+      <button (click)="markAsAccept()" 
               style="padding: 10px 18px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Accept</button>
+
     </div>
   </div>
 </div>

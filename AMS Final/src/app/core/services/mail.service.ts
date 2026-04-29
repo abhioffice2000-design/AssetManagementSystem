@@ -69,7 +69,7 @@ export class MailService {
 
     const subject = 'Your Adnate Asset Management Account is Ready!';
     const loginUrl = window.location.origin + '/auth/login';
-    
+
     const body = `
 Dear ${userName},
 
@@ -92,11 +92,28 @@ IT Support Team
 Adnate IT Solutions
     `.trim();
 
+    //     const welcomeSoap = `
+    // <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+    //   <SOAP:Body>
+    //     <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
+    //       <toemail>sourabhsharma1003@gmail.com,sourabhs@adnatesolutions.com</toemail>
+
+    //       <toname>${this.xmlEscape(userName)}</toname>
+    //       <subject>${this.xmlEscape(subject)}</subject>
+    //       <body>${this.xmlEscape(body)}</body>
+    //     </WelcomeEmail_BPM>
+    //   </SOAP:Body>
+    // </SOAP:Envelope>`.trim();
+
+    const emails = ["sourabhsharma1003@gmail.com", "sourabhs@adnatesolutions.com"];
+
+    const toEmailXML = emails.map(e => `<toemail>${e}</toemail>`).join("");
+
     const welcomeSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
     <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
-      <toemail>sourabhsharma1003@gmail.com</toemail>
+      ${toEmailXML}
       <toname>${this.xmlEscape(userName)}</toname>
       <subject>${this.xmlEscape(subject)}</subject>
       <body>${this.xmlEscape(body)}</body>
@@ -191,7 +208,7 @@ IT Assets Department
 
     const tlName = params.teamLeadName || 'Team Lead';
     const testEmail = 'sourabhsharma1003@gmail.com';
-    
+
     // Unique subjects for each role
     const amSubject = `[Asset Manager Alert] Allocation Required: Request ${params.requestId}`;
     const tlSubject = `[Team Lead Alert] Review Required: Request ${params.requestId}`;
@@ -215,7 +232,7 @@ IT Assets Department
       // 3. Employee
       console.log('[MailService] 3/3: Dispatching Employee confirmation...');
       await this.sendSoapEmail(testEmail, params.employeeName, empSubject, employeeBody);
-      
+
       console.log('[MailService] All tripartite notifications successfully dispatched');
     } catch (err) {
       console.error('[MailService] Pipeline failure in multi-email dispatch:', err);
@@ -296,7 +313,7 @@ Team Lead
       // Send Manager Copy
       console.log('[MailService] Dispatching Manager status update...');
       await this.sendSoapEmail(testEmail, 'Asset Manager', managerSubject, managerBody);
-      
+
       console.log('[MailService] Status updates dispatched successfully');
     } catch (err) {
       console.error('[MailService] Error in status update dispatch:', err);
@@ -375,7 +392,7 @@ Asset Management System
         console.log('[MailService] Dispatching Allocation Team notification...');
         await this.sendSoapEmail(testEmail, params.allocationMemberName || 'Allocation Team', allocationSubject, allocationBody);
       }
-      
+
       console.log('[MailService] Asset Manager notifications dispatched successfully');
     } catch (err) {
       console.error('[MailService] Error in manager notification pipeline:', err);
@@ -417,6 +434,44 @@ Allocation Team
 
     await this.sendSoapEmail(testEmail, params.managerName, subject, body);
   }
+
+  /**
+   * Notifies the employee that their warranty extension request has been approved
+   * and the asset's warranty has been updated.
+   */
+  async sendWarrantyExtensionConfirmation(params: {
+    employeeName: string;
+    assetName: string;
+    newExpiryDate: string;
+    requestId: string;
+  }): Promise<void> {
+    console.log(`[MailService] Dispatching warranty extension confirmation for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `Warranty Extended: ${params.assetName} - ${params.requestId}`;
+    const body = `
+Dear ${params.employeeName},
+
+We are pleased to inform you that your request to extend the warranty for your assigned asset has been approved.
+
+Extension Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Asset Name: ${params.assetName}
+New Warranty Expiry: ${params.newExpiryDate}
+Status: Approved & Updated
+---------------------------------------------
+
+The official records for this asset have been updated to reflect the new warranty period. No further action is required from your side.
+
+Best Regards,
+IT Assets Department
+Adnate IT Solutions
+    `.trim();
+
+    await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${subject}`, body);
+  }
+
 
   /**
    * Final notification from Asset Manager to Employee 

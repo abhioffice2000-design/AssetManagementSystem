@@ -355,6 +355,35 @@ export class RequestService {
   }
 
   /**
+   * Fetches ALL warranty extension requests from the Cordys SOAP service (GetT_extend_asset_requests).
+   * Used for the "Resolved" tab in Warranty Extensions.
+   */
+  async fetchAllWarrantyRequests(): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_extend_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetT_extend_asset_requests response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch all warranty requests from GetT_extend_asset_requests:', err);
+      return [];
+    }
+  }
+
+  /**
    * Fetches the full object for a specific warranty extension request.
    * Based on USER provided SOAP request structure.
    */
@@ -450,20 +479,109 @@ export class RequestService {
   }
 
   /**
+   * Updates the main warranty extension request record.
+   */
+  async updateExtendAssetRequest(requestId: string, status: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_extend_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_extend_asset_requests qConstraint="0">
+            <request_id>${requestId}</request_id>
+          </t_extend_asset_requests>
+        </old>
+        <new>
+          <t_extend_asset_requests qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <status>${status}</status>
+          </t_extend_asset_requests>
+        </new>
+      </tuple>
+    </UpdateT_extend_asset_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      return await this.hs.ajax(null, null, {}, soapRequest);
+    } catch (err) {
+      console.error('Failed to update extend asset request:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Updates the warranty expiry date of an asset in the master table.
+   */
+  async updateAssetWarrantyDate(assetId: string, newExpiryDate: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_assets qConstraint="0">
+            <asset_id>${assetId}</asset_id>
+          </m_assets>
+        </old>
+        <new>
+          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <warranty_expiry>${newExpiryDate}</warranty_expiry>
+          </m_assets>
+        </new>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      return await this.hs.ajax(null, null, {}, soapRequest);
+    } catch (err) {
+      console.error('Failed to update asset warranty date:', err);
+      throw err;
+    }
+  }
+
+
+  /**
    * Specialized mapping for warranty requests (t_extend_asset_requests).
    */
   private mapWarrantyTupleToRequest(tuple: any): AssetRequest {
     const parent = tuple?.old || tuple;
-    const approvalData = parent?.t_extend_request_approvals || parent;
+    
+    // In Cordys join queries, tables can be siblings or nested.
+    // Try to find approval data in both common patterns.
+    const approvalData = parent?.t_extend_request_approvals || 
+                         parent?.t_extend_asset_requests?.t_extend_request_approvals || 
+                         parent;
 
-    // Attempt to find the request data at different nesting levels
-    const reqData = approvalData?.t_extend_asset_requests || parent?.t_extend_asset_requests || (parent.request_id ? parent : {});
+    const reqData = parent?.t_extend_asset_requests || 
+                    approvalData?.t_extend_asset_requests || 
+                    (parent.request_id ? parent : {});
+                    
     const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || {};
-    const assetInfo = parent?.m_assets || approvalData?.m_assets || reqData?.m_assets || {};
+    
+    // Asset metadata can be in multiple places depending on the join depth
+    const assetInfo = parent?.m_assets || 
+                     reqData?.m_assets || 
+                     approvalData?.m_assets || 
+                     parent?.t_extend_asset_requests?.m_assets || 
+                     parent?.t_extend_request_approvals?.m_assets ||
+                     {};
 
     // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
     const assetName = this.getNullableValue(reqData?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
-    const serialNumber = this.getNullableValue(reqData?.temp2 || assetInfo?.serial_number) || 'N/A';
+    const serialNumber = this.getNullableValue(
+      reqData?.temp2 || 
+      parent?.temp2 || 
+      reqData?.serial_number || 
+      reqData?.asset_tag || 
+      assetInfo?.serial_number || 
+      assetInfo?.asset_tag || 
+      assetInfo?.serial_no || 
+      assetInfo?.Serial_number || 
+      parent?.serial_number
+    ) || 'N/A';
     const expiryDate = this.getNullableValue(reqData?.temp3 || assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
     const assetId = this.getNullableValue(reqData?.asset_id || assetInfo?.asset_id || reqData?.asset_type) || 'N/A';
 
@@ -471,11 +589,11 @@ export class RequestService {
     const currentStage = ApprovalStage.ASSET_MANAGER;
 
     return {
-      taskid: tuple?.old.t_extend_asset_requests.t_extend_request_approvals.temp1 || '',
-      document: this.getNullableValue(reqData?.temp2) || '',
-      approvalId: tuple?.old.t_extend_asset_requests.t_extend_request_approvals.approval_id || '',
-      id: reqData?.request_id || '',
-      requestNumber: reqData?.request_id || '',
+      taskid: this.getNullableValue(approvalData?.temp1 || parent?.temp1 || parent?.t_extend_asset_requests?.t_extend_request_approvals?.temp1) || '',
+      document: this.getNullableValue(reqData?.document) || '',
+      approvalId: approvalData?.approval_id || parent?.approval_id || parent?.t_extend_asset_requests?.t_extend_request_approvals?.approval_id || '',
+      id: reqData?.request_id || parent?.request_id || '',
+      requestNumber: reqData?.request_id || parent?.request_id || '',
       requesterId: reqData?.user_id || userInfo?.user_id || '',
       requesterName: userInfo?.name || '',
       requesterEmail: userInfo?.email || '',
@@ -748,6 +866,38 @@ export class RequestService {
   }
 
   /**
+   * Fetches all asset requests for the currently logged-in user from Cordys.
+   * Uses the getAllRequestsBasedOnLoggedInUser SOAP service.
+   */
+  async getAllRequestsBasedOnLoggedInUser(userId: string): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllRequestsBasedOnLoggedInUser  xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetAllRequestsBasedOnLoggedInUser >
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      let tuples = this.hs.xmltojson(response, 'tuple') || this.hs.xmltojson(response, 't_asset_requests');
+
+      if (!tuples) {
+        console.warn('[RequestService] No data found in getAllRequestsBasedOnLoggedInUser response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      console.log(`[RequestService] getAllRequestsBasedOnLoggedInUser returned ${tupleArray.length} record(s)`);
+      return tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
+    } catch (err) {
+      console.error('[RequestService] Failed to fetch from getAllRequestsBasedOnLoggedInUser:', err);
+      return [];
+    }
+  }
+
+  /**
    * Fetches all requests for a specific employee from Cordys.
    * Uses the Getallrequest SOAP service and filters the result by user ID.
    */
@@ -770,7 +920,8 @@ export class RequestService {
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
 
       return tupleArray
-        .map((tuple: any) => this.mapTupleToRequest(tuple));
+        .map((tuple: any) => this.mapTupleToRequest(tuple))
+        .filter((req: AssetRequest) => req.requesterId === userId);
     } catch (err) {
       console.error('Failed to fetch employee requests from Cordys:', err);
       return [];
@@ -800,8 +951,9 @@ export class RequestService {
     // Determine request type from asset_type or default
     const requestType = this.mapToRequestType(reqData?.request_type || reqData?.asset_type || '');
 
-    // Determine current approval stage based on status
-    const currentStage = this.determineStage(status);
+    // Determine current approval stage based on status and role
+    const role = parent?.t_request_approvals?.role || reqData?.t_request_approvals?.role || '';
+    const currentStage = this.determineStage(status, role);
 
     // Parse email approval
     const hasEmailApproval = reqData?.email_approval === 'true' || reqData?.email_approval === true;
@@ -836,13 +988,16 @@ export class RequestService {
       subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || ''),
       justification: reqData?.reason || '',
       urgency: urgency,
-      status: (status === RequestStatus.PENDING && currentStage !== ApprovalStage.TEAM_LEAD) ? RequestStatus.APPROVED : status,
+      status: status,
       currentStage: currentStage,
       hasEmailApproval: hasEmailApproval,
       emailApprovalDoc: hasEmailApproval ? this.getNullableValue(reqData?.document) : undefined,
       document: (() => {
         const t2 = this.getNullableValue(reqData?.temp2) || '';
         const d1 = this.getNullableValue(reqData?.document) || '';
+        // Server file path from UploadDocuments_AMS
+        if (d1 && (d1.includes('\\') || d1.includes('/') || /^[A-Z]:/i.test(d1))) return d1;
+        if (d1.includes('|') || d1.startsWith('data:')) return d1;
         if (t2.includes('|') || t2.startsWith('data:')) return t2;
         if (t2 && t2 !== 'null') return t2;
         if (d1 && d1 !== 'ATTACHED' && d1 !== 'null' && !d1.includes('BPM')) return d1;
@@ -876,14 +1031,27 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: assetInfo?.asset_id || reqData?.asset_id || reqData?.temp1 || reqData?.temp2 || reqData?.temp3 || '',
+      allocatedAssetId: reqData?.temp1 || parent?.t_request_approvals?.temp1 || '',
+      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp1 || '',
+      assignedTypeId: assetInfo?.type_id || '',
+      assignedSubCategoryId: assetInfo?.sub_category_id || '',
+      assignedSerial: assetInfo?.serial_number || '',
+      assignedPurchaseDate: assetInfo?.purchase_date || '',
+      assignedWarrantyExpiry: assetInfo?.warranty_expiry || '',
       // Requester details from nested m_users
       requesterStatus: this.getNullableValue(userInfo?.status),
       requesterProject: this.getNullableValue(userInfo?.project_id),
       requesterRole: this.getNullableValue(userInfo?.role_id),
       requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
       requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
-      teamLeadJustification: this.getNullableValue(reqData?.t_request_approvals?.reason || reqData?.t_request_approvals?.remarks || reqData?.t_request_approvals?.temp2)
+      teamLeadJustification: this.getNullableValue(
+        parent?.t_request_approvals?.reason || 
+        parent?.t_request_approvals?.remarks || 
+        parent?.t_request_approvals?.temp2 ||
+        reqData?.t_request_approvals?.reason ||
+        reqData?.t_request_approvals?.remarks ||
+        reqData?.t_request_approvals?.temp2
+      )
     };
   }
 
@@ -918,7 +1086,7 @@ export class RequestService {
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
-      status: (status === RequestStatus.PENDING) ? RequestStatus.APPROVED : status,
+      status: status,
       currentStage: currentStage,
       hasEmailApproval: false,
       requestDate: data?.return_date || '',
@@ -980,16 +1148,21 @@ export class RequestService {
     return RequestType.NEW_ASSET; // default
   }
 
-  private determineStage(status: RequestStatus): ApprovalStage {
+  private determineStage(status: RequestStatus, role: string = ''): ApprovalStage {
+    const r = role.toLowerCase();
+    if (r.includes('team lead')) return ApprovalStage.TEAM_LEAD;
+    if (r.includes('asset manager')) return ApprovalStage.ASSET_MANAGER;
+    if (r.includes('allocation')) return ApprovalStage.ALLOCATION;
+
     switch (status) {
-      case RequestStatus.PENDING: return ApprovalStage.ASSET_MANAGER;
+      case RequestStatus.PENDING: return ApprovalStage.TEAM_LEAD;
       case RequestStatus.APPROVED: return ApprovalStage.ALLOCATION;
       case RequestStatus.COMPLETED: return ApprovalStage.COMPLETED;
       default: return ApprovalStage.TEAM_LEAD;
     }
   }
 
-  private normalizeAssetType(type: string | undefined): string {
+  public normalizeAssetType(type: string | undefined): string {
     if (!type) return 'N/A';
     const t = type.toLowerCase().trim();
     if (t === 'typ_01' || t === 'software' || t.includes('license') || t.includes('anti') || t.includes('security')) return 'Software';
@@ -1001,7 +1174,7 @@ export class RequestService {
     return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
   }
 
-  private normalizeCategory(value: string | undefined): string {
+  public normalizeCategory(value: string | undefined): string {
     if (!value) return 'Asset Detail';
     const v = value.toLowerCase().trim();
     const mappings: { [key: string]: string } = {
@@ -1254,8 +1427,245 @@ export class RequestService {
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
-      return err;
+      throw err;
     })
+  }
+
+  /**
+   * Uploads a file to the Cordys server filesystem via the UploadDocuments_AMS SOAP service.
+   * Uses raw SOAP XML with CDATA wrapping to safely transmit large base64 content
+   * without XML parsing issues or truncation from auto-serialization.
+   * @param fileName Original filename
+   * @param fileContent Base64-encoded file content (may include data URI prefix)
+   * @returns The server file path where the file was saved
+   */
+  async uploadFileToServer(fileName: string, fileContent: string): Promise<string> {
+    // Build raw SOAP XML — CDATA wrapping prevents base64 characters (+, /, =)
+    // from breaking XML parsing and avoids payload truncation by $.cordys.ajax auto-serializer
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UploadDocuments_AMS xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <FileName><![CDATA[${fileName}]]></FileName>
+      <FileContent><![CDATA[${fileContent}]]></FileContent>
+    </UploadDocuments_AMS>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
+    ).then((res: any) => {
+      console.log('[uploadFileToServer] Raw response:', res);
+      console.log('[uploadFileToServer] Response JSON:', JSON.stringify(res));
+
+      // Recursive helper: dig into any object to find the first non-empty string value
+      const extractString = (obj: any, depth: number = 0): string => {
+        if (!obj || depth > 10) return '';
+        if (typeof obj === 'string' && obj.trim()) return obj.trim();
+        if (typeof obj !== 'object') return '';
+        // Check common Cordys keys first
+        for (const key of ['#text', 'text', '_', '$', 'return']) {
+          if (obj[key] && typeof obj[key] === 'string' && obj[key].trim()) {
+            return obj[key].trim();
+          }
+        }
+        // Recurse into all child properties
+        for (const key of Object.keys(obj)) {
+          if (key.startsWith('@') || key.startsWith('xmlns')) continue; // skip XML attributes
+          const val = extractString(obj[key], depth + 1);
+          if (val && val.length > 3) return val; // skip trivially short values
+        }
+        return '';
+      };
+
+      let filePath = '';
+
+      // Strategy 1: Look for 'return' element
+      const ret = this.hs.xmltojson(res, 'return');
+      if (ret) {
+        filePath = (typeof ret === 'string') ? ret : extractString(ret);
+      }
+
+      // Strategy 2: Look for Response wrapper
+      if (!filePath) {
+        const resp = this.hs.xmltojson(res, 'UploadDocuments_AMSResponse');
+        if (resp) {
+          filePath = extractString(resp);
+        }
+      }
+
+      // Strategy 3: Look for the method element itself
+      if (!filePath) {
+        const method = this.hs.xmltojson(res, 'UploadDocuments_AMS');
+        if (method) {
+          filePath = extractString(method);
+        }
+      }
+
+      // Strategy 4: Try extracting from the raw response object
+      if (!filePath) {
+        filePath = extractString(res);
+      }
+
+      console.log('[uploadFileToServer] Extracted file path:', filePath);
+      return filePath;
+    }).catch((err: any) => {
+      console.error('[uploadFileToServer] SOAP Error:', err);
+      const errorDetail = err?.responseText || err?.errorThrown || err?.message || 'Unknown error';
+      console.error('[uploadFileToServer] Error detail:', errorDetail);
+      throw err;
+    });
+  }
+
+  /**
+   * Updates the document column of an existing asset request with the server file path.
+   * Uses raw SOAP XML to safely handle backslashes in file paths.
+   */
+  updateRequestDocumentPath(requestId: string, filePath: string): Promise<any> {
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_asset_requests qConstraint="0">
+            <request_id>${requestId}</request_id>
+          </t_asset_requests>
+        </old>
+        <new>
+          <t_asset_requests qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <document><![CDATA[${filePath}]]></document>
+          </t_asset_requests>
+        </new>
+      </tuple>
+    </UpdateT_asset_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
+    ).then((res: any) => {
+      console.log('[updateRequestDocumentPath] Document path saved:', filePath);
+      return res;
+    }).catch((err: any) => {
+      console.error('[updateRequestDocumentPath] Failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Downloads a file from the Cordys server via the DownloadFile_AMS SOAP service.
+   * Uses raw SOAP XML for consistency with the upload method.
+   * @param fileName The filename to download
+   * @param filePath The directory path on the server
+   * @returns Base64-encoded file content
+   */
+  async downloadFileFromServer(fileName: string, filePath: string): Promise<string> {
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <DownloadFile_AMS xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Fname><![CDATA[${fileName}]]></Fname>
+      <Fpath><![CDATA[${filePath}]]></Fpath>
+    </DownloadFile_AMS>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
+    ).then((res: any) => {
+      console.log('[downloadFileFromServer] Raw response received');
+
+      // Recursive helper: dig into any object to find the first non-empty string value
+      const extractString = (obj: any, depth: number = 0): string => {
+        if (!obj || depth > 10) return '';
+        if (typeof obj === 'string' && obj.trim()) return obj.trim();
+        if (typeof obj !== 'object') return '';
+        for (const key of ['#text', 'text', '_', '$', 'return']) {
+          if (obj[key] && typeof obj[key] === 'string' && obj[key].trim()) {
+            return obj[key].trim();
+          }
+        }
+        for (const key of Object.keys(obj)) {
+          if (key.startsWith('@') || key.startsWith('xmlns')) continue;
+          const val = extractString(obj[key], depth + 1);
+          if (val) return val;
+        }
+        return '';
+      };
+
+      let content = '';
+
+      const ret = this.hs.xmltojson(res, 'return');
+      if (ret) {
+        content = (typeof ret === 'string') ? ret : extractString(ret);
+      }
+
+      if (!content) {
+        const resp = this.hs.xmltojson(res, 'DownloadFile_AMSResponse');
+        if (resp) content = extractString(resp);
+      }
+
+      if (!content) {
+        const method = this.hs.xmltojson(res, 'DownloadFile_AMS');
+        if (method) content = extractString(method);
+      }
+
+      if (!content) {
+        content = extractString(res);
+      }
+
+      console.log('[downloadFileFromServer] Got file data, length:', content.length);
+      return content;
+    }).catch((err: any) => {
+      console.error('[downloadFileFromServer] SOAP Error:', err);
+      const errorDetail = err?.responseText || err?.errorThrown || err?.message || 'Unknown error';
+      console.error('[downloadFileFromServer] Error detail:', errorDetail);
+      throw err;
+    });
+  }
+
+  /**
+   * Fetches the document path and filename for a specific request.
+   * Used by the admin download flow to get the stored file path.
+   */
+  async getRequestDocumentInfo(requestId: string): Promise<{ filePath: string, fileName: string }> {
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_asset_requestsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <request_id>${requestId}</request_id>
+    </GetT_asset_requestsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      // Try multiple extraction paths
+      let data = this.hs.xmltojson(response, 't_asset_requests');
+      if (!data) {
+        // Some Cordys responses wrap in 'old' or 'tuple'
+        const tuple = this.hs.xmltojson(response, 'tuple');
+        data = tuple?.old?.t_asset_requests || tuple?.t_asset_requests || tuple;
+      }
+      const reqData = Array.isArray(data) ? data[0] : data;
+
+      console.log('[getRequestDocumentInfo] Raw reqData:', JSON.stringify(reqData));
+
+      // Helper to safely extract string from Cordys value (handles nil objects)
+      const safeStr = (val: any): string => {
+        if (!val) return '';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'object') {
+          if (val['@nil'] === 'true' || val['@null'] === 'true') return '';
+          return val['#text'] || val.text || val._ || '';
+        }
+        return String(val);
+      };
+
+      const filePath = safeStr(reqData?.document);
+      const fileName = safeStr(reqData?.temp2);
+
+      console.log('[getRequestDocumentInfo] filePath:', filePath, '| fileName:', fileName);
+
+      return { filePath, fileName };
+    } catch (err) {
+      console.error('[getRequestDocumentInfo] Failed:', err);
+      return { filePath: '', fileName: '' };
+    }
   }
 
   createEntryForTeamLead(request: any) {
@@ -1268,7 +1678,7 @@ export class RequestService {
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
-      return err;
+      throw err;
     })
   }
   updateEntryForTeamLead(request: any) {
@@ -1277,16 +1687,16 @@ export class RequestService {
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
+      console.log('UpdateT_request_approvals response:', res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
-      console.log(err);
-      return err;
+      console.error('UpdateT_request_approvals error:', err);
+      throw err;
     })
   }
 
   callBPMForRequest(request: any) {
-    this.hs.ajax(
+    return this.hs.ajax(
       'AMS_Approval',
       'http://schemas.cordys.com/default',
       request
@@ -1330,11 +1740,11 @@ export class RequestService {
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
+      console.log('UpdateM_assets response:', res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
-      console.log(err);
-      return err;
+      console.error('UpdateM_assets error:', err);
+      throw err;
     })
   }
   getAllocationTeamMemberAccordingtoManager(request: any): any {

@@ -375,7 +375,7 @@
               <div *ngIf="detailRequest.document" class="doc-actions-wrapper">
                 <span class="email-doc">
                   <span class="material-icons-outlined">attachment</span>
-                  <span>{{ detailRequest.document }}</span>
+                  <span [title]="detailRequest.document">{{ extractFileName(detailRequest.document) }}</span>
                 </span>
                 <div class="doc-actions">
                   <button class="btn-small-outline doc-btn" (click)="viewDocument(detailRequest.document)">
@@ -392,9 +392,11 @@
               <label>Employee Reason</label>
               <span>{{ detailRequest.justification }}</span>
             </div>
-            <div class="detail-item full-col" *ngIf="detailRequest.teamLeadJustification">
+            <div class="detail-item full-col">
               <label>Team Lead Remark</label>
-              <span class="remark-text" style="color: var(--primary); font-weight: 500;">{{ detailRequest.teamLeadJustification }}</span>
+              <span class="remark-text" style="color: var(--primary); font-weight: 500;">
+                {{ (detailRequest.teamLeadJustification && detailRequest.teamLeadJustification !== '—') ? detailRequest.teamLeadJustification : 'Empty' }}
+              </span>
             </div>
             <div class="detail-item">
               <label>Date</label>
@@ -408,31 +410,43 @@
         <div class="detail-section">
           <h4 class="detail-section-title">
             <span class="material-icons-outlined">inventory_2</span>
-            {{ detailRequest.requestType === 'Return Asset' ? 'Asset Details' : 'Provide Asset' }}
+            {{ detailRequest.requestType === 'Return Asset' ? 'Asset Details' : (detailRequest.status === RequestStatus.PENDING ? 'Provide Asset' : 'Allocation Details') }}
           </h4>
           <div class="detail-grid">
 
             <ng-container *ngIf="detailRequest.requestType !== 'Return Asset'">
-              <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation' && detailRequest.requestType !== 'Extend Warranty'">
-                <label>Select Asset</label>
-                <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
-                  <option value="">-- Select Available Asset --</option>
-                  <option *ngFor="let asset of availableAssets" [value]="asset.asset_id">
-                    {{ asset.asset_name }}
-                  </option>
-                </select>
-              </div>
-              <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation'">
-                <label>Assign Allocation Team Member</label>
-                <select class="asset-select" name="allocationMember" [(ngModel)]="selectedAllocationMemberId"
-                  (ngModelChange)="onMemberSelect($event)">
-                  <option value="">-- Select Team Member --</option>
-                  <option *ngFor="let member of allocationTeamMemberList"
-                    [value]="member?.old?.m_users?.user_id || member?.m_users?.user_id || member?.user_id">
-                    {{ (member?.old?.m_users?.name || member?.m_users?.name || member?.name) + ' — ' +
-                    (member?.old?.m_users?.email || member?.m_users?.email || member?.email || '') }}
-                  </option>
-                </select>
+              <!-- Show Selects only if Request is Pending and not yet processed by Asset Manager -->
+              <ng-container *ngIf="detailRequest.status === RequestStatus.PENDING && detailRequest.currentStage === 'Asset Manager Approval'">
+                <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation' && detailRequest.requestType !== 'Extend Warranty'">
+                  <label>Select Asset</label>
+                  <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
+                    <option value="">-- Select Available Asset --</option>
+                    <option *ngFor="let asset of filteredAvailableAssets" [value]="asset.asset_id">
+                      {{ asset.asset_name }}
+                    </option>
+                  </select>
+                </div>
+                <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation'">
+                  <label>Assign Allocation Team Member</label>
+                  <select class="asset-select" name="allocationMember" [(ngModel)]="selectedAllocationMemberId"
+                    (ngModelChange)="onMemberSelect($event)">
+                    <option value="">-- Select Team Member --</option>
+                    <option *ngFor="let member of allocationTeamMemberList"
+                      [value]="member?.old?.m_users?.user_id || member?.m_users?.user_id || member?.user_id">
+                      {{ (member?.old?.m_users?.name || member?.m_users?.name || member?.name) + ' — ' +
+                      (member?.old?.m_users?.email || member?.m_users?.email || member?.email || '') }}
+                    </option>
+                  </select>
+                </div>
+              </ng-container>
+
+              <!-- Show Rejection Reason if Rejected -->
+              <div class="detail-item full-col" *ngIf="detailRequest.status === RequestStatus.REJECTED">
+                <label style="color: #dc3545; font-weight: 600;">Rejection Reason</label>
+                <div class="rejection-reason-display" style="padding: 12px; background: #fff5f5; border-left: 4px solid #dc3545; border-radius: 4px; margin-top: 5px;">
+                  <span class="material-icons-outlined" style="vertical-align: middle; color: #dc3545; font-size: 18px; margin-right: 8px;">cancel</span>
+                  <span style="color: #c53030; font-weight: 500;">{{ getRejectionReason(detailRequest) }}</span>
+                </div>
               </div>
             </ng-container>
             <ng-container *ngIf="detailRequest.requestType !== 'Return Asset' && detailRequest.requestType !== 'Extend Warranty'">
@@ -480,15 +494,29 @@
           </div>
         </div>
 
-        <!-- Processing Section for Asset Manager -->
-        <div class="detail-section" *ngIf="detailRequest.currentStage === 'Asset Manager Approval' && detailRequest.status !== 'Rejected' && detailRequest.status !== 'Completed'">
+        <!-- Manager Remarks Section (for already processed requests) -->
+        <div class="detail-section" *ngIf="detailRequest.status !== RequestStatus.PENDING && getAssetManagerRemarks(detailRequest)">
+          <h4 class="detail-section-title" style="color: var(--primary);">
+            <span class="material-icons-outlined">reviews</span>
+            Manager Remarks
+          </h4>
+          <div class="remarks-display-box" style="padding: 15px; background: #f0f7ff; border-radius: 12px; border-left: 4px solid var(--primary); margin-top: 10px;">
+            <p style="margin: 0; font-style: italic; color: #2c5282;">"{{ getAssetManagerRemarks(detailRequest) }}"</p>
+          </div>
+        </div>
+
+        <!-- Processing Section for Asset Manager (Only for Pending or Confirmation requests at AM stage) -->
+        <div class="detail-section" *ngIf="(detailRequest.status === RequestStatus.PENDING || detailRequest.status === RequestStatus.APPROVED) && detailRequest.currentStage === 'Asset Manager Approval'">
           <h4 class="detail-section-title" style="color: var(--primary);">
             <span class="material-icons-outlined">gavel</span>
             Process Request
           </h4>
           <div class="approval-form-wrapper" style="padding: 15px; background: #f8f9fa; border-radius: 12px; margin-top: 10px;">
              <div class="form-control-group">
-                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #444;">Approver Remarks <span class="required" style="color: #dc3545;">*</span></label>
+                <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #444;">
+                  Approver Remarks 
+                  <span class="required" style="color: #dc3545;">(Mandatory for rejection)</span>
+                </label>
                 <textarea class="remarks-input" [(ngModel)]="actionComments" 
                     placeholder="Please provide your remarks for approval or rejection..." rows="3"
                     style="width: 100%; border-radius: 8px; border: 1.5px solid #dee2e6; padding: 12px; font-family: inherit; transition: border-color 0.2s; outline: none;"></textarea>

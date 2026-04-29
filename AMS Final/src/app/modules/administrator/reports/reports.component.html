@@ -107,7 +107,8 @@
               <span class="type-group-name">{{ item.type }}</span>
             </div>
             <div class="type-group-stats">
-              <span class="type-group-count" [style.background]="item.bgColor" [style.color]="item.color">{{ item.count }}</span>
+              <span class="type-group-count" [style.background]="item.bgColor" [style.color]="item.color">{{ item.count
+                }}</span>
               <span class="type-group-pct">{{ getPiePercentage(item.count) }}% of total</span>
             </div>
           </div>
@@ -246,13 +247,16 @@
         </table>
         <!-- Pagination for Team Holdings Table -->
         <div class="pagination-controls mini" *ngIf="teamHoldings.length > pageSize">
-          <div class="pagination-info">{{ getPaginationRange(currentPageHoldings, totalHoldingsPages, teamHoldings.length) }}</div>
+          <div class="pagination-info">{{ getPaginationRange(currentPageHoldings, totalHoldingsPages,
+            teamHoldings.length) }}</div>
           <div class="pagination-actions">
-            <button class="btn-page-sm" [disabled]="currentPageHoldings === 1" (click)="setHoldingsPage(currentPageHoldings - 1)">
+            <button class="btn-page-sm" [disabled]="currentPageHoldings === 1"
+              (click)="setHoldingsPage(currentPageHoldings - 1)">
               <span class="material-icons-outlined">chevron_left</span>
             </button>
             <span class="page-indicator-sm">{{ currentPageHoldings }} / {{ totalHoldingsPages }}</span>
-            <button class="btn-page-sm" [disabled]="currentPageHoldings === totalHoldingsPages" (click)="setHoldingsPage(currentPageHoldings + 1)">
+            <button class="btn-page-sm" [disabled]="currentPageHoldings === totalHoldingsPages"
+              (click)="setHoldingsPage(currentPageHoldings + 1)">
               <span class="material-icons-outlined">chevron_right</span>
             </button>
           </div>
@@ -272,7 +276,8 @@
         </h3>
       </div>
       <div class="card-body p-0">
-        <div class="warranty-item" *ngFor="let asset of paginatedWarrantyAlerts" [ngClass]="getExpiryUrgency(asset.warrantyExpiry)">
+        <div class="warranty-item" *ngFor="let asset of paginatedWarrantyAlerts"
+          [ngClass]="getExpiryUrgency(asset.warrantyExpiry)">
           <div class="warranty-info">
             <span class="warranty-name">{{ asset.name }}</span>
             <span class="warranty-tag">{{ asset.assetTag }}</span>
@@ -287,13 +292,16 @@
         </div>
         <!-- Pagination for Warranty Alerts -->
         <div class="pagination-controls mini" *ngIf="warrantyAlerts.length > pageSize">
-          <div class="pagination-info">{{ getPaginationRange(currentPageWarranty, totalWarrantyPages, warrantyAlerts.length) }}</div>
+          <div class="pagination-info">{{ getPaginationRange(currentPageWarranty, totalWarrantyPages,
+            warrantyAlerts.length) }}</div>
           <div class="pagination-actions">
-            <button class="btn-page-sm" [disabled]="currentPageWarranty === 1" (click)="setWarrantyPage(currentPageWarranty - 1)">
+            <button class="btn-page-sm" [disabled]="currentPageWarranty === 1"
+              (click)="setWarrantyPage(currentPageWarranty - 1)">
               <span class="material-icons-outlined">chevron_left</span>
             </button>
             <span class="page-indicator-sm">{{ currentPageWarranty }} / {{ totalWarrantyPages }}</span>
-            <button class="btn-page-sm" [disabled]="currentPageWarranty === totalWarrantyPages" (click)="setWarrantyPage(currentPageWarranty + 1)">
+            <button class="btn-page-sm" [disabled]="currentPageWarranty === totalWarrantyPages"
+              (click)="setWarrantyPage(currentPageWarranty + 1)">
               <span class="material-icons-outlined">chevron_right</span>
             </button>
           </div>
@@ -314,12 +322,10 @@
         <h3>Requested vs Approved vs Rejected</h3>
       </div>
       <div class="report-tabs">
-        <button class="report-tab" [class.active]="activeReportTab === 'monthly'"
-          (click)="switchReportTab('monthly')">
+        <button class="report-tab" [class.active]="activeReportTab === 'monthly'" (click)="switchReportTab('monthly')">
           <span class="material-icons-outlined">calendar_month</span> Monthly
         </button>
-        <button class="report-tab" [class.active]="activeReportTab === 'yearly'"
-          (click)="switchReportTab('yearly')">
+        <button class="report-tab" [class.active]="activeReportTab === 'yearly'" (click)="switchReportTab('yearly')">
           <span class="material-icons-outlined">date_range</span> Yearly
         </button>
       </div>
@@ -393,22 +399,25 @@
       <div class="report-summary">
         <div class="summary-item">
           <span class="summary-label">Total Requested</span>
-          <span class="summary-value text-blue">{{ activeReportTab === 'monthly' ? monthlyTotals.requested : yearlyTotals.requested }}</span>
+          <span class="summary-value text-blue">{{ activeReportTab === 'monthly' ? monthlyTotals.requested :
+            yearlyTotals.requested }}</span>
         </div>
         <div class="summary-item">
           <span class="summary-label">Total Approved</span>
-          <span class="summary-value text-green">{{ activeReportTab === 'monthly' ? monthlyTotals.approved : yearlyTotals.approved }}</span>
+          <span class="summary-value text-green">{{ activeReportTab === 'monthly' ? monthlyTotals.approved :
+            yearlyTotals.approved }}</span>
         </div>
         <div class="summary-item">
           <span class="summary-label">Total Rejected</span>
-          <span class="summary-value text-red">{{ activeReportTab === 'monthly' ? monthlyTotals.rejected : yearlyTotals.rejected }}</span>
+          <span class="summary-value text-red">{{ activeReportTab === 'monthly' ? monthlyTotals.rejected :
+            yearlyTotals.rejected }}</span>
         </div>
         <div class="summary-item">
           <span class="summary-label">Approval Rate</span>
           <span class="summary-value text-teal">{{ getApprovalRate(
             activeReportTab === 'monthly' ? monthlyTotals.approved : yearlyTotals.approved,
             activeReportTab === 'monthly' ? monthlyTotals.requested : yearlyTotals.requested
-          ) }}%</span>
+            ) }}%</span>
         </div>
       </div>
     </div>
@@ -421,7 +430,8 @@
         <span class="material-icons-outlined">groups</span>
         <h3>Team-wise Asset Holding</h3>
       </div>
-      <span class="section-subtitle">{{ teamHoldingTotal.assets }} assets across {{ teamAssetHoldings.length }} teams</span>
+      <span class="section-subtitle">{{ teamHoldingTotal.assets }} assets across {{ teamAssetHoldings.length }}
+        teams</span>
     </div>
     <div class="section-body">
       <div class="team-holding-list">
@@ -473,13 +483,15 @@
       </div>
       <!-- Pagination for Team Asset Holdings (Detailed Cards) -->
       <div class="pagination-controls" style="margin-top: 24px;" *ngIf="teamAssetHoldings.length > pageSize">
-        <div class="pagination-info">Showing <strong>{{ getPaginationRange(currentPageTeams, totalTeamsPages, teamAssetHoldings.length) }}</strong></div>
+        <div class="pagination-info">Showing <strong>{{ getPaginationRange(currentPageTeams, totalTeamsPages,
+            teamAssetHoldings.length) }}</strong></div>
         <div class="pagination-actions">
           <button class="btn-page" [disabled]="currentPageTeams === 1" (click)="setTeamsPage(currentPageTeams - 1)">
             <span class="material-icons-outlined">chevron_left</span> Previous
           </button>
           <span class="page-indicator">Page {{ currentPageTeams }} of {{ totalTeamsPages }}</span>
-          <button class="btn-page" [disabled]="currentPageTeams === totalTeamsPages" (click)="setTeamsPage(currentPageTeams + 1)">
+          <button class="btn-page" [disabled]="currentPageTeams === totalTeamsPages"
+            (click)="setTeamsPage(currentPageTeams + 1)">
             Next <span class="material-icons-outlined">chevron_right</span>
           </button>
         </div>

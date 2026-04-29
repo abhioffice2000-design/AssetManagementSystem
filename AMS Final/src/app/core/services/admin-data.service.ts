@@ -86,6 +86,7 @@ export interface AssetTypeAssignment {
   id: string;
   name: string;
   assetManager: string;
+  assetManagerId?: string;
   teamMembers: string;
 }
 
@@ -363,6 +364,7 @@ export class AdminDataService {
       id: this.normalizeNullable(assetTypeData.type_id, assetTypeData.type_name),
       name: this.normalizeNullable(assetTypeData.type_name, 'Unnamed Asset Type'),
       assetManager: this.normalizeSoapNullable(assetTypeData.asset_manager, ''),
+      assetManagerId: this.normalizeSoapNullable(assetTypeData.asset_manager_id || assetTypeData.am_id || assetTypeData.manager_id, ''),
       teamMembers: this.normalizeSoapNullable(assetTypeData.team_members, '')
     })) as AssetTypeAssignment[];
   }
@@ -630,6 +632,21 @@ export class AdminDataService {
     }
   }
 
+  /**
+   * Helper to find a user ID by their full name from the cache.
+   * Useful when an API returns only a name but we need an ID for approvals.
+   */
+  findUserIdByName(name: string): string | undefined {
+    if (!name) return undefined;
+    const searchName = name.toLowerCase().trim();
+    for (const record of this.userMasterCache.values()) {
+      if (record.name.toLowerCase().trim() === searchName) {
+        return record.userId;
+      }
+    }
+    return undefined;
+  }
+
   private mapRoleIdToCordysRole(roleId: string): string {
     switch (roleId) {
       case 'rol_01': return 'AMS_Admin';
@@ -781,13 +798,19 @@ export class AdminDataService {
           const t2 = this.normalizeSoapNullable(requestData.temp2, '');
           const d1 = this.normalizeSoapNullable(requestData.document, '');
           
-          // Case 1: modern attachment format filename|base64
+          // Case 1: document column has a server file path (from UploadDocuments_AMS)
+          if (d1 && (d1.includes('\\') || d1.includes('/') || /^[A-Z]:/i.test(d1))) return d1;
+
+          // Case 2: document column has modern attachment format filename|base64
+          if (d1.includes('|') || d1.startsWith('data:')) return d1;
+
+          // Case 3: temp2 has modern attachment format filename|base64
           if (t2.includes('|') || t2.startsWith('data:')) return t2;
           
-          // Case 2: Just filename in temp2
+          // Case 4: Just filename in temp2
           if (t2 && t2 !== 'null') return t2;
           
-          // Case 3: fallback to document if it's not a placeholder
+          // Case 5: fallback to document if it's not a placeholder
           if (d1 && d1 !== 'ATTACHED' && d1 !== 'null' && !d1.includes('BPM')) return d1;
           
           return '';

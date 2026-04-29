@@ -6,6 +6,7 @@ import { UserService } from '../../../core/services/user.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
+import { HeroService } from '../../../core/services/hero.service';
 
 
 
@@ -28,13 +29,14 @@ export class AssetRequestsComponent implements OnInit {
   selectedUrgency = '';
   statuses = Object.values(RequestStatus);
   urgencies = Object.values(RequestUrgency);
+  RequestStatus = RequestStatus; // Add this to use in template
   availableAssets: any[] = [];
   selectedAssetId = '';
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
   showActionModal = false;
   selectedRequest: AssetRequest | null = null;
-  actionType: 'approve' | 'reject' | null = null;
+  actionType: string | null = null;
   actionComments = '';
 
   showDetailModal = false;
@@ -51,6 +53,7 @@ export class AssetRequestsComponent implements OnInit {
   currentPage = 1;
   pageSize = 5;
   protected readonly Math = Math;
+  task_id_latest = '';
 
   constructor(
     private requestService: RequestService,
@@ -58,7 +61,8 @@ export class AssetRequestsComponent implements OnInit {
     private userService: UserService,
     private assetService: AssetService,
     private notificationService: NotificationService,
-    private mailService: MailService
+    private mailService: MailService,
+    private hs: HeroService
   ) { }
 
 
@@ -90,8 +94,11 @@ export class AssetRequestsComponent implements OnInit {
       ] as any[]);
 
       this.allRequests = allReqs;
-      this.pendingRequests = pendingReqs;
       this.confirmationRequests = confirmReqs;
+
+      // Filter out confirmation requests from the pending approvals list to prevent duplication
+      const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
+      this.pendingRequests = pendingReqs.filter((r: AssetRequest) => !confirmationIds.has(r.id));
 
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
       this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
@@ -125,6 +132,23 @@ export class AssetRequestsComponent implements OnInit {
     }
   }
 
+  async Getassetidbyapprovalid(request_id: any) {
+    try {
+      const resp: any = await this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
+        { Request_id: request_id }
+      );
+      const data = this.hs.xmltojson(resp, 'tuple');
+      if (data) {
+        const parent = data.old || data;
+        const approval = parent.t_request_approvals || {};
+        this.task_id_latest = approval.temp2 || '';
+        console.log("[AssetManager] Latest Task ID fetched:", this.task_id_latest);
+      }
+    } catch (err) {
+      console.error("[AssetManager] Error fetching latest task ID:", err);
+    }
+  }
+
 
   async loadAvailableAssets(): Promise<void> {
     try {
@@ -137,7 +161,36 @@ export class AssetRequestsComponent implements OnInit {
     }
   }
 
-  switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return' ): void {
+  get filteredAvailableAssets(): any[] {
+    if (!this.detailRequest) return [];
+
+    const reqType = (this.detailRequest.assetType || '').toLowerCase();
+    const reqCategory = (this.detailRequest.category || '').toLowerCase();
+
+    return this.availableAssets.filter(asset => {
+      // Get normalized names for the asset using the public service methods
+      const normalizedAssetType = this.requestService.normalizeAssetType(asset.type_id).toLowerCase();
+      const normalizedAssetCat = this.requestService.normalizeCategory(asset.sub_category_id).toLowerCase();
+
+      // Priority 1: Match by category (Laptop, Monitor, etc.)
+      if (reqCategory && reqCategory !== 'hardware' && reqCategory !== 'software' && reqCategory !== 'asset detail') {
+        if (normalizedAssetCat === reqCategory) return true;
+
+        // Also check if asset_name contains the category for more flexible matching
+        if (asset.asset_name && asset.asset_name.toLowerCase().includes(reqCategory)) return true;
+      }
+
+      // Priority 2: Match by type (Hardware, Software)
+      if (reqType && reqType !== 'n/a') {
+        return normalizedAssetType === reqType;
+      }
+
+      // If we can't determine a match based on type/category, show all available (fallback)
+      return true;
+    });
+  }
+
+  switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
     this.activeTab = tab;
     this.searchTerm = '';
     this.selectedStatus = '';
@@ -253,10 +306,12 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   async directConfirmAction(request: AssetRequest, action: 'approve' | 'reject'): Promise<void> {
-    if (!this.actionComments || this.actionComments.trim() === '') {
-      alert('Approver remarks are required.');
+    if (action === 'reject' && (!this.actionComments || this.actionComments.trim() === '')) {
+      alert('Approver remarks are required for rejection.');
       return;
     }
+
+    this.notificationService.showToast(`Processing ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
 
     if (action === 'approve') {
       if (request.requestType !== RequestType.RETURN_ASSET) {
@@ -291,7 +346,7 @@ export class AssetRequestsComponent implements OnInit {
   // //update the asset_request table with status rejected 
   // console.log("Selected request is ", this.selectedRequest);
   async confirmAction(): Promise<void> {
- 
+
     console.log("Confirming action for request:", this.selectedRequest);
     if (!this.selectedRequest || !this.actionType) return;
 
@@ -302,49 +357,68 @@ export class AssetRequestsComponent implements OnInit {
     }
 
     if (this.actionType === 'approve') {
-      if (this.selectedRequest.requestType !== RequestType.RETURN_ASSET) {
+      if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
+        console.log("Executing Return Approval Flow...");
+
+        // Request 1: Update current manager approval to 'Approved'
+        const req6 = {
+          tuple: {
+            old: { t_asset_return_approvals: { return_approval_id: this.selectedRequest.returnapprovalId } },
+            new: { t_asset_return_approvals: { status: "Approved", remarks: this.actionComments } }
+          }
+        };
+
+        try {
+          await this.requestService.updateReturnAssetStatus(req6 as any);
+
+          // Request 2: Create next pending task for Allocation Team
+          const req7 = {
+            tuple: {
+              new: {
+                t_asset_return_approvals: {
+                  approver_id: 'usr_007', // Allocation Team ID
+                  request_id: this.selectedRequest.id,
+                  role: "Allocation Team Member",
+                  status: "Pending",
+                  remarks: this.actionComments,
+                }
+              }
+            }
+          };
+          await this.requestService.completeTask(req7 as any);
+
+          const taskid = this.selectedRequest?.taskid;
+          if (taskid) {
+            await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+          }
+          this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
+        } catch (error) {
+          console.error("Return Approval SOAP call failed:", error);
+        }
+      } else {
+        // Approval logic for Standard Requests (New Asset / Warranty)
         var req1 = {
           tuple: {
-            old: {
-              t_request_approvals: {
-                approval_id: this.selectedRequest.approvalId,
-
-              }
-            }
-            ,
-            new: {
-              t_request_approvals: {
-                status: "Approved",
-                remarks: this.actionComments,
-              }
-
-            }
-
+            old: { t_request_approvals: { approval_id: this.selectedRequest.approvalId } },
+            new: { t_request_approvals: { status: "Approved", remarks: this.actionComments } }
           }
-        }
-        console.log("First request is", req1)
-        await this.requestService.updateEntryForAssetManager(req1 as any)
+        };
+        await this.requestService.updateEntryForAssetManager(req1 as any);
+
         var req2 = {
           tuple: {
-            old: {
-              m_assets: {
-                asset_id: this.selectedRequest.assignedAssetId,
-
-              }
-            }
-            ,
+            old: { m_assets: { asset_id: this.selectedRequest.assignedAssetId } },
             new: {
               m_assets: {
                 status: "MoveToAllocationTeam",
-                temp1: this.selectedRequest.requesterId, // Keep requester ID in temp1 as per convention
+                temp1: this.selectedRequest.requesterId,
                 temp2: this.selectedRequest.id
               }
             }
-
           }
-        }
-        console.log("Request2 is ", req2);
-        await this.requestService.updateAssetStatus(req2 as any)
+        };
+        await this.requestService.updateAssetStatus(req2 as any);
+
         var req3 = {
           tuple: {
             new: {
@@ -355,51 +429,38 @@ export class AssetRequestsComponent implements OnInit {
                 status: "Pending",
                 remarks: this.actionComments,
                 temp1: this.selectedRequest.assignedAssetId,
-
               }
             }
           }
-        }
-        console.log("Third request is ", req3);
+        };
         await this.requestService.createEntryForTeamAllocationMember(req3 as any);
-        var taskid = this.selectedRequest?.taskid;
-        console.log("Taskid is  ", taskid);
-        var req4 = {
-          TaskId: `${taskid}`,
-          Action: 'COMPLETE'
-        }
-        await this.requestService.completeUserTask(req4 as any)
-        
-        // Find allocation team member name
-        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
-        const memberName = member ? member.name : 'Allocation Team';
 
+        const taskid = this.selectedRequest?.taskid;
+        if (taskid) {
+          await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+        }
+
+        // Send Mail
+        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
         this.mailService.sendAssetManagerStatusUpdate({
           requestId: this.selectedRequest.id,
           employeeName: this.selectedRequest.requesterName,
           status: 'Approved',
           managerName: currentUser.name,
           remarks: this.actionComments,
-          allocationMemberName: memberName,
+          allocationMemberName: member ? member.name : 'Allocation Team',
           assetName: this.selectedRequest.assetType
         });
 
         this.notificationService.showToast(`Request ${this.selectedRequest.id} approved and routed for allocation.`, 'success');
-
-        // this.requestService.approveRequest(
-        //   this.selectedRequest.id,
-        //   currentUser.id,
-        //   currentUser.name,
-        //   this.actionComments,
-        //   ApprovalStage.ASSET_MANAGER
-        // );
       }
-      // Check by request type rather than tab for more robust logic
+    } else {
+      // Rejection logic for ALL request types
       if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
-        if (this.actionType === 'approve') {
+        if (this.actionType == 'approve') {
           console.log("Executing Return Approval Flow...");
 
-           // Check if this is the FINAL confirmation (Step 3) vs initial approval (Step 1)
+          // Check if this is the FINAL confirmation (Step 3) vs initial approval (Step 1)
           // The Allocation Team sets remarks = "Waiting for Hand-off Confirmation" when creating Step 3 entry
           const approvalRemarks = this.selectedRequest.approvalChain?.[0]?.comments || '';
           console.log("Approval remarks from loaded data:", approvalRemarks);
@@ -491,7 +552,7 @@ export class AssetRequestsComponent implements OnInit {
               }
 
               // Complete BPM task → workflow ends
-              var taskid = this.selectedRequest?.taskid;
+              let taskid = this.selectedRequest?.taskid;
               if (taskid) {
                 var req4 = {
                   TaskId: `${taskid}`,
@@ -521,7 +582,7 @@ export class AssetRequestsComponent implements OnInit {
 
               console.log("SOAP Create (REQ7):", req7);
               await this.requestService.completeTask(req7 as any);
-              var taskid = this.selectedRequest?.taskid;
+              let taskid = this.selectedRequest?.taskid;
               var req4 = {
                 TaskId: `${taskid}`,
                 Action: 'COMPLETE'
@@ -534,55 +595,74 @@ export class AssetRequestsComponent implements OnInit {
           } catch (error) {
             console.error("Return Approval SOAP call failed:", error);
           }
-        } else {
-          // Rejection logic for returns
-          this.requestService.rejectRequest(
-            this.selectedRequest.id,
-            currentUser.id,
-            currentUser.name,
-            this.actionComments,
-            ApprovalStage.ASSET_MANAGER
-          );
-          this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
+        };
+        const req9 = {
+          tuple: {
+            old: { t_asset_return_approvals: { return_approval_id: this.selectedRequest.returnapprovalId } },
+            new: { t_asset_return_approvals: { status: "Rejected", remarks: this.actionComments } }
+
+          }
+        };
+        await this.requestService.updateReturnAssetStatus(req9 as any);
+        const taskid = this.selectedRequest?.taskid;
+        if (taskid) {
+          await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
         }
+        this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
       } else {
-        // Standard Request Logic (New Asset / Warranty)
-        if (this.actionType === 'approve') {
-          this.requestService.approveRequest(
-            this.selectedRequest.id,
-            currentUser.id,
-            currentUser.name,
-            this.actionComments,
-            ApprovalStage.ASSET_MANAGER
-          );
-          this.notificationService.showToast(`Request ${this.selectedRequest.id} approved successfully.`, 'success');
-        } else {
+        // Standard Request Rejection (New Asset / Warranty)
+        const reqReject = {
+          tuple: {
+            old: { t_request_approvals: { approval_id: this.selectedRequest.approvalId } },
+            new: { t_request_approvals: { status: "Rejected", remarks: this.actionComments } }
+          }
+        };
+        await this.requestService.updateEntryForAssetManager(reqReject as any);
 
-          this.requestService.rejectRequest(
-            this.selectedRequest.id,
-            currentUser.id,
-            currentUser.name,
-            this.actionComments,
-            ApprovalStage.ASSET_MANAGER
-          );
-          this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
-          
-          this.mailService.sendAssetManagerStatusUpdate({
-            requestId: this.selectedRequest.id,
-            employeeName: this.selectedRequest.requesterName,
-            status: 'Rejected',
-            managerName: currentUser.name,
-            remarks: this.actionComments
-          });
+        const employeeApprovalPayload = {
+          tuple: {
+            new: {
+              t_request_approvals: {
+                request_id: this.selectedRequest.id,
+                approver_id: this.selectedRequest.requesterId,
+                role: "Employee",
+                status: "Pending"
+              }
+            }
+          }
+        };
+        await this.requestService.updateEntryForAssetManager(employeeApprovalPayload as any);
+
+        const rejectRequestPayload = {
+          tuple: {
+            old: { t_asset_requests: { request_id: this.selectedRequest.id } },
+            new: { t_asset_requests: { status: 'Rejected' } }
+          }
+        };
+        await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+
+        await this.Getassetidbyapprovalid(this.selectedRequest.id);
+        const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+        if (taskid) {
+          await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
         }
 
+        this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
 
+        this.mailService.sendAssetManagerStatusUpdate({
+          requestId: this.selectedRequest.id,
+          employeeName: this.selectedRequest.requesterName,
+          status: 'Rejected',
+          managerName: currentUser.name,
+          remarks: this.actionComments || 'Rejected by Asset Manager'
+        });
       }
-
-      this.closeActionModal();
-      this.loadAllData();
     }
+
+    this.closeActionModal();
+    this.loadAllData();
   }
+
   // ─── Confirmation Requests Tab — dedicated approve / reject flow ──────────
 
   /**
@@ -594,10 +674,12 @@ export class AssetRequestsComponent implements OnInit {
     request: AssetRequest,
     action: 'approve' | 'reject'
   ): Promise<void> {
-    if (!this.actionComments || this.actionComments.trim() === '') {
-      alert('Approver remarks are required.');
+    if (action === 'reject' && (!this.actionComments || this.actionComments.trim() === '')) {
+      alert('Approver remarks are required for rejection.');
       return;
     }
+
+    this.notificationService.showToast(`Processing confirmation ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
 
     this.selectedRequest = request;
     this.actionType = action;
@@ -619,7 +701,7 @@ export class AssetRequestsComponent implements OnInit {
    *   2. Update the asset request record → status = 'Rejected'
    */
   async confirmActionForConfirmation(): Promise<void> {
- 
+
     console.log('[Confirmation] confirmActionForConfirmation called. Request:', this.selectedRequest);
 
     if (!this.selectedRequest || !this.actionType) return;
@@ -674,7 +756,7 @@ export class AssetRequestsComponent implements OnInit {
         };
         await this.requestService.completeUserTask(taskPayload as any);
       }
-      
+
       this.mailService.sendFinalManagerConfirmationNotification({
         requestId: this.selectedRequest.id,
         employeeName: this.selectedRequest.requesterName,
@@ -706,25 +788,46 @@ export class AssetRequestsComponent implements OnInit {
       console.log('[Confirmation] Reject payload (step 1):', rejectApprovalPayload);
       await this.requestService.updateEntryForAssetManager(rejectApprovalPayload as any);
 
-      // Step 2 — update the asset_request row status to Rejected
-      const rejectRequestPayload = {
+      // Step 1.5 — Create new entry for Employee (same as Team Lead logic)
+      const employeeApprovalPayload = {
         tuple: {
-          old: {
-            t_asset_requests: {
-              request_id: this.selectedRequest.id
-            }
-          },
           new: {
-            t_asset_requests: {
-              status: 'Rejected'
+            t_request_approvals: {
+              request_id: this.selectedRequest.id,
+              approver_id: this.selectedRequest.requesterId,
+              role: "Employee",
+              status: "Pending"
             }
           }
         }
       };
+      console.log('[Confirmation] Employee entry payload:', employeeApprovalPayload);
+      await this.requestService.updateEntryForAssetManager(employeeApprovalPayload as any);
+
+      // Step 2 — update the asset_request row status to Rejected
+      const rejectRequestPayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: this.selectedRequest.id } },
+          new: { t_asset_requests: { status: 'Rejected' } }
+        }
+      };
       console.log('[Confirmation] Reject payload (step 2):', rejectRequestPayload);
       await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+
+      // Step 3 — Complete BPM Task
+      await this.Getassetidbyapprovalid(this.selectedRequest.id);
+      const taskid = this.task_id_latest || this.selectedRequest?.taskid;
+      if (taskid) {
+        const reqTaskComplete = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        };
+        console.log('[Confirmation] Completing BPM Task:', taskid);
+        await this.requestService.completeUserTask(reqTaskComplete as any);
+      }
+
       this.notificationService.showToast(`Request ${this.selectedRequest.id} rejected.`, 'info');
-      
+
       this.mailService.sendAssetManagerStatusUpdate({
         requestId: this.selectedRequest.id,
         employeeName: this.selectedRequest.requesterName,
@@ -765,20 +868,20 @@ export class AssetRequestsComponent implements OnInit {
     try {
       const progress = await this.requestService.getRequestProgress(request.id);
       if (progress && progress.length > 0) {
-        // Find the Team Lead approval in the history
-        const tlApproval = progress.find(p =>
-          p.stage.toLowerCase().includes('team lead') ||
-          p.stage.toLowerCase().includes('manager') // Sometimes Team Lead is called Manager in DB
-        );
-
-        // Update the detail request's approval chain
+        // Update the detail request's approval chain with real-time data
         this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
-          if (entry.stage === ApprovalStage.TEAM_LEAD) {
+          const stageProgress = progress.find(p =>
+            p.stage === entry.stage ||
+            (entry.stage === ApprovalStage.TEAM_LEAD && (p.stage.toLowerCase().includes('team lead') || p.stage.toLowerCase().includes('manager')))
+          );
+
+          if (stageProgress) {
             return {
               ...entry,
-              action: 'Approved' as any,
-              approverName: tlApproval?.approverName || entry.approverName || 'Team Lead',
-              timestamp: tlApproval?.timestamp || entry.timestamp
+              action: (stageProgress.status === 'Approved' || stageProgress.status === 'Rejected') ? stageProgress.status : entry.action,
+              approverName: stageProgress.approverName || entry.approverName,
+              timestamp: stageProgress.timestamp || entry.timestamp,
+              comments: stageProgress.comments || entry.comments
             };
           }
           return entry;
@@ -794,12 +897,26 @@ export class AssetRequestsComponent implements OnInit {
       }
     } catch (err) {
       console.warn('Failed to load dynamic progress for tracker:', err);
-      // Basic fallback
-      this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
-        if (entry.stage === ApprovalStage.TEAM_LEAD) return { ...entry, action: 'Approved' as any };
-        return entry;
-      });
     }
+  }
+
+  getRejectionReason(req: AssetRequest): string {
+    if (req.status !== RequestStatus.REJECTED) return '';
+
+    // 1. Check if it's already in the request object
+    if (req.reason) return req.reason;
+    if (req.remarks) return req.remarks;
+
+    // 2. Check the approval chain for a rejected stage
+    const rejectedStage = req.approvalChain?.find(a => a.action === 'Rejected');
+    if (rejectedStage && rejectedStage.comments) return rejectedStage.comments;
+
+    return 'No rejection reason provided.';
+  }
+
+  getAssetManagerRemarks(req: AssetRequest): string {
+    const amStage = req.approvalChain?.find(a => a.stage === ApprovalStage.ASSET_MANAGER);
+    return amStage?.comments || req.remarks || '';
   }
 
   closeDetailModal(): void {
@@ -858,7 +975,7 @@ export class AssetRequestsComponent implements OnInit {
 
   viewDocument(docName: string): void {
     if (!docName) return;
-    
+
     // If it's a base64 data URL, open it directly
     if (docName.startsWith('data:')) {
       const newTab = window.open();
@@ -868,34 +985,112 @@ export class AssetRequestsComponent implements OnInit {
       return;
     }
 
-    // Default to assets folder
-    const fileUrl = `assets/documents/${docName}`;
-    window.open(fileUrl, '_blank');
-    this.notificationService.showToast(`Opening document: ${docName}...`, 'info');
+    // Handle server file paths — use SOAP DownloadFile_AMS to fetch content then display
+    this.fetchAndOpenFile(docName, 'view');
   }
 
 
   downloadDocument(docName: string): void {
     if (!docName) return;
 
-    let fileUrl = '';
-    let fileName = docName;
-
     if (docName.startsWith('data:')) {
-      fileUrl = docName;
-      // Extract a generic name if possible or use a default
-      fileName = 'attachment_' + new Date().getTime();
-    } else {
-      fileUrl = `assets/documents/${docName}`;
+      const link = document.createElement('a');
+      link.href = docName;
+      link.download = 'attachment_' + new Date().getTime();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
     }
 
-    const link = document.createElement('a');
-    link.href = fileUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    this.notificationService.showToast(`Initiating download: ${fileName}`, 'success');
+    // Handle server file paths — use SOAP DownloadFile_AMS to fetch content then download
+    this.fetchAndOpenFile(docName, 'download');
+  }
+
+  /**
+   * Fetches file content from the server via DownloadFile_AMS SOAP service,
+   * then either opens it in a new tab (view) or triggers a browser download.
+   */
+  private async fetchAndOpenFile(serverPath: string, action: 'view' | 'download'): Promise<void> {
+    const displayName = this.extractFileName(serverPath);
+    this.notificationService.showToast(`Fetching: ${displayName}...`, 'info');
+
+    try {
+      // Split the full server path into directory + filename
+      // e.g., "C:\OTAPPS\...\Intern_Uploads\file.pdf" → dir="C:\OTAPPS\...\Intern_Uploads", name="file.pdf"
+      const parts = serverPath.split(/[\\\/]/);
+      const fileName = parts.pop() || '';
+      const dirPath = parts.join('\\');
+
+      console.log('[AssetRequests] Calling DownloadFile_AMS - dir:', dirPath, '| file:', fileName);
+
+      if (!fileName || !dirPath) {
+        this.notificationService.showToast('Invalid file path.', 'error');
+        return;
+      }
+
+      // Call the SOAP service to get base64-encoded file content
+      const base64Content = await this.requestService.downloadFileFromServer(fileName, dirPath);
+
+      console.log('[AssetRequests] Download response length:', base64Content?.length);
+
+      if (!base64Content || base64Content.length < 10) {
+        this.notificationService.showToast('File content is empty or could not be retrieved.', 'error');
+        return;
+      }
+
+      // Determine MIME type from file extension
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const mimeMap: { [key: string]: string } = {
+        'pdf': 'application/pdf', 'png': 'image/png',
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'txt': 'text/plain', 'csv': 'text/csv',
+      };
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+      // Convert base64 to Blob
+      const byteChars = atob(base64Content);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteNums[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([new Uint8Array(byteNums)], { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+
+      if (action === 'view') {
+        // Open in new tab for viewing
+        window.open(blobUrl, '_blank');
+        this.notificationService.showToast(`Opened: ${displayName}`, 'success');
+      } else {
+        // Trigger download
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = displayName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.notificationService.showToast(`Downloaded: ${displayName}`, 'success');
+      }
+
+      // Clean up blob URL after a delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+
+    } catch (err: any) {
+      console.error('[AssetRequests] File fetch failed:', err);
+      const errDetail = err?.responseText || err?.errorThrown || err?.message || 'Unknown error';
+      this.notificationService.showToast(`Failed to fetch file: ${errDetail}`, 'error');
+    }
+  }
+
+  /** Extract just the filename from a full server path */
+  extractFileName(path: string): string {
+    if (!path) return 'attachment';
+    const parts = path.split(/[\\\/]/);
+    return parts[parts.length - 1] || 'attachment';
   }
 
 }

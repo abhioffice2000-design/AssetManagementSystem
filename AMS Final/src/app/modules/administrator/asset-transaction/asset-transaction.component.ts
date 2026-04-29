@@ -309,52 +309,93 @@ export class AssetTransactionComponent implements OnInit {
     return 'Pending';
   }
 
-  downloadDocument(doc: string): void {
-    if (!doc) {
-      this.notificationService.showToast('No document attachment found for this request.', 'error');
+  async downloadDocument(doc: string, requestId?: string): Promise<void> {
+    console.log('[AssetTransaction] downloadDocument called. doc:', doc, '| requestId:', requestId);
+
+    // Use doc (the document field from the request) as the server path
+    let serverPath = doc;
+
+    // If doc is empty/null, try fetching from DB by requestId
+    if ((!serverPath || serverPath === 'null') && requestId) {
+      try {
+        const docInfo = await this.requestService.getRequestDocumentInfo(requestId);
+        serverPath = docInfo?.filePath || '';
+      } catch (e) {
+        console.error('[AssetTransaction] Failed to fetch doc info:', e);
+      }
+    }
+
+    if (!serverPath || serverPath === 'null') {
+      this.notificationService.showToast('No attachment found for this request.', 'error');
       return;
     }
 
-    console.log('[AssetTransaction] Attempting to download:', doc.substring(0, 50) + '...');
+    // Use the SOAP DownloadFile_AMS service to fetch the file
+    await this.fetchAndOpenFile(serverPath, 'view');
+  }
 
-    let fileName = 'attachment_' + new Date().getTime();
-    let fileUrl = doc;
+  private async fetchAndOpenFile(serverPath: string, action: 'view' | 'download'): Promise<void> {
+    const displayName = this.extractFileName(serverPath);
+    this.notificationService.showToast(`Fetching: ${displayName}...`, 'info');
 
-    // 1. Handle Pipe Format (filename|data)
-    if (doc.includes('|')) {
-      const parts = doc.split('|');
-      fileName = parts.shift() || 'document.bin';
-      fileUrl = parts.join('|');
-      console.log('[AssetTransaction] Pipe format detected. Filename:', fileName);
-    }
-
-    // 2. Ensure fileUrl is a valid data URL or relative path
-    if (fileUrl.startsWith('data:') || fileUrl.startsWith('assets/')) {
-       // Already a valid format
-    } else if (fileUrl.length > 100) { 
-      // Heuristic: If it's a long string without "data:", it's likely raw base64
-      console.log('[AssetTransaction] Raw base64 detected (no prefix). Adding prefix...');
-      fileUrl = 'data:application/octet-stream;base64,' + fileUrl;
-    } else {
-      // Short string, treat as filename in assets folder
-      fileName = fileUrl;
-      fileUrl = `assets/documents/${fileUrl}`;
-      console.log('[AssetTransaction] Short string detected. Treating as assets path:', fileUrl);
-    }
-    
     try {
-      // Create an invisible link to trigger the download
-      const link = document.createElement('a');
-      link.href = fileUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      this.notificationService.showToast(`Downloading: ${fileName}`, 'success');
-    } catch (err) {
-      console.error('[AssetTransaction] Download failed:', err);
-      this.notificationService.showToast('Failed to initiate download. The data might be corrupted.', 'error');
+      const parts = serverPath.split(/[\\\/]/);
+      const fileName = parts.pop() || '';
+      const dirPath = parts.join('\\');
+
+      if (!fileName || !dirPath) {
+        this.notificationService.showToast('Invalid file path.', 'error');
+        return;
+      }
+
+      const base64Content = await this.requestService.downloadFileFromServer(fileName, dirPath);
+
+      if (!base64Content || base64Content.length < 10) {
+        this.notificationService.showToast('File content is empty or could not be retrieved.', 'error');
+        return;
+      }
+
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const mimeMap: { [key: string]: string } = {
+        'pdf': 'application/pdf', 'png': 'image/png',
+        'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      };
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+      const byteChars = atob(base64Content);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNums)], { type: mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+
+      if (action === 'view') {
+        window.open(blobUrl, '_blank');
+        this.notificationService.showToast(`Opened: ${displayName}`, 'success');
+      } else {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = displayName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        this.notificationService.showToast(`Downloaded: ${displayName}`, 'success');
+      }
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err: any) {
+      console.error('[AssetTransaction] File fetch failed:', err);
+      this.notificationService.showToast(`Failed to fetch file: ${err?.message || 'Unknown error'}`, 'error');
     }
+  }
+
+  extractFileName(path: string): string {
+    if (!path) return 'attachment';
+    const parts = path.split(/[\\\/]/);
+    return parts[parts.length - 1] || 'attachment';
   }
 
   formatSubcategory(subCatId: string): string {
