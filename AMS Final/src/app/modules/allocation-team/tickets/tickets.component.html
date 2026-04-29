@@ -110,7 +110,7 @@
             <td>{{ ticket.assignedDate | date:'mediumDate' }}</td>
             <td>
               <div class="action-group">
-                <button class="btn-view" (click)="openDetails(ticket)">
+                <button class="btn-view" (click)="viewDetails(ticket)">
                   <span class="material-icons">visibility</span>
                   View Details
                 </button>
@@ -120,8 +120,7 @@
                   <span class="material-icons">check_circle</span>
                 </button>
                 <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')"
-                  class="btn-reject"
-                  (click)="openRejectModal(ticket)">
+                  class="btn-reject" (click)="openRejectModal(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
               </div>
@@ -258,6 +257,14 @@
         </div>
       </div>
 
+      <div class="remarks-section" *ngIf="activeTab === 'unresolved'">
+        <label for="decisionRemarks">Decision Remarks <span class="mandatory-star"
+            *ngIf="activeTab === 'unresolved'">*</span></label>
+        <textarea id="decisionRemarks" [(ngModel)]="decisionRemarks"
+          placeholder="Enter remarks for approval or mandatory remarks for rejection..."
+          class="remarks-textarea"></textarea>
+      </div>
+
       <!-- Action Buttons inside Drawer -->
       <div class="drawer-actions"
         *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
@@ -267,8 +274,7 @@
           {{ selectedTicket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' :
           (selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? 'Confirm Return' : 'Allocate') }}
         </button>
-        <button class="drawer-btn-reject"
-          (click)="openRejectModal(selectedTicket)">
+        <button class="drawer-btn-reject" (click)="openRejectModal(selectedTicket)">
           <span class="material-icons">cancel</span>
           Reject
         </button>
@@ -294,12 +300,12 @@
 
     <!-- Modal Header -->
     <div style="padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center;">
-      <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+      <h3
+        style="margin: 0; font-size: 18px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
         <span class="material-icons" style="color: #ef4444;">cancel</span>
         Reject Request
       </h3>
-      <button (click)="closeRejectModal()"
-        style="background: none; border: none; cursor: pointer; padding: 4px;">
+      <button (click)="closeRejectModal()" style="background: none; border: none; cursor: pointer; padding: 4px;">
         <span class="material-icons" style="color: #94a3b8; font-size: 20px;">close</span>
       </button>
     </div>
@@ -309,15 +315,18 @@
       <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">
         Please provide a reason for rejecting ticket
         <strong style="color: #1e293b;">{{ ticketToReject?.ticketId }}</strong>
-        <span *ngIf="ticketToReject?.requestorName"> from <strong style="color: #1e293b;">{{ ticketToReject?.requestorName }}</strong></span>.
+        <span *ngIf="ticketToReject?.requestorName"> from <strong style="color: #1e293b;">{{
+            ticketToReject?.requestorName }}</strong></span>.
       </p>
       <textarea [(ngModel)]="rejectRemarks" placeholder="Enter rejection remarks..." rows="4"
         style="width: 100%; border-radius: 8px; border: 1.5px solid #e2e8f0; padding: 12px; font-family: inherit; font-size: 14px; transition: border-color 0.2s; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
-      <small style="color: #94a3b8; margin-top: 6px; display: block;">Remarks are mandatory for rejection. These will be visible in the approval history.</small>
+      <small style="color: #94a3b8; margin-top: 6px; display: block;">Remarks are mandatory for rejection. These will be
+        visible in the approval history.</small>
     </div>
 
     <!-- Modal Footer -->
-    <div style="padding: 16px 24px; background: #f8fafc; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #e2e8f0;">
+    <div
+      style="padding: 16px 24px; background: #f8fafc; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #e2e8f0;">
       <button (click)="closeRejectModal()"
         style="padding: 8px 20px; border: 1px solid #e2e8f0; background: white; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; transition: all 0.2s;">
         Cancel

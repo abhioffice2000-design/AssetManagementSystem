@@ -224,6 +224,11 @@ export class AssetRequestsComponent implements OnInit {
       return matchesSearch && matchesStatus && matchesUrgency;
     }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
+    console.log(`[AssetRequests] applyFilters: tab=${this.activeTab}, sourceCount=${source.length}, filteredCount=${this.filteredRequests.length}`);
+    if (this.selectedStatus) {
+      console.log(`[AssetRequests] Status Filter: ${this.selectedStatus}. Source statuses:`, source.map(r => r.status).slice(0, 10));
+    }
+
     this.filteredConfirmationRequests = this.confirmationRequests.filter(req => {
       return !this.confirmationSearchTerm ||
         req.id.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
@@ -807,6 +812,11 @@ export class AssetRequestsComponent implements OnInit {
   getAssetManagerRemarks(req: AssetRequest): string {
     const amStage = req.approvalChain?.find(a => a.stage === ApprovalStage.ASSET_MANAGER);
     return amStage?.comments || req.remarks || '';
+  }
+
+  getAllocationRemarks(req: AssetRequest): string {
+    const allocStage = req.approvalChain?.find(a => a.stage === ApprovalStage.ALLOCATION);
+    return allocStage?.comments || '';
   }
 
   closeDetailModal(): void {

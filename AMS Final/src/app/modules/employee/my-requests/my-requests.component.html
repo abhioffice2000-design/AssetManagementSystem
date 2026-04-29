@@ -35,8 +35,8 @@
         <tr>
           <th>Request ID</th>
           <th>Type</th>
-          <th>Subcategory</th>
-          <th>Date</th>
+          <th>Asset Name</th>
+          <th>Expiry Date</th>
           <th>Urgency</th>
           <th>Status</th>
           <th>Track Progress</th>
@@ -53,10 +53,10 @@
           </td>
           <td>
             <div class="asset-cell">
-              <span class="asset-cat">{{ req.category }}</span>
+              <span class="asset-cat">{{ req.assetName || req.category }}</span>
             </div>
           </td>
-          <td>{{ req.requestDate | date:'mediumDate' }}</td>
+          <td>{{ req.assignedWarrantyExpiry || '—' }}</td>
           <td>
             <span class="urgency-label" [ngClass]="'urgency-' + req.urgency.toLowerCase()">
               {{ req.urgency }}

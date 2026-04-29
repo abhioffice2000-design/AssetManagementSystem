@@ -110,14 +110,26 @@ export class MyRequestsComponent implements OnInit {
     const user = this.authService.getCurrentUser();
     if (user) {
       try {
-        // Fetch both asset requests and return requests in parallel
-        const [assetRequests, returnRequests] = await Promise.all([
+        const [assetRequests, warrantyRequests, returnRequests] = await Promise.all([
           this.requestService.getRequestsByUserIdFromCordys(user.id),
+          this.requestService.fetchWarrantyRequestsForUser(user.id),
           this.requestService.fetchReturnRequestsByEmployee(user.id)
         ]);
 
-        // Merge both lists
-        this.requests = [...assetRequests, ...returnRequests];
+
+        console.log(`[MyRequests] Loaded ${assetRequests.length} asset requests and ${warrantyRequests.length} warranty requests`);
+        if (warrantyRequests.length > 0) {
+          console.log('[MyRequests] Sample Warranty Request:', warrantyRequests[0]);
+        }
+
+        // Merge both request types
+        this.requests = [...assetRequests, ...warrantyRequests, ...returnRequests];
+
+        console.log(`[MyRequests] Total requests after merge: ${this.requests.length}`);
+        console.log('[MyRequests] Request Types distribution:', this.requests.reduce((acc: any, r) => {
+          acc[r.requestType] = (acc[r.requestType] || 0) + 1;
+          return acc;
+        }, {}));
 
         // Sort by date descending
         this.requests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
@@ -135,6 +147,7 @@ export class MyRequestsComponent implements OnInit {
       const matchesSearch = !this.searchTerm ||
         req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        (req.assetName || '').toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.searchTerm.toLowerCase());
       const matchesType = !this.selectedType || req.requestType === this.selectedType;
       return matchesSearch && matchesType;
@@ -231,7 +244,8 @@ export class MyRequestsComponent implements OnInit {
 
       case RequestType.EXTEND_WARRANTY:
         return [
-          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
         ];
 
       default: // NEW_ASSET

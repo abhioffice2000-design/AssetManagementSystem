@@ -16,7 +16,6 @@ export class WarrantyTicketsComponent implements OnInit {
   loading = true;
   warrantyTickets: AssetRequest[] = [];
   
-  // Warranty Extension State
   isWarrantyModalOpen = false;
   activeTab: 'pending' | 'resolved' = 'pending';
   allWarrantyRequests: AssetRequest[] = [];
@@ -122,10 +121,43 @@ export class WarrantyTicketsComponent implements OnInit {
     }
   }
 
-  openWarrantyModal(request: AssetRequest): void {
+  loadingRemarks = false;
+  async openWarrantyModal(request: AssetRequest): Promise<void> {
     this.selectedWarrantyRequest = request;
     this.newWarrantyDate = '';
     this.isWarrantyModalOpen = true;
+    this.loadingRemarks = true;
+
+    // Fetch progress to get Manager remarks
+    try {
+      console.log(`[WarrantyTickets] Fetching progress for request: ${request.id}`);
+      const progress = await this.requestService.getWarrantyProgress(request.id);
+      console.log(`[WarrantyTickets] Progress records found:`, progress.length);
+      
+      if (this.selectedWarrantyRequest) {
+        this.selectedWarrantyRequest.approvalChain = progress.map(p => ({
+          stage: p.stage as any,
+          action: p.status as any,
+          comments: p.comments,
+          approverName: p.approverName,
+          timestamp: p.timestamp
+        }));
+        console.log(`[WarrantyTickets] Updated approval chain. Manager remarks: "${this.managerRemarks}"`);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch warranty progress:', err);
+    } finally {
+      this.loadingRemarks = false;
+    }
+  }
+
+  get managerRemarks(): string {
+    if (!this.selectedWarrantyRequest?.approvalChain) return '';
+    const managerApproval = this.selectedWarrantyRequest.approvalChain.find(a => 
+      a.stage.toString().toLowerCase().includes('manager') || 
+      a.stage.toString().toLowerCase().includes('mgr')
+    );
+    return managerApproval?.comments || '';
   }
 
   closeWarrantyModal(): void {
