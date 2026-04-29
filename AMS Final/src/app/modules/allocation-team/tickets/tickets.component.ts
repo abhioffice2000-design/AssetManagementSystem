@@ -38,6 +38,7 @@ export class AllocationTicketsComponent implements OnInit {
   loading = true;
   allTickets: EnrichedTicket[] = [];
   resolvedTickets: EnrichedTicket[] = [];
+  currentUser: any;
   returnTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
   drawerOpen = false;
@@ -53,7 +54,10 @@ export class AllocationTicketsComponent implements OnInit {
   searchTerm: string = '';
   selectedAssetType: string = '';
   selectedRequestType: string = ''; // New filter
-  selectedResolvedStatus: string = ''; // New filter for Resolved tab
+  selectedResolvedStatus = '';
+  isSaving = false;
+  decisionRemarks = '';
+  // New filter for Resolved tab
   assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
   subCategoryMap: Map<string, string> = new Map();
 
@@ -72,8 +76,8 @@ export class AllocationTicketsComponent implements OnInit {
 
 
   async ngOnInit(): Promise<void> {      // ✅ made async
-    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
-    const userId = currentUser?.id ?? null;
+    this.currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const userId = this.currentUser?.id ?? null;
     console.log("User ID is ", userId);
     const request = { Approver_id: userId };
 
@@ -442,14 +446,16 @@ export class AllocationTicketsComponent implements OnInit {
 
 
 
-  openDetails(ticket: EnrichedTicket): void {
+  viewDetails(ticket: EnrichedTicket): void {
     this.selectedTicket = ticket;
     this.drawerOpen = true;
+    this.decisionRemarks = '';
   }
 
   closeDetails(): void {
     this.drawerOpen = false;
     this.selectedTicket = null;
+    this.decisionRemarks = '';
   }
 
   get unresolvedTickets(): EnrichedTicket[] {
@@ -553,9 +559,8 @@ export class AllocationTicketsComponent implements OnInit {
         new: {
           t_request_approvals: {
             status: "Approved",
-            remarks: "Allocated to Requestor"
+            remarks: this.decisionRemarks || "Allocated to Requestor"
           }
-
         }
 
       }
@@ -661,6 +666,27 @@ export class AllocationTicketsComponent implements OnInit {
     }
 
     this.loadTickets();
+    if (!this.decisionRemarks.trim()) {
+      alert('Remarks are mandatory for rejection.');
+      return;
+    }
+
+    try {
+      await this.requestService.rejectRequest(
+        ticket.rawRequest.id,
+        this.currentUser.id,
+        this.currentUser.name,
+        this.decisionRemarks,
+        ApprovalStage.ALLOCATION,
+        ticket.approvalid
+      );
+      this.notificationService.showToast('Request rejected successfully', 'success');
+      this.closeDetails();
+      await this.loadTickets();
+    } catch (error) {
+      console.error('Rejection failed:', error);
+      this.notificationService.showToast('Failed to reject request', 'error');
+    }
   }
   async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
 

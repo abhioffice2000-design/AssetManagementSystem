@@ -208,8 +208,10 @@ export class RequestService {
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
 
       this.allRequestsList = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
-
-      console.log(`Fetched ${this.allRequestsList.length} total requests from GetRequestsForAssetManager`);
+      
+      console.log(`[RequestService] fetchAllRequestsFromService: Fetched ${this.allRequestsList.length} total requests`);
+      console.log(`[RequestService] Sample of fetched requests:`, this.allRequestsList.slice(0, 5).map(r => ({ id: r.id, status: r.status })));
+      
       return [...this.allRequestsList];
     } catch (err) {
       console.error('Failed to fetch requests from GetRequestsForAssetManager:', err);
@@ -379,6 +381,41 @@ export class RequestService {
       return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
     } catch (err) {
       console.error('Failed to fetch all warranty requests from GetT_extend_asset_requests:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches warranty extension requests for a specific user.
+   */
+  /**
+   * Fetches pending warranty extension requests for a specific user.
+   */
+  async fetchWarrantyRequestsForUser(userId: string): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetPendingExtendWarrantyRequestsForUser xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetPendingExtendWarrantyRequestsForUser>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn(`[RequestService] No pending warranty requests found for user: ${userId}`);
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      console.log(`[RequestService] Fetched ${tupleArray.length} pending warranty requests for user ${userId}`);
+      
+      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch pending warranty requests for user:', err);
       return [];
     }
   }
@@ -570,7 +607,7 @@ export class RequestService {
                      {};
 
     // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
-    const assetName = this.getNullableValue(reqData?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
+    const assetName = this.getNullableValue(reqData?.temp1 || parent?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
     const serialNumber = this.getNullableValue(
       reqData?.temp2 || 
       parent?.temp2 || 
@@ -588,13 +625,20 @@ export class RequestService {
     const status = this.mapToStatus(approvalData?.status || reqData?.status || '');
     const currentStage = ApprovalStage.ASSET_MANAGER;
 
+    const requesterId = reqData?.user_id || reqData?.User_id || userInfo?.user_id || '';
+    if (!requesterId) {
+      console.warn('[RequestService] mapWarrantyTupleToRequest: Missing requesterId (user_id). reqData keys:', Object.keys(reqData || {}), 'tuple:', tuple);
+    }
+
+    const requestId = reqData?.request_id || parent?.request_id || '';
+
     return {
       taskid: this.getNullableValue(approvalData?.temp1 || parent?.temp1 || parent?.t_extend_asset_requests?.t_extend_request_approvals?.temp1) || '',
       document: this.getNullableValue(reqData?.document) || '',
       approvalId: approvalData?.approval_id || parent?.approval_id || parent?.t_extend_asset_requests?.t_extend_request_approvals?.approval_id || '',
-      id: reqData?.request_id || parent?.request_id || '',
-      requestNumber: reqData?.request_id || parent?.request_id || '',
-      requesterId: reqData?.user_id || userInfo?.user_id || '',
+      id: requestId,
+      requestNumber: requestId,
+      requesterId: requesterId,
       requesterName: userInfo?.name || '',
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
@@ -732,6 +776,11 @@ export class RequestService {
   async getRequestProgress(requestId: string): Promise<any[]> {
     // Normalize ID to lowercase for the backend service (e.g., AR_072 -> ar_072)
     const normalizedId = requestId.toLowerCase();
+    
+    // If it's a warranty extension request (EW or EX prefix), use the specialized warranty progress service
+    if (normalizedId.startsWith('ew') || normalizedId.startsWith('ex')) {
+      return this.getWarrantyProgress(requestId);
+    }
 
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -757,11 +806,48 @@ export class RequestService {
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
           timestamp: approvalData?.created_at,
-          comments: approvalData?.temp2 // Assuming temp2 stores comments in t_request_approvals
+          comments: approvalData?.remarks || approvalData?.reason || approvalData?.temp2 || ''
         };
       });
     } catch (err) {
       console.error('Error fetching request progress:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches progress for Warranty Extension requests specifically from t_extend_request_approvals.
+   */
+  async getWarrantyProgress(requestId: string): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetWarrantyProgressForEmployee xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <requestId>${requestId}</requestId>
+    </GetWarrantyProgressForEmployee>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(response, 'tuple');
+
+      if (!data) return [];
+      const tupleArray = Array.isArray(data) ? data : [data];
+
+      return tupleArray.map((tuple: any) => {
+        const approvalData = tuple?.old?.t_extend_request_approvals || tuple?.t_extend_request_approvals || tuple;
+        return {
+          stage: approvalData?.role || 'Asset Manager',
+          status: approvalData?.status || 'Pending',
+          approverId: approvalData?.approver_id,
+          approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Approver',
+          timestamp: approvalData?.action_date || approvalData?.created_at,
+          comments: approvalData?.remarks || ''
+        };
+      });
+    } catch (err) {
+      console.error('Error fetching warranty progress:', err);
       return [];
     }
   }
@@ -973,6 +1059,17 @@ export class RequestService {
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
       assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
+      assetName: this.getNullableValue(
+        reqData?.temp1 ||
+        parent?.temp1 ||
+        assetInfo?.asset_name ||
+        assetInfo?.asset_id ||
+        parent?.t_request_approvals?.temp1 ||
+        subCatInfo?.name ||
+        typeInfo?.type_name ||
+        reqData?.asset_name ||
+        ''
+      ),
       category: this.normalizeCategory(
         this.getNullableValue(
           assetInfo?.asset_id ||
@@ -1269,20 +1366,45 @@ export class RequestService {
     req.lastUpdated = new Date().toISOString();
   }
 
-  rejectRequest(requestId: string, approverId: string, approverName: string, comments: string, stage: ApprovalStage): void {
-    const req = this.requests.find(r => r.id === requestId);
-    if (!req) return;
+  async rejectRequest(requestId: string, approverId: string, approverName: string, comments: string, stage: ApprovalStage, approvalId: string): Promise<any> {
+    const normalizedRequestId = requestId.toLowerCase();
+    try {
+      // 1. Update the specific approval record
+      const approvalPayload = {
+        tuple: {
+          old: { t_request_approvals: { approval_id: approvalId } },
+          new: { t_request_approvals: { status: 'Rejected', remarks: comments } }
+        }
+      };
+      await this.updateEntryForAssetManager(approvalPayload as any);
 
-    const entry = req.approvalChain.find(a => a.stage === stage);
-    if (entry) {
-      entry.approverId = approverId;
-      entry.approverName = approverName;
-      entry.action = 'Rejected';
-      entry.comments = comments;
-      entry.timestamp = new Date().toISOString();
+      // 2. Update the main request status
+      const requestPayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: normalizedRequestId } },
+          new: { t_asset_requests: { status: 'Rejected' } }
+        }
+      };
+      await this.submitNewRequestForm(requestPayload as any);
+
+      // Local update for immediate UI feedback if needed
+      const req = this.requests.find(r => r.id.toLowerCase() === normalizedRequestId);
+      if (req) {
+        req.status = RequestStatus.REJECTED;
+        const entry = req.approvalChain.find(a => a.stage === stage);
+        if (entry) {
+          entry.action = 'Rejected';
+          entry.comments = comments;
+          entry.approverId = approverId;
+          entry.approverName = approverName;
+          entry.timestamp = new Date().toISOString();
+        }
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('SOAP rejection failed:', error);
+      throw error;
     }
-    req.status = RequestStatus.REJECTED;
-    req.lastUpdated = new Date().toISOString();
   }
 
   getRequestStats() {
