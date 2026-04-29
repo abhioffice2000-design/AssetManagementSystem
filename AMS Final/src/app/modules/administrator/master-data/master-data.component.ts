@@ -16,7 +16,6 @@ type AddAssetForm = {
   serialNumber: string;
   purchaseDate: string;
   warrantyExpiry: string;
-  reminderDays: number;
 };
 type AssetCategoryGroup = {
   type: AssetType | string;
@@ -381,8 +380,16 @@ export class MasterDataComponent implements OnInit {
   }
 
   async saveAssetType(): Promise<void> {
+    const trimmed = this.newTypeName.trim();
+    if (!trimmed || this.isSaving) return;
 
-    if (!this.newTypeName.trim() || this.isSaving) return;
+    // Unique check
+    const isDuplicate = this.assetTypes.some(t => t.type.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      this.notificationService.showToast(`Asset Type '${trimmed}' already exists.`, 'error');
+      return;
+    }
+    
     this.isSaving = true;
     try {
       // Simulate/Generate ID (e.g. typ_01, typ_06)
@@ -400,7 +407,16 @@ export class MasterDataComponent implements OnInit {
   }
 
   async saveSubCategory(): Promise<void> {
-    if (!this.newSubCategoryName.trim() || !this.selectedTypeIdForSubCategory || this.isSaving) return;
+    const trimmed = this.newSubCategoryName.trim();
+    if (!trimmed || !this.selectedTypeIdForSubCategory || this.isSaving) return;
+
+    // Unique check
+    const isDuplicate = this.assetCategories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      this.notificationService.showToast(`Subcategory '${trimmed}' already exists.`, 'error');
+      return;
+    }
+
     this.isSaving = true;
     try {
       // Robust Max ID increment
@@ -424,7 +440,17 @@ export class MasterDataComponent implements OnInit {
 
   async saveAsset(): Promise<void> {
     this.submittedAssetForm = true;
-    if (!this.newAsset.type || !this.newAsset.category || !this.newAsset.name || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || this.isSaving) {
+    
+    // Check for unique asset name
+    const trimmedName = (this.newAsset.name || '').trim();
+    const isDuplicate = this.assets.some(a => a.name.toLowerCase() === trimmedName.toLowerCase());
+    
+    if (isDuplicate) {
+      this.notificationService.showToast(`An asset with the name '${trimmedName}' already exists. Asset names must be unique.`, 'error');
+      return;
+    }
+
+    if (!this.newAsset.type || !this.newAsset.category || !trimmedName || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || this.isSaving) {
       return;
     }
 
@@ -455,8 +481,7 @@ export class MasterDataComponent implements OnInit {
         vendor: 'Internal',
         serialNumber: this.newAsset.serialNumber,
         cost: 0,
-        condition: AssetCondition.GOOD,
-        reminderDays: this.newAsset.reminderDays
+        condition: AssetCondition.GOOD
       };
 
       // Securely fetch exact IDs from DB based on mapped name
@@ -873,8 +898,7 @@ export class MasterDataComponent implements OnInit {
       name: '',
       serialNumber: '',
       purchaseDate: '',
-      warrantyExpiry: '',
-      reminderDays: 30
+      warrantyExpiry: ''
     };
   }
 }

@@ -10,45 +10,6 @@
     </div>
   </div>
 
-  <!-- Summary KPI Cards -->
-  <div class="grid grid-4 gap-16 mb-24 animate-slide-up">
-    <div class="kpi-card">
-      <div class="kpi-icon bg-blue">
-        <span class="material-icons-outlined">inventory_2</span>
-      </div>
-      <div class="kpi-content">
-        <span class="kpi-value">{{ assetStats.total }}</span>
-        <span class="kpi-label">Total Assets</span>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon bg-green">
-        <span class="material-icons-outlined">currency_rupee</span>
-      </div>
-      <div class="kpi-content">
-        <span class="kpi-value">{{ formatCurrency(totalAssetValue) }}</span>
-        <span class="kpi-label">Total Value</span>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon bg-purple">
-        <span class="material-icons-outlined">analytics</span>
-      </div>
-      <div class="kpi-content">
-        <span class="kpi-value">{{ formatCurrency(avgAssetCost) }}</span>
-        <span class="kpi-label">Average Cost</span>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon bg-amber">
-        <span class="material-icons-outlined">warning</span>
-      </div>
-      <div class="kpi-content">
-        <span class="kpi-value">{{ warrantyAlerts.length }}</span>
-        <span class="kpi-label">Warranty Alerts</span>
-      </div>
-    </div>
-  </div>
 
   <!-- Asset Type Distribution — Full Width Pie Chart -->
   <div class="card section-card animate-slide-up mb-24">

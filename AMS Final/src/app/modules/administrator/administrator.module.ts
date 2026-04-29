@@ -10,6 +10,7 @@ import { UserManagementComponent } from './user-management/user-management.compo
 import { MasterDataComponent } from './master-data/master-data.component';
 import { AssetTransactionComponent } from './asset-transaction/asset-transaction.component';
 import { AdminReportsComponent } from './reports/reports.component';
+import { WarrantySchedulerComponent } from './warranty-scheduler/warranty-scheduler.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: AdminDashboardComponent },
@@ -17,6 +18,7 @@ const routes: Routes = [
   { path: 'master-data', component: MasterDataComponent },
   { path: 'transactions', component: AssetTransactionComponent },
   { path: 'reports', component: AdminReportsComponent },
+  { path: 'warranty-scheduler', component: WarrantySchedulerComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
 
@@ -26,7 +28,8 @@ const routes: Routes = [
     UserManagementComponent,
     MasterDataComponent,
     AssetTransactionComponent,
-    AdminReportsComponent
+    AdminReportsComponent,
+    WarrantySchedulerComponent
   ],
   imports: [
     CommonModule,
