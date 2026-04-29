@@ -41,6 +41,11 @@ export class AllocationTicketsComponent implements OnInit {
   returnTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
   drawerOpen = false;
+
+  // Reject modal state
+  showRejectModal = false;
+  rejectRemarks = '';
+  ticketToReject: EnrichedTicket | null = null;
   assetManagerNameForThisUser: string = "";
   assetManagerIDForThisUser: string = "";
 
@@ -612,15 +617,49 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async reject(ticket: EnrichedTicket): Promise<void> {
+    const remarks = this.rejectRemarks || 'Rejected by Allocation Team';
 
+    try {
+      // Step 1: Update approval record to Rejected
+      const reqReject = {
+        tuple: {
+          old: {
+            t_request_approvals: {
+              approval_id: ticket.approvalid,
+            }
+          },
+          new: {
+            t_request_approvals: {
+              status: "Rejected",
+              remarks: remarks
+            }
+          }
+        }
+      };
+      console.log("Rejecting standard request:", reqReject);
+      await this.requestService.updateEntryForAllocationTeamMember(reqReject as any);
 
-    this.requestService.rejectRequest(
-      ticket.rawRequest.id,
-      'USR003',
-      'Allocation Team',
-      'Ticket rejected by allocation team.',
-      ApprovalStage.ALLOCATION
-    );
+      // Step 2: Update asset request status to Rejected
+      const rejectRequestPayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: ticket.rawRequest.id } },
+          new: { t_asset_requests: { status: 'Rejected' } }
+        }
+      };
+      await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+
+      // Step 3: Complete BPM task
+      const taskid = ticket.taskid;
+      if (taskid && taskid !== '—' && taskid !== '–' && taskid !== '-') {
+        await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+      }
+
+      this.notificationService.showToast(`Request ${ticket.ticketId} rejected.`, 'info');
+    } catch (error) {
+      console.error("Standard request rejection failed:", error);
+      this.notificationService.showToast(`Failed to reject request ${ticket.ticketId}.`, 'error');
+    }
+
     this.loadTickets();
   }
   async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
@@ -721,34 +760,102 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async rejectAssetReturn(ticket: EnrichedTicket): Promise<void> {
-    var reqReject = {
-      tuple: {
-        old: {
-          t_asset_return_approvals: {
-            return_approval_id: ticket.approvalid,
-          }
-        },
-        new: {
-          t_asset_return_approvals: {
-            status: "Rejected",
-            remarks: "Rejected by Allocation Team"
+    const remarks = this.rejectRemarks || 'Rejected by Allocation Team';
+
+    try {
+      // Step 1: Update current return approval status to "Rejected"
+      const reqReject = {
+        tuple: {
+          old: {
+            t_asset_return_approvals: {
+              return_approval_id: ticket.approvalid,
+            }
+          },
+          new: {
+            t_asset_return_approvals: {
+              status: "Rejected",
+              remarks: remarks
+            }
           }
         }
-      }
-    }
-    console.log("Rejecting return request:", reqReject);
-    await this.requestService.updateEntryForAllocationTeamMemberAssetReturn(reqReject as any);
+      };
+      console.log("Step 1: Rejecting return request:", reqReject);
+      await this.requestService.updateEntryForAllocationTeamMemberAssetReturn(reqReject as any);
 
-    var taskid = ticket.taskid;
-    if (taskid && taskid !== '—') {
-      var req4 = {
-        TaskId: `${taskid}`,
-        Action: 'COMPLETE'
+      // Step 2: Update t_asset_returns main table status to 'Rejected'
+      const updateReturnReq = {
+        tuple: {
+          old: {
+            t_asset_returns: {
+              return_id: ticket.ticketId
+            }
+          },
+          new: {
+            t_asset_returns: {
+              status: 'Rejected',
+              remarks: remarks
+            }
+          }
+        }
+      };
+      try {
+        await this.requestService.createEntryForReturn(updateReturnReq as any);
+        console.log("Step 2: t_asset_returns updated to Rejected");
+      } catch (e) {
+        console.error("Failed to update t_asset_returns status:", e);
       }
-      await this.requestService.completeUserTask(req4 as any)
+
+      // Step 3: Complete BPM task
+      const taskid = ticket.taskid;
+      if (taskid && taskid !== '—' && taskid !== '–' && taskid !== '-') {
+        const req4 = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(req4 as any);
+        console.log("Step 3: BPM task completed");
+      }
+
+      this.notificationService.showToast(`Return request ${ticket.ticketId} rejected.`, 'info');
+    } catch (error) {
+      console.error("Return request rejection failed:", error);
+      this.notificationService.showToast(`Failed to reject return request ${ticket.ticketId}.`, 'error');
     }
-    console.log("task id", taskid);
+
     this.loadTickets();
+  }
+
+  // ─── Reject Modal Methods ───────────────────────────────────────────────
+
+  openRejectModal(ticket: EnrichedTicket): void {
+    this.ticketToReject = ticket;
+    this.rejectRemarks = '';
+    this.showRejectModal = true;
+  }
+
+  closeRejectModal(): void {
+    this.showRejectModal = false;
+    this.ticketToReject = null;
+    this.rejectRemarks = '';
+  }
+
+  async confirmReject(): Promise<void> {
+    if (!this.ticketToReject) return;
+
+    if (!this.rejectRemarks || this.rejectRemarks.trim() === '') {
+      alert('Rejection remarks are required.');
+      return;
+    }
+
+    const ticket = this.ticketToReject;
+    this.closeRejectModal();
+    this.closeDetails();
+
+    if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
+      await this.rejectAssetReturn(ticket);
+    } else {
+      await this.reject(ticket);
+    }
   }
 
 

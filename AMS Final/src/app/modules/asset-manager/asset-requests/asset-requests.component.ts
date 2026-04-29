@@ -457,156 +457,46 @@ export class AssetRequestsComponent implements OnInit {
     } else {
       // Rejection logic for ALL request types
       if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
-        if (this.actionType == 'approve') {
-          console.log("Executing Return Approval Flow...");
+        console.log("Executing Return Rejection Flow...");
 
-          // Check if this is the FINAL confirmation (Step 3) vs initial approval (Step 1)
-          // The Allocation Team sets remarks = "Waiting for Hand-off Confirmation" when creating Step 3 entry
-          const approvalRemarks = this.selectedRequest.approvalChain?.[0]?.comments || '';
-          console.log("Approval remarks from loaded data:", approvalRemarks);
-
-          let allocationTeamAlreadyApproved = approvalRemarks.toLowerCase().includes('hand-off confirmation');
-
-          // Fallback: try SOAP query if remarks check is inconclusive
-          if (!allocationTeamAlreadyApproved) {
-            try {
-              const existingApprovals = await this.requestService.fetchReturnApprovalsByRequestId(this.selectedRequest.id);
-              allocationTeamAlreadyApproved = existingApprovals.some(
-                (a: any) => a.role === 'Allocation Team Member' && a.status?.toLowerCase().includes('approved')
-              );
-              console.log("SOAP fallback check - Allocation Team already approved?", allocationTeamAlreadyApproved, "Approvals:", existingApprovals);
-            } catch (e) {
-              console.warn("SOAP fallback check failed, relying on remarks check:", e);
-            }
-          }
-          console.log("Final decision - Is final confirmation?", allocationTeamAlreadyApproved);
-
-          // Step 1: Update current manager approval to 'Approved'
-          const req6 = {
-            tuple: {
-              old: {
-                t_asset_return_approvals: {
-                  return_approval_id: this.selectedRequest.returnapprovalId,
-                }
-              },
-              new: {
-                t_asset_return_approvals: {
-                  status: "Approved",
-                  remarks: this.actionComments,
-                }
-              }
-            }
-          };
-
-          console.log("SOAP Update (REQ6):", req6);
-          try {
-            await this.requestService.updateReturnAssetStatus(req6 as any);
-            console.log("Step 1 (Update Status) Success");
-
-            if (allocationTeamAlreadyApproved) {
-              // ── FINAL CONFIRMATION ── Allocation Team already worked on this. End the workflow.
-              console.log("Final Confirmation: Ending workflow for return request:", this.selectedRequest.id);
-
-              // Update t_asset_returns status to 'Completed'
-              const updateReturnReq = {
-                tuple: {
-                  old: {
-                    t_asset_returns: {
-                      return_id: this.selectedRequest.id
-                    }
-                  },
-                  new: {
-                    t_asset_returns: {
-                      status: 'Completed',
-                      remarks: this.actionComments
-                    }
-                  }
-                }
-              };
-              await this.requestService.createEntryForReturn(updateReturnReq as any);
-              console.log("Updated t_asset_returns to Completed");
-
-              // Make the asset Available again
-              if (this.selectedRequest.assignedAssetId) {
-                const updateAssetReq = {
-                  tuple: {
-                    old: {
-                      m_assets: {
-                        asset_id: this.selectedRequest.assignedAssetId
-                      }
-                    },
-                    new: {
-                      m_assets: {
-                        status: 'Available',
-                        temp1: ''
-                      }
-                    }
-                  }
-                };
-                try {
-                  await this.requestService.updateAssetStatus(updateAssetReq as any);
-                  console.log(`Asset ${this.selectedRequest.assignedAssetId} is now Available.`);
-                } catch (e) {
-                  console.error("Failed to update asset status:", e);
-                }
-              }
-
-              // Complete BPM task → workflow ends
-              let taskid = this.selectedRequest?.taskid;
-              if (taskid) {
-                var req4 = {
-                  TaskId: `${taskid}`,
-                  Action: 'COMPLETE'
-                };
-                await this.requestService.completeUserTask(req4 as any);
-              }
-
-              this.notificationService.showToast(`Return request ${this.selectedRequest.id} confirmed and completed.`, 'success');
-              console.log("Workflow ENDED for return:", this.selectedRequest.id);
-
-            } else {
-              // ── STEP 1 ── First time approval. Forward to Allocation Team.
-              const req7 = {
-                tuple: {
-                  new: {
-                    t_asset_return_approvals: {
-                      approver_id: 'usr_007', // Allocation Team ID
-                      request_id: this.selectedRequest.id,
-                      role: "Allocation Team Member",
-                      status: "Pending",
-                      remarks: this.actionComments,
-                    }
-                  }
-                }
-              };
-
-              console.log("SOAP Create (REQ7):", req7);
-              await this.requestService.completeTask(req7 as any);
-              let taskid = this.selectedRequest?.taskid;
-              var req4 = {
-                TaskId: `${taskid}`,
-                Action: 'COMPLETE'
-              }
-              await this.requestService.completeUserTask(req4 as any)
-              this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved and forwarded to Allocation Team.`, 'success');
-              console.log("Step 2 (Forwarding to Allocation Team) Success");
-            }
-
-          } catch (error) {
-            console.error("Return Approval SOAP call failed:", error);
-          }
-        };
+        // Step 1: Update current return approval record to 'Rejected'
         const req9 = {
           tuple: {
             old: { t_asset_return_approvals: { return_approval_id: this.selectedRequest.returnapprovalId } },
             new: { t_asset_return_approvals: { status: "Rejected", remarks: this.actionComments } }
-
           }
         };
         await this.requestService.updateReturnAssetStatus(req9 as any);
+        console.log("Step 1: Return approval record updated to Rejected");
+
+        // Step 2: Update t_asset_returns main table status to 'Rejected'
+        const updateReturnReq = {
+          tuple: {
+            old: {
+              t_asset_returns: {
+                return_id: this.selectedRequest.id
+              }
+            },
+            new: {
+              t_asset_returns: {
+                status: 'Rejected',
+                remarks: this.actionComments || 'Rejected by Asset Manager'
+              }
+            }
+          }
+        };
+        try {
+          await this.requestService.createEntryForReturn(updateReturnReq as any);
+          console.log("Step 2: t_asset_returns updated to Rejected");
+        } catch (e) {
+          console.error("Failed to update t_asset_returns status:", e);
+        }
+
+        // Step 3: Complete BPM task
         const taskid = this.selectedRequest?.taskid;
         if (taskid) {
           await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+          console.log("Step 3: BPM task completed");
         }
         this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
       } else {

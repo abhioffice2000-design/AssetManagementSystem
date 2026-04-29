@@ -121,7 +121,7 @@
                 </button>
                 <button *ngIf="activeTab === 'unresolved' || (activeTab === 'resolved' && ticket.status === 'Approved')"
                   class="btn-reject"
-                  (click)="ticket.rawRequest.requestType === RequestType.RETURN_ASSET ? rejectAssetReturn(ticket) : reject(ticket)">
+                  (click)="openRejectModal(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
               </div>
@@ -268,7 +268,7 @@
           (selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? 'Confirm Return' : 'Allocate') }}
         </button>
         <button class="drawer-btn-reject"
-          (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? rejectAssetReturn(selectedTicket) : reject(selectedTicket); closeDetails()">
+          (click)="openRejectModal(selectedTicket)">
           <span class="material-icons">cancel</span>
           Reject
         </button>
@@ -285,3 +285,51 @@
     <p>Loading tickets...</p>
   </div>
 </ng-template>
+
+<!-- ─── Reject Confirmation Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" *ngIf="showRejectModal" (click)="closeRejectModal()"
+  style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1100; display: flex; align-items: center; justify-content: center;">
+  <div (click)="$event.stopPropagation()"
+    style="max-width: 500px; width: 90%; background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden; animation: slideUp 0.2s ease-out;">
+
+    <!-- Modal Header -->
+    <div style="padding: 24px 24px 0; display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+        <span class="material-icons" style="color: #ef4444;">cancel</span>
+        Reject Request
+      </h3>
+      <button (click)="closeRejectModal()"
+        style="background: none; border: none; cursor: pointer; padding: 4px;">
+        <span class="material-icons" style="color: #94a3b8; font-size: 20px;">close</span>
+      </button>
+    </div>
+
+    <!-- Modal Body -->
+    <div style="padding: 20px 24px;">
+      <p style="margin: 0 0 16px; color: #64748b; font-size: 14px;">
+        Please provide a reason for rejecting ticket
+        <strong style="color: #1e293b;">{{ ticketToReject?.ticketId }}</strong>
+        <span *ngIf="ticketToReject?.requestorName"> from <strong style="color: #1e293b;">{{ ticketToReject?.requestorName }}</strong></span>.
+      </p>
+      <textarea [(ngModel)]="rejectRemarks" placeholder="Enter rejection remarks..." rows="4"
+        style="width: 100%; border-radius: 8px; border: 1.5px solid #e2e8f0; padding: 12px; font-family: inherit; font-size: 14px; transition: border-color 0.2s; outline: none; resize: vertical; box-sizing: border-box;"></textarea>
+      <small style="color: #94a3b8; margin-top: 6px; display: block;">Remarks are mandatory for rejection. These will be visible in the approval history.</small>
+    </div>
+
+    <!-- Modal Footer -->
+    <div style="padding: 16px 24px; background: #f8fafc; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #e2e8f0;">
+      <button (click)="closeRejectModal()"
+        style="padding: 8px 20px; border: 1px solid #e2e8f0; background: white; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; transition: all 0.2s;">
+        Cancel
+      </button>
+      <button (click)="confirmReject()"
+        style="padding: 8px 20px; border: none; background: #ef4444; color: white; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; display: flex; align-items: center; gap: 6px;"
+        [disabled]="!rejectRemarks || rejectRemarks.trim() === ''"
+        [style.opacity]="(!rejectRemarks || rejectRemarks.trim() === '') ? '0.5' : '1'"
+        [style.cursor]="(!rejectRemarks || rejectRemarks.trim() === '') ? 'not-allowed' : 'pointer'">
+        <span class="material-icons" style="font-size: 16px;">cancel</span>
+        Confirm Rejection
+      </button>
+    </div>
+  </div>
+</div>

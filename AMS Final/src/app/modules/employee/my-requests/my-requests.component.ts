@@ -364,7 +364,8 @@ export class MyRequestsComponent implements OnInit {
           step.isCurrent = false;
         }
 
-        if (!currentStepFound && !step.isCompleted) {
+        // Don't mark rejected steps as "current" — they are terminal
+        if (!currentStepFound && !step.isCompleted && step.status !== 'Rejected') {
           step.isCurrent = true;
           currentStepFound = true;
         }
@@ -445,9 +446,15 @@ export class MyRequestsComponent implements OnInit {
   calculateOverallProgress(requestStatus: string): number {
     const status = requestStatus.toLowerCase();
     if (status === 'completed') return 100;
-    if (status === 'rejected') return 0;
 
-    const completedCount = this.trackingSteps.filter(s => s.isCompleted).length;
+    const completedCount = this.trackingSteps.filter(s => s.isCompleted && s.status !== 'Rejected').length;
+    const totalSteps = this.trackingSteps.length;
+
+    // For rejected requests, show how far it got before rejection
+    if (status === 'rejected') {
+      if (totalSteps === 0) return 0;
+      return Math.round((completedCount / totalSteps) * 100);
+    }
 
     if (completedCount === 0) return 10;
     if (completedCount === 1) return 33;
@@ -588,40 +595,55 @@ export class MyRequestsComponent implements OnInit {
 
     try {
       this.loading = true;
-      const updateReq = {
-        tuple: {
-          old: { t_asset_requests: { request_id: request.requestNumber } },
-          new: { t_asset_requests: { status: 'Rejected' } }
-        }
-      };
-      await this.Getassetidbyapprovalid(request.requestNumber);
-      await this.requestService.submitNewRequestForm(updateReq);
-      
 
-      console.log("approval id222222222222", this.approval_id);
-
-      const updateReq2 = {
-        tuple: {
-          old: { t_request_approvals: { approval_id: this.approval_id } },
-          new: { t_request_approvals: { status: 'Rejected' } }
-        }
-      };
-      var res3 = await this.requestService.createEntryForRequestor(updateReq2);
-      console.log("response 3", res3);
-
-      await this.Getassetidbyapprovalid(request.requestNumber);
-      console.log("response 4", this.task_id);
-
-      // Complete the BPM task
-      console.log('Taskid:', this.task_id);
-      if (this.task_id) {
-        const req3 = {
-          TaskId: `${this.task_id}`,
-          Action: 'COMPLETE'
+      if (request.requestType === RequestType.RETURN_ASSET) {
+        // Withdraw Return Request: update t_asset_returns status
+        const updateReturnReq = {
+          tuple: {
+            old: { t_asset_returns: { return_id: request.requestNumber } },
+            new: { t_asset_returns: { status: 'Cancelled', remarks: 'Withdrawn by employee' } }
+          }
         };
-        await this.requestService.completeUserTask(req3 as any);
+        await this.requestService.createEntryForReturn(updateReturnReq);
+
+        this.notificationService.showToast('Return request withdrawn successfully.', 'info');
+      } else {
+        // Withdraw Standard Request: update t_asset_requests status
+        const updateReq = {
+          tuple: {
+            old: { t_asset_requests: { request_id: request.requestNumber } },
+            new: { t_asset_requests: { status: 'Rejected' } }
+          }
+        };
+        await this.Getassetidbyapprovalid(request.requestNumber);
+        await this.requestService.submitNewRequestForm(updateReq);
+
+        console.log("approval id222222222222", this.approval_id);
+
+        const updateReq2 = {
+          tuple: {
+            old: { t_request_approvals: { approval_id: this.approval_id } },
+            new: { t_request_approvals: { status: 'Rejected' } }
+          }
+        };
+        var res3 = await this.requestService.createEntryForRequestor(updateReq2);
+        console.log("response 3", res3);
+
+        await this.Getassetidbyapprovalid(request.requestNumber);
+        console.log("response 4", this.task_id);
+
+        // Complete the BPM task
+        console.log('Taskid:', this.task_id);
+        if (this.task_id) {
+          const req3 = {
+            TaskId: `${this.task_id}`,
+            Action: 'COMPLETE'
+          };
+          await this.requestService.completeUserTask(req3 as any);
+        }
+        this.notificationService.showToast('Request withdrawn successfully.', 'info');
       }
-      this.notificationService.showToast('Request withdrawn successfully.', 'info');
+
       this.closeTrackingModal();
       await this.loadRequests();
     } catch (error) {
@@ -649,7 +671,7 @@ export class MyRequestsComponent implements OnInit {
 
     // 2. Patch the form values
     const subCatValue = request.category || request.subCategory || '';
-    
+
     this.resubmitForm.patchValue({
       requestNumber: request.requestNumber,
       requesterName: request.requesterName || '',
