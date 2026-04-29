@@ -43,7 +43,7 @@ export class AllocationTicketsComponent implements OnInit {
   drawerOpen = false;
   assetManagerNameForThisUser: string = "";
   assetManagerIDForThisUser: string = "";
-  
+
   // Search and Filter
   searchTerm: string = '';
   selectedAssetType: string = '';
@@ -52,7 +52,7 @@ export class AllocationTicketsComponent implements OnInit {
   assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
   subCategoryMap: Map<string, string> = new Map();
 
-  
+
   // Pagination
   currentPage: number = 1;
   pageSize: number = 5;
@@ -149,6 +149,8 @@ export class AllocationTicketsComponent implements OnInit {
 
       // Sync return tickets load
       await this.loadReturnTickets();
+      // Merge return tickets into allTickets so they appear in the table
+      this.allTickets = [...this.allTickets, ...this.returnTickets];
       // Load resolved history
       await this.loadResolvedTickets();
     } catch (err) {
@@ -176,6 +178,20 @@ export class AllocationTicketsComponent implements OnInit {
         const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
         console.log('Processed Return Tuples:', tupleArray);
         this.returnTickets = tupleArray.map((t: any) => this.mapReturnTupleToEnrichedTicket(t));
+
+        // Enrich each return ticket with full asset details from m_assets
+        for (const ticket of this.returnTickets) {
+          if (ticket.assetId && ticket.assetId !== '—') {
+            const asset = await this.requestService.getAssetDetailsById(ticket.assetId);
+            if (asset) {
+              ticket.assetName = asset.asset_name || ticket.assetName;
+              ticket.assetType = asset.type_id || ticket.assetType;
+              ticket.subCategory = asset.sub_category_id || ticket.subCategory;
+              ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
+            }
+          }
+        }
+
         console.log('Return Tickets Statuses:', this.returnTickets.map(t => `${t.ticketId}: ${t.status}`));
       }
     } catch (err) {
@@ -196,10 +212,10 @@ export class AllocationTicketsComponent implements OnInit {
         const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
         this.resolvedTickets = tupleArray
           .map((t: any) => this.mapTupleToEnrichedTicket(t))
-          .filter(t => 
-            t.status === RequestStatus.COMPLETED || 
-            t.status === RequestStatus.APPROVED || 
-            t.status === RequestStatus.REJECTED || 
+          .filter(t =>
+            t.status === RequestStatus.COMPLETED ||
+            t.status === RequestStatus.APPROVED ||
+            t.status === RequestStatus.REJECTED ||
             t.status === RequestStatus.CANCELLED
           );
       }
@@ -208,14 +224,14 @@ export class AllocationTicketsComponent implements OnInit {
       try {
         const warrantyRequests = await this.requestService.fetchAllWarrantyRequests();
         const resolvedWarrantyTickets = warrantyRequests
-          .filter(req => 
-            req.status === RequestStatus.COMPLETED || 
-            req.status === RequestStatus.APPROVED || 
-            req.status === RequestStatus.REJECTED || 
+          .filter(req =>
+            req.status === RequestStatus.COMPLETED ||
+            req.status === RequestStatus.APPROVED ||
+            req.status === RequestStatus.REJECTED ||
             req.status === RequestStatus.CANCELLED
           )
           .map(req => this.mapWarrantyToEnrichedTicket(req));
-        
+
         this.resolvedTickets = [...this.resolvedTickets, ...resolvedWarrantyTickets];
         console.log(`Merged ${resolvedWarrantyTickets.length} resolved warranty tickets`);
       } catch (wErr) {
@@ -277,7 +293,7 @@ export class AllocationTicketsComponent implements OnInit {
       assetType: 'Hardware',
       subCategory: 'N/A',
       assetName: 'Asset Return',
-      assetId: this.getVal(returnData?.asset_id) ?? '—',
+      assetId: this.getVal(returnData?.temp1) ?? '—',
       warrantyExpiry: '—',
       availabilityStatus: 'N/A',
       assignedDate: this.getVal(returnData?.return_date) ?? '',
@@ -291,11 +307,12 @@ export class AllocationTicketsComponent implements OnInit {
         requestNumber: this.getVal(returnData?.return_id) ?? '',
         requesterId: this.getVal(returnData?.requested_by) ?? '',
         requesterName: this.getVal(userData?.name) ?? '',
-        requestType: 'RETURN_ASSET' as any,
+        requestType: RequestType.RETURN_ASSET,
         status,
         currentStage: ApprovalStage.ALLOCATION,
         requestDate: this.getVal(returnData?.return_date) ?? '',
         lastUpdated: this.getVal(returnData?.return_date) ?? '',
+        assignedAssetId: this.getVal(returnData?.temp1) ?? '',
         approvalChain: [{ stage: ApprovalStage.ALLOCATION, action: 'Pending' }],
         comments: []
       } as any
@@ -431,8 +448,8 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   get unresolvedTickets(): EnrichedTicket[] {
-    return this.allTickets.filter(t => 
-      t.status === 'Pending' || 
+    return this.allTickets.filter(t =>
+      t.status === 'Pending' ||
       t.status === 'In Progress'
     );
   }
@@ -442,18 +459,19 @@ export class AllocationTicketsComponent implements OnInit {
 
     // Apply Search
     let filtered = source.filter(t => {
-      const matchesSearch = !this.searchTerm || 
+      const matchesSearch = !this.searchTerm ||
         t.ticketId.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         t.requestorName.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         t.subCategory.toLowerCase().includes(this.searchTerm.toLowerCase());
-      
-      const matchesType = !this.selectedAssetType || t.assetType === this.selectedAssetType;
-      
-      const matchesRequestType = !this.selectedRequestType || 
-        (this.selectedRequestType === 'new' && t.rawRequest.requestType === RequestType.NEW_ASSET) ||
-        (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY);
 
-      const matchesResolvedStatus = this.activeTab !== 'resolved' || !this.selectedResolvedStatus || 
+      const matchesType = !this.selectedAssetType || t.assetType === this.selectedAssetType;
+
+      const matchesRequestType = !this.selectedRequestType ||
+        (this.selectedRequestType === 'new' && t.rawRequest.requestType === RequestType.NEW_ASSET) ||
+        (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY) ||
+        (this.selectedRequestType === 'return' && t.rawRequest.requestType === RequestType.RETURN_ASSET);
+
+      const matchesResolvedStatus = this.activeTab !== 'resolved' || !this.selectedResolvedStatus ||
         (this.selectedResolvedStatus === 'Approved' && (t.status === RequestStatus.COMPLETED || t.status === RequestStatus.APPROVED)) ||
         (this.selectedResolvedStatus === 'Rejected' && t.status === RequestStatus.REJECTED);
 
@@ -517,7 +535,7 @@ export class AllocationTicketsComponent implements OnInit {
 
   async allocate(ticket: EnrichedTicket): Promise<void> {
 
-    debugger
+
     var req1 = {
       tuple: {
         old: {
@@ -581,7 +599,7 @@ export class AllocationTicketsComponent implements OnInit {
       Action: 'COMPLETE'
     }
     await this.requestService.completeUserTask(req4 as any)
-    
+
     // Notify Asset Manager for Final Confirmation
     this.mailService.sendAllocationCompletionNotification({
       requestId: ticket.ticketId,
@@ -594,7 +612,7 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async reject(ticket: EnrichedTicket): Promise<void> {
-    debugger;
+
 
     this.requestService.rejectRequest(
       ticket.rawRequest.id,
@@ -606,7 +624,7 @@ export class AllocationTicketsComponent implements OnInit {
     this.loadTickets();
   }
   async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
-    debugger;
+
     console.log("Starting allocateAssetReturn for:", ticket.ticketId);
 
     if (!ticket.ticketId || ticket.ticketId === '—' || !ticket.approvalid || ticket.approvalid === '—') {

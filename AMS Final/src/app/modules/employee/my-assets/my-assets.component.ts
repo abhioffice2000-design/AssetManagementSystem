@@ -316,7 +316,8 @@ export class MyAssetsComponent implements OnInit {
                 requested_by: `${user.id}`,
                 return_date: formattedDate,
                 status: 'Pending',
-                remarks: 'waiting for approval'
+                remarks: this.actionForm.value.comments || 'waiting for approval',
+                temp1: this.selectedAsset?.id || ''
               }
             }
           }
