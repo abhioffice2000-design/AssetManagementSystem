@@ -33,6 +33,11 @@
         Resolved
         <span class="tab-count resolved-count" *ngIf="resolvedTickets.length > 0">{{ resolvedTickets.length }}</span>
       </button>
+      <button [class.active]="activeTab === 'resolvedReturn'" (click)="setTab('resolvedReturn')">
+        <span class="material-icons">assignment_return</span>
+        Resolved Return Tickets
+        <span class="tab-count resolved-count" *ngIf="resolvedReturnTickets.length > 0">{{ resolvedReturnTickets.length }}</span>
+      </button>
 
 
       <!-- Search & Filter Bar -->
@@ -61,7 +66,7 @@
         </ng-container>
 
         <!-- Filter for Resolved Tab -->
-        <ng-container *ngIf="activeTab === 'resolved'">
+        <ng-container *ngIf="activeTab === 'resolved' || activeTab === 'resolvedReturn'">
           <select class="asset-filter" [(ngModel)]="selectedResolvedStatus" (ngModelChange)="onFilterChange()"
             style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
             <option value="">All Resolved</option>

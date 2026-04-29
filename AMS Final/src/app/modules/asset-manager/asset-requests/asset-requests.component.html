@@ -95,7 +95,7 @@
           placeholder="Search by request number, requester, or category..." />
       </div>
       <div class="filter-group">
-        <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
+        <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()" *ngIf="activeTab !== 'return'">
           <option value="">All Urgencies</option>
           <option *ngFor="let u of urgencies" [value]="u">{{ u }}</option>
         </select>
@@ -360,7 +360,7 @@
               <span>{{ detailRequest.assetType }}<span *ngIf="detailRequest.category && detailRequest.category !== ''">
                   — {{ detailRequest.category }}</span></span>
             </div>
-            <div class="detail-item" *ngIf="detailRequest.requestType !== 'Extend Warranty'">
+            <div class="detail-item" *ngIf="detailRequest.requestType !== 'Extend Warranty' && detailRequest.requestType !== 'Return Asset'">
               <label>Urgency</label>
               <span class="urgency-badge" [ngClass]="getUrgencyClass(detailRequest.urgency)">{{ detailRequest.urgency |
                 uppercase }}</span>
