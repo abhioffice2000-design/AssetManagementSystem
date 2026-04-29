@@ -428,7 +428,8 @@ export class AssetService {
       cost: parseFloat(assetData?.cost) || 0,
       condition: this.mapToAssetCondition(this.getNullableValue(assetData?.condition) || 'Good'),
       notes: this.getNullableValue(assetData?.notes),
-      requestId: this.getNullableValue(assetData?.temp2)
+      requestId: this.getNullableValue(assetData?.temp2),
+      reminderDays: parseInt(this.getNullableValue(assetData?.temp3) || '30')
     };
   }
 
@@ -944,7 +945,7 @@ export class AssetService {
             <status>${asset.status || 'Available'}</status>
             <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp3 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp3>${asset.reminderDays || 30}</temp3>
             <temp4 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp5 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp6 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />

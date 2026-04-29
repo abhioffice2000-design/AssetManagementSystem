@@ -198,9 +198,28 @@ export class AllocationTicketsComponent implements OnInit {
           .map((t: any) => this.mapTupleToEnrichedTicket(t))
           .filter(t => 
             t.status === RequestStatus.COMPLETED || 
+            t.status === RequestStatus.APPROVED || 
             t.status === RequestStatus.REJECTED || 
             t.status === RequestStatus.CANCELLED
           );
+      }
+
+      // Fetch Warranty Extension Resolved Tickets
+      try {
+        const warrantyRequests = await this.requestService.fetchAllWarrantyRequests();
+        const resolvedWarrantyTickets = warrantyRequests
+          .filter(req => 
+            req.status === RequestStatus.COMPLETED || 
+            req.status === RequestStatus.APPROVED || 
+            req.status === RequestStatus.REJECTED || 
+            req.status === RequestStatus.CANCELLED
+          )
+          .map(req => this.mapWarrantyToEnrichedTicket(req));
+        
+        this.resolvedTickets = [...this.resolvedTickets, ...resolvedWarrantyTickets];
+        console.log(`Merged ${resolvedWarrantyTickets.length} resolved warranty tickets`);
+      } catch (wErr) {
+        console.warn('Failed to load resolved warranty tickets for main view:', wErr);
       }
     } catch (err) {
       console.error('Failed to load resolved tickets:', err);
@@ -343,6 +362,31 @@ export class AllocationTicketsComponent implements OnInit {
     };
   }
 
+  /**
+   * Maps an AssetRequest (typically from Warranty Extension table) to EnrichedTicket.
+   */
+  private mapWarrantyToEnrichedTicket(req: AssetRequest): EnrichedTicket {
+    return {
+      taskid: req.taskid || '—',
+      approvalid: req.approvalId || '—',
+      ticketId: req.id || '—',
+      requestorName: req.requesterName || '—',
+      assetType: req.assetType || '—',
+      subCategory: req.subCategory || '—',
+      assetName: req.assetName || '—',
+      assetId: req.assignedAssetId || '—',
+      warrantyExpiry: req.assignedWarrantyExpiry || '—',
+      availabilityStatus: 'N/A',
+      assignedDate: req.requestDate || '',
+      assetManagerName: '—',
+      teamLeadName: '—',
+      urgency: req.urgency || '—',
+      reason: req.justification || '—',
+      status: req.status,
+      rawRequest: req
+    };
+  }
+
   /** Safely extracts a string value; returns undefined for xsi:nil / null objects or blanks. */
   private getVal(value: any): string | undefined {
     if (value === null || value === undefined) return undefined;
@@ -389,7 +433,6 @@ export class AllocationTicketsComponent implements OnInit {
   get unresolvedTickets(): EnrichedTicket[] {
     return this.allTickets.filter(t => 
       t.status === 'Pending' || 
-      t.status === 'Approved' || 
       t.status === 'In Progress'
     );
   }
@@ -407,7 +450,8 @@ export class AllocationTicketsComponent implements OnInit {
       const matchesType = !this.selectedAssetType || t.assetType === this.selectedAssetType;
       
       const matchesRequestType = !this.selectedRequestType || 
-        (this.selectedRequestType === 'new' && t.rawRequest.requestType === RequestType.NEW_ASSET);
+        (this.selectedRequestType === 'new' && t.rawRequest.requestType === RequestType.NEW_ASSET) ||
+        (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY);
 
       const matchesResolvedStatus = this.activeTab !== 'resolved' || !this.selectedResolvedStatus || 
         (this.selectedResolvedStatus === 'Approved' && (t.status === RequestStatus.COMPLETED || t.status === RequestStatus.APPROVED)) ||

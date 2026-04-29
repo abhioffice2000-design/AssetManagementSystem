@@ -10,7 +10,7 @@
       <div class="header-stats">
         <div class="stat-pill pending-pill">
           <span class="material-icons">security</span>
-          <span>{{ warrantyTickets.length }} Pending</span>
+          <span>{{ pendingWarrantyCount }} Pending</span>
         </div>
         <div class="stat-pill resolved-pill">
           <span class="material-icons">task_alt</span>
@@ -24,7 +24,7 @@
         <button [class.active]="activeTab === 'pending'" (click)="setTab('pending')">
           <span class="material-icons">pending_actions</span>
           Pending Requests
-          <span class="tab-count" *ngIf="warrantyTickets.length > 0">{{ warrantyTickets.length }}</span>
+          <span class="tab-count" *ngIf="pendingWarrantyCount > 0">{{ pendingWarrantyCount }}</span>
         </button>
         <button [class.active]="activeTab === 'resolved'" (click)="setTab('resolved')">
           <span class="material-icons">task_alt</span>
@@ -33,18 +33,21 @@
         </button>
       </div>
 
-      <div class="filter-actions">
-        <div class="search-box">
-          <span class="material-icons">search</span>
-          <input type="text" [(ngModel)]="searchTerm" placeholder="Search...">
+      <div class="filter-actions ml-auto" style="display: flex; gap: 12px; align-items: center; margin-left: auto;">
+        <div class="search-box" style="position: relative;">
+          <span class="material-icons" style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 18px; color: #94a3b8;">search</span>
+          <input type="text" [(ngModel)]="searchTerm" placeholder="Search..." 
+                 style="padding: 8px 8px 8px 32px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s; width: 220px;">
         </div>
         
-        <select class="asset-filter" [(ngModel)]="selectedAssetType">
+        <select class="asset-filter" *ngIf="activeTab === 'pending'" [(ngModel)]="selectedAssetType"
+                style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
           <option value="">All Asset Types</option>
           <option *ngFor="let opt of assetTypeOptions" [value]="opt">{{ opt }}</option>
         </select>
 
-        <select class="asset-filter" *ngIf="activeTab === 'resolved'" [(ngModel)]="selectedResolvedStatus">
+        <select class="asset-filter" *ngIf="activeTab === 'resolved'" [(ngModel)]="selectedResolvedStatus"
+                style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
           <option value="">All Resolved</option>
           <option value="Approved">Approved Requests</option>
           <option value="Rejected">Rejected Requests</option>
