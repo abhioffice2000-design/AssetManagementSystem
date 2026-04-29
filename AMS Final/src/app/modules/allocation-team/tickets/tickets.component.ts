@@ -34,13 +34,20 @@ export interface EnrichedTicket {
 })
 export class AllocationTicketsComponent implements OnInit {
   RequestType = RequestType;
-  activeTab: 'unresolved' | 'resolved' = 'unresolved';
+  activeTab: 'unresolved' | 'resolved' | 'resolvedReturn' = 'unresolved';
   loading = true;
   allTickets: EnrichedTicket[] = [];
   resolvedTickets: EnrichedTicket[] = [];
+  resolvedReturnTickets: EnrichedTicket[] = [];
+  currentUser: any;
   returnTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
   drawerOpen = false;
+
+  // Reject modal state
+  showRejectModal = false;
+  rejectRemarks = '';
+  ticketToReject: EnrichedTicket | null = null;
   assetManagerNameForThisUser: string = "";
   assetManagerIDForThisUser: string = "";
 
@@ -48,7 +55,10 @@ export class AllocationTicketsComponent implements OnInit {
   searchTerm: string = '';
   selectedAssetType: string = '';
   selectedRequestType: string = ''; // New filter
-  selectedResolvedStatus: string = ''; // New filter for Resolved tab
+  selectedResolvedStatus = '';
+  isSaving = false;
+  decisionRemarks = '';
+  // New filter for Resolved tab
   assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
   subCategoryMap: Map<string, string> = new Map();
 
@@ -67,8 +77,8 @@ export class AllocationTicketsComponent implements OnInit {
 
 
   async ngOnInit(): Promise<void> {      // ✅ made async
-    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
-    const userId = currentUser?.id ?? null;
+    this.currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const userId = this.currentUser?.id ?? null;
     console.log("User ID is ", userId);
     const request = { Approver_id: userId };
 
@@ -153,6 +163,8 @@ export class AllocationTicketsComponent implements OnInit {
       this.allTickets = [...this.allTickets, ...this.returnTickets];
       // Load resolved history
       await this.loadResolvedTickets();
+      // Load resolved return history
+      await this.loadResolvedReturnTickets();
     } catch (err) {
       console.error('Failed to load allocation tickets:', err);
       this.allTickets = [];
@@ -242,7 +254,35 @@ export class AllocationTicketsComponent implements OnInit {
     }
   }
 
-  setTab(tab: 'unresolved' | 'resolved'): void {
+  async loadResolvedReturnTickets(): Promise<void> {
+    try {
+      const res = await this.hs.ajax(
+        'Getallreturnrequests',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        {}
+      );
+      const tuples = this.hs.xmltojson(res, 'tuple');
+      if (tuples) {
+        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
+        this.resolvedReturnTickets = tupleArray
+          .map((t: any) => this.mapReturnTupleToEnrichedTicket(t))
+          .filter(t => 
+            t.status === RequestStatus.COMPLETED || 
+            t.status === RequestStatus.APPROVED || 
+            t.status === RequestStatus.REJECTED || 
+            t.status === RequestStatus.CANCELLED
+          );
+        console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets`);
+      } else {
+        this.resolvedReturnTickets = [];
+      }
+    } catch (err) {
+      console.error('Failed to load resolved return tickets:', err);
+      this.resolvedReturnTickets = [];
+    }
+  }
+
+  setTab(tab: 'unresolved' | 'resolved' | 'resolvedReturn'): void {
     this.activeTab = tab;
     this.currentPage = 1;
   }
@@ -437,14 +477,16 @@ export class AllocationTicketsComponent implements OnInit {
 
 
 
-  openDetails(ticket: EnrichedTicket): void {
+  viewDetails(ticket: EnrichedTicket): void {
     this.selectedTicket = ticket;
     this.drawerOpen = true;
+    this.decisionRemarks = '';
   }
 
   closeDetails(): void {
     this.drawerOpen = false;
     this.selectedTicket = null;
+    this.decisionRemarks = '';
   }
 
   get unresolvedTickets(): EnrichedTicket[] {
@@ -455,7 +497,14 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   get filteredTickets(): EnrichedTicket[] {
-    const source = this.activeTab === 'unresolved' ? this.unresolvedTickets : this.resolvedTickets;
+    let source: EnrichedTicket[] = [];
+    if (this.activeTab === 'unresolved') {
+      source = this.unresolvedTickets;
+    } else if (this.activeTab === 'resolved') {
+      source = this.resolvedTickets;
+    } else if (this.activeTab === 'resolvedReturn') {
+      source = this.resolvedReturnTickets;
+    }
 
     // Apply Search
     let filtered = source.filter(t => {
@@ -471,7 +520,7 @@ export class AllocationTicketsComponent implements OnInit {
         (this.selectedRequestType === 'warranty' && t.rawRequest.requestType === RequestType.EXTEND_WARRANTY) ||
         (this.selectedRequestType === 'return' && t.rawRequest.requestType === RequestType.RETURN_ASSET);
 
-      const matchesResolvedStatus = this.activeTab !== 'resolved' || !this.selectedResolvedStatus ||
+      const matchesResolvedStatus = (this.activeTab !== 'resolved' && this.activeTab !== 'resolvedReturn') || !this.selectedResolvedStatus ||
         (this.selectedResolvedStatus === 'Approved' && (t.status === RequestStatus.COMPLETED || t.status === RequestStatus.APPROVED)) ||
         (this.selectedResolvedStatus === 'Rejected' && t.status === RequestStatus.REJECTED);
 
@@ -548,9 +597,8 @@ export class AllocationTicketsComponent implements OnInit {
         new: {
           t_request_approvals: {
             status: "Approved",
-            remarks: "Allocated to Requestor"
+            remarks: this.decisionRemarks || "Allocated to Requestor"
           }
-
         }
 
       }
@@ -612,16 +660,71 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async reject(ticket: EnrichedTicket): Promise<void> {
+    const remarks = this.rejectRemarks || 'Rejected by Allocation Team';
 
+    try {
+      // Step 1: Update approval record to Rejected
+      const reqReject = {
+        tuple: {
+          old: {
+            t_request_approvals: {
+              approval_id: ticket.approvalid,
+            }
+          },
+          new: {
+            t_request_approvals: {
+              status: "Rejected",
+              remarks: remarks
+            }
+          }
+        }
+      };
+      console.log("Rejecting standard request:", reqReject);
+      await this.requestService.updateEntryForAllocationTeamMember(reqReject as any);
 
-    this.requestService.rejectRequest(
-      ticket.rawRequest.id,
-      'USR003',
-      'Allocation Team',
-      'Ticket rejected by allocation team.',
-      ApprovalStage.ALLOCATION
-    );
+      // Step 2: Update asset request status to Rejected
+      const rejectRequestPayload = {
+        tuple: {
+          old: { t_asset_requests: { request_id: ticket.rawRequest.id } },
+          new: { t_asset_requests: { status: 'Rejected' } }
+        }
+      };
+      await this.requestService.submitNewRequestForm(rejectRequestPayload as any);
+
+      // Step 3: Complete BPM task
+      const taskid = ticket.taskid;
+      if (taskid && taskid !== '—' && taskid !== '–' && taskid !== '-') {
+        await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+      }
+
+      this.notificationService.showToast(`Request ${ticket.ticketId} rejected.`, 'info');
+    } catch (error) {
+      console.error("Standard request rejection failed:", error);
+      this.notificationService.showToast(`Failed to reject request ${ticket.ticketId}.`, 'error');
+    }
+
     this.loadTickets();
+    if (!this.decisionRemarks.trim()) {
+      alert('Remarks are mandatory for rejection.');
+      return;
+    }
+
+    try {
+      await this.requestService.rejectRequest(
+        ticket.rawRequest.id,
+        this.currentUser.id,
+        this.currentUser.name,
+        this.decisionRemarks,
+        ApprovalStage.ALLOCATION,
+        ticket.approvalid
+      );
+      this.notificationService.showToast('Request rejected successfully', 'success');
+      this.closeDetails();
+      await this.loadTickets();
+    } catch (error) {
+      console.error('Rejection failed:', error);
+      this.notificationService.showToast('Failed to reject request', 'error');
+    }
   }
   async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
 
@@ -712,6 +815,17 @@ export class AllocationTicketsComponent implements OnInit {
         console.warn("Skipping Step 3: No valid TaskID found in initial data or Step 1 response.");
       }
 
+      // Send email to Asset Manager for final confirmation
+      this.mailService.sendReturnRequestNotification({
+        stage: 'alloc_approved',
+        returnId: ticket.ticketId,
+        employeeName: ticket.requestorName,
+        assetName: ticket.assetName,
+        remarks: "Allocated to Asset Manager",
+        actionByName: 'Allocation Team Member',
+        nextApproverName: 'Asset Manager'
+      });
+
       console.log("All steps finished for return ticket:", ticket.ticketId);
       this.loadTickets();
 
@@ -721,34 +835,112 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async rejectAssetReturn(ticket: EnrichedTicket): Promise<void> {
-    var reqReject = {
-      tuple: {
-        old: {
-          t_asset_return_approvals: {
-            return_approval_id: ticket.approvalid,
-          }
-        },
-        new: {
-          t_asset_return_approvals: {
-            status: "Rejected",
-            remarks: "Rejected by Allocation Team"
+    const remarks = this.rejectRemarks || 'Rejected by Allocation Team';
+
+    try {
+      // Step 1: Update current return approval status to "Rejected"
+      const reqReject = {
+        tuple: {
+          old: {
+            t_asset_return_approvals: {
+              return_approval_id: ticket.approvalid,
+            }
+          },
+          new: {
+            t_asset_return_approvals: {
+              status: "Rejected",
+              remarks: remarks
+            }
           }
         }
-      }
-    }
-    console.log("Rejecting return request:", reqReject);
-    await this.requestService.updateEntryForAllocationTeamMemberAssetReturn(reqReject as any);
+      };
+      console.log("Step 1: Rejecting return request:", reqReject);
+      await this.requestService.updateEntryForAllocationTeamMemberAssetReturn(reqReject as any);
 
-    var taskid = ticket.taskid;
-    if (taskid && taskid !== '—') {
-      var req4 = {
-        TaskId: `${taskid}`,
-        Action: 'COMPLETE'
+      // Step 2: Update t_asset_returns main table status to 'Rejected'
+      const updateReturnReq = {
+        tuple: {
+          old: {
+            t_asset_returns: {
+              return_id: ticket.ticketId
+            }
+          },
+          new: {
+            t_asset_returns: {
+              status: 'Rejected',
+              remarks: remarks
+            }
+          }
+        }
+      };
+      try {
+        await this.requestService.createEntryForReturn(updateReturnReq as any);
+        console.log("Step 2: t_asset_returns updated to Rejected");
+      } catch (e) {
+        console.error("Failed to update t_asset_returns status:", e);
       }
-      await this.requestService.completeUserTask(req4 as any)
+
+      // Step 3: Complete BPM task
+      const taskid = ticket.taskid;
+      if (taskid && taskid !== '—' && taskid !== '–' && taskid !== '-') {
+        const req4 = {
+          TaskId: `${taskid}`,
+          Action: 'COMPLETE'
+        };
+        await this.requestService.completeUserTask(req4 as any);
+        console.log("Step 3: BPM task completed");
+      }
+
+      // Send email to Employee about rejection
+      this.mailService.sendReturnRequestNotification({
+        stage: 'alloc_rejected',
+        returnId: ticket.ticketId,
+        employeeName: ticket.requestorName,
+        assetName: ticket.assetName,
+        remarks: remarks,
+        actionByName: 'Allocation Team Member'
+      });
+
+      this.notificationService.showToast(`Return request ${ticket.ticketId} rejected.`, 'info');
+    } catch (error) {
+      console.error("Return request rejection failed:", error);
+      this.notificationService.showToast(`Failed to reject return request ${ticket.ticketId}.`, 'error');
     }
-    console.log("task id", taskid);
+
     this.loadTickets();
+  }
+
+  // ─── Reject Modal Methods ───────────────────────────────────────────────
+
+  openRejectModal(ticket: EnrichedTicket): void {
+    this.ticketToReject = ticket;
+    this.rejectRemarks = '';
+    this.showRejectModal = true;
+  }
+
+  closeRejectModal(): void {
+    this.showRejectModal = false;
+    this.ticketToReject = null;
+    this.rejectRemarks = '';
+  }
+
+  async confirmReject(): Promise<void> {
+    if (!this.ticketToReject) return;
+
+    if (!this.rejectRemarks || this.rejectRemarks.trim() === '') {
+      alert('Rejection remarks are required.');
+      return;
+    }
+
+    const ticket = this.ticketToReject;
+    this.closeRejectModal();
+    this.closeDetails();
+
+    if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
+      await this.rejectAssetReturn(ticket);
+    } else {
+      await this.reject(ticket);
+    }
   }
 
 

@@ -508,6 +508,187 @@ Asset Management System
   }
 
 
+  /**
+   * Sends email notifications for Return Request status changes at every stage.
+   * 
+   * Stages:
+   *   - 'submitted'      → Employee submitted, notify Asset Manager
+   *   - 'am_approved'     → Asset Manager approved, notify Allocation Team
+   *   - 'am_rejected'     → Asset Manager rejected, notify Employee
+   *   - 'alloc_approved'  → Allocation Team approved, notify Asset Manager for hand-off
+   *   - 'alloc_rejected'  → Allocation Team rejected, notify Employee
+   *   - 'completed'       → Final approval/hand-off done, notify Employee
+   */
+  async sendReturnRequestNotification(params: {
+    stage: 'submitted' | 'am_approved' | 'am_rejected' | 'alloc_approved' | 'alloc_rejected' | 'completed';
+    returnId: string;
+    employeeName: string;
+    assetName?: string;
+    remarks?: string;
+    actionByName?: string;
+    nextApproverName?: string;
+  }): Promise<void> {
+    console.log(`[MailService] Return Request notification (${params.stage}) for ${params.returnId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const asset = params.assetName || 'Requested Asset';
+    const remarks = params.remarks || '—';
+    const actionBy = params.actionByName || 'System';
+
+    let subject = '';
+    let body = '';
+    let recipientName = '';
+
+    switch (params.stage) {
+      case 'submitted':
+        recipientName = params.nextApproverName || 'Asset Manager';
+        subject = `[Return Request] New Return Request: ${params.returnId}`;
+        body = `
+Dear ${recipientName},
+
+A new asset return request has been submitted and requires your review.
+
+Return Request Details:
+---------------------------------------------
+Return ID: ${params.returnId}
+Employee: ${params.employeeName}
+Asset: ${asset}
+---------------------------------------------
+
+Please log in to the Asset Management Portal to review and take action on this return request.
+
+Best Regards,
+Asset Management System
+        `.trim();
+        break;
+
+      case 'am_approved':
+        recipientName = params.nextApproverName || 'Allocation Team';
+        subject = `[Return Request] Approved by Asset Manager: ${params.returnId}`;
+        body = `
+Dear ${recipientName},
+
+A return request has been approved by the Asset Manager (${actionBy}) and is now assigned to you for processing.
+
+Return Request Details:
+---------------------------------------------
+Return ID: ${params.returnId}
+Employee: ${params.employeeName}
+Asset: ${asset}
+Manager Remarks: ${remarks}
+---------------------------------------------
+
+Action Required:
+Please process the return and confirm the asset hand-off in the Allocation Team dashboard.
+
+Best Regards,
+Asset Management System
+        `.trim();
+        break;
+
+      case 'am_rejected':
+        recipientName = params.employeeName;
+        subject = `[Return Request] Rejected by Asset Manager: ${params.returnId}`;
+        body = `
+Dear ${params.employeeName},
+
+Your return request has been reviewed and rejected by the Asset Manager (${actionBy}).
+
+Return Request Details:
+---------------------------------------------
+Return ID: ${params.returnId}
+Asset: ${asset}
+Status: Rejected
+Rejection Reason: ${remarks}
+---------------------------------------------
+
+If you believe this was in error, please contact the Asset Manager or submit a new return request with updated details.
+
+Best Regards,
+Asset Management System
+        `.trim();
+        break;
+
+      case 'alloc_approved':
+        recipientName = params.nextApproverName || 'Asset Manager';
+        subject = `[Return Request] Allocation Team Processed: ${params.returnId}`;
+        body = `
+Dear ${recipientName},
+
+The Allocation Team (${actionBy}) has processed the return request and confirmed the asset hand-off.
+
+Return Request Details:
+---------------------------------------------
+Return ID: ${params.returnId}
+Employee: ${params.employeeName}
+Asset: ${asset}
+Allocation Remarks: ${remarks}
+---------------------------------------------
+
+Action Required:
+Please provide the final confirmation in your dashboard to close this return request.
+
+Best Regards,
+Asset Management System
+        `.trim();
+        break;
+
+      case 'alloc_rejected':
+        recipientName = params.employeeName;
+        subject = `[Return Request] Rejected by Allocation Team: ${params.returnId}`;
+        body = `
+Dear ${params.employeeName},
+
+Your return request has been reviewed and rejected by the Allocation Team (${actionBy}).
+
+Return Request Details:
+---------------------------------------------
+Return ID: ${params.returnId}
+Asset: ${asset}
+Status: Rejected
+Rejection Reason: ${remarks}
+---------------------------------------------
+
+If you still wish to return this asset, please submit a new return request.
+
+Best Regards,
+Asset Management System
+        `.trim();
+        break;
+
+      case 'completed':
+        recipientName = params.employeeName;
+        subject = `[Return Request] Completed: ${params.returnId}`;
+        body = `
+Dear ${params.employeeName},
+
+Your return request has been fully processed and completed.
+
+Return Request Details:
+---------------------------------------------
+Return ID: ${params.returnId}
+Asset: ${asset}
+Status: Completed
+Final Remarks: ${remarks}
+---------------------------------------------
+
+The asset has been successfully returned and records have been updated. No further action is required.
+
+Best Regards,
+Asset Management System
+        `.trim();
+        break;
+    }
+
+    try {
+      await this.sendSoapEmail(testEmail, recipientName, subject, body);
+      console.log(`[MailService] Return notification (${params.stage}) sent successfully`);
+    } catch (err) {
+      console.error(`[MailService] Failed to send return notification (${params.stage}):`, err);
+    }
+  }
+
+
 
   /**
    * Helper to send a raw SOAP email via Cordys WelcomeEmail_BPM activity.

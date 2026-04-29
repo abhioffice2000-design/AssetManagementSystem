@@ -494,3 +494,207 @@
 .mb-32 { margin-bottom: 32px; }
 .mb-12 { margin-bottom: 12px; }
 .text-right { text-align: right; }
+ 
+ /* Rejection Details Card */
+ .rejection-details-card {
+   background: #fff;
+   border: 1px solid #fee2e2;
+   border-radius: 16px;
+   overflow: hidden;
+   box-shadow: 0 4px 20px rgba(220, 38, 38, 0.05);
+ 
+   .rejection-header {
+     display: flex;
+     align-items: center;
+     gap: 16px;
+     padding: 16px 20px;
+     background: #fff1f2;
+     border-bottom: 1px solid #fee2e2;
+ 
+     .rejection-icon-box {
+       width: 44px;
+       height: 44px;
+       background: #ef4444;
+       border-radius: 12px;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       color: #fff;
+       box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+ 
+       .material-icons-outlined {
+         font-size: 24px;
+       }
+     }
+ 
+     .rejection-title-group {
+       flex: 1;
+ 
+       .rejection-title {
+         margin: 0;
+         font-size: 1.1rem;
+         font-weight: 800;
+         color: #991b1b;
+         letter-spacing: -0.01em;
+       }
+ 
+       .rejection-subtitle {
+         margin: 2px 0 0;
+         font-size: 0.8rem;
+         color: #b91c1c;
+         opacity: 0.8;
+       }
+     }
+   }
+ 
+   .rejection-content {
+     padding: 20px;
+   }
+ 
+   .rejection-info-row {
+     display: grid;
+     grid-template-columns: 1fr 1fr;
+     gap: 20px;
+ 
+     .info-item {
+       display: flex;
+       flex-direction: column;
+       gap: 4px;
+ 
+       .info-label {
+         font-size: 0.65rem;
+         font-weight: 700;
+         color: #64748b;
+         letter-spacing: 0.05em;
+       }
+ 
+       .info-value {
+         font-size: 0.95rem;
+         font-weight: 600;
+         color: #1e293b;
+       }
+ 
+       .highlighted-stage {
+         color: #ef4444;
+       }
+     }
+   }
+ 
+   .rejection-reason-box {
+     padding: 16px;
+     background: #f8fafc;
+     border-radius: 12px;
+     border: 1px solid #e2e8f0;
+ 
+     .reason-label {
+       display: block;
+       font-size: 0.7rem;
+       font-weight: 800;
+       color: #475569;
+       margin-bottom: 8px;
+       letter-spacing: 0.02em;
+     }
+ 
+     .reason-text {
+       margin: 0;
+       font-size: 0.95rem;
+       line-height: 1.6;
+       color: #1e293b;
+       font-style: italic;
+       font-weight: 500;
+     }
+   }
+ }
+ 
+ /* File Upload Styles */
+ .file-upload-container {
+   width: 100%;
+ }
+ 
+ .file-input-wrapper {
+   position: relative;
+   border: 2px dashed #cbd5e1;
+   border-radius: 12px;
+   background: #fff;
+   transition: all 0.2s ease;
+   overflow: hidden;
+ 
+   &:hover {
+     border-color: #3b82f6;
+     background: #f0f9ff;
+   }
+ 
+   .hidden-input {
+     position: absolute;
+     width: 100%;
+     height: 100%;
+     opacity: 0;
+     cursor: pointer;
+     z-index: 2;
+   }
+ 
+   .file-label {
+     display: flex;
+     align-items: center;
+     gap: 12px;
+     padding: 12px 16px;
+     cursor: pointer;
+     color: #475569;
+ 
+     .material-icons-outlined {
+       font-size: 24px;
+       color: #64748b;
+     }
+ 
+     .file-text {
+       font-size: 0.9rem;
+       font-weight: 500;
+       white-space: nowrap;
+       overflow: hidden;
+       text-overflow: ellipsis;
+     }
+   }
+ }
+ 
+ .file-status-hint {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   font-size: 0.8rem;
+   color: #10b981;
+   
+   .status-dot {
+     width: 8px;
+     height: 8px;
+     background: #10b981;
+     border-radius: 50%;
+     box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+   }
+ }
+ 
+ .existing-file-hint {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   font-size: 0.75rem;
+   color: #64748b;
+   padding-left: 4px;
+ 
+   .material-icons-outlined {
+     font-size: 16px;
+   }
+ }
+ 
+ /* Animation for Resubmit Form */
+ .animate-fade-in {
+   animation: fadeIn 0.5s ease-out;
+ }
+ 
+ .animate-slide-up {
+   animation: slideUp 0.3s ease-out;
+ }
+ 
+ .radius-md { border-radius: 8px; }
+ .border-dashed { border-style: dashed !important; }
+ .text-xs { font-size: 0.75rem; }
+ .text-muted { color: #64748b; }

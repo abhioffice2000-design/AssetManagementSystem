@@ -29,6 +29,11 @@ export class MyRequestsComponent implements OnInit {
   loadingProgress = false;
   trackingSteps: any[] = [];
   overallProgress = 0;
+  rejectionInfo: { stage: string, reason: string, approver: string } | null = null;
+
+  // File upload for resubmit
+  selectedFileBase64: string | null = null;
+  selectedFileName: string | null = null;
 
   // Filters
   searchTerm = '';
@@ -105,14 +110,26 @@ export class MyRequestsComponent implements OnInit {
     const user = this.authService.getCurrentUser();
     if (user) {
       try {
-        // Fetch both asset requests and return requests in parallel
-        const [assetRequests, returnRequests] = await Promise.all([
+        const [assetRequests, warrantyRequests, returnRequests] = await Promise.all([
           this.requestService.getRequestsByUserIdFromCordys(user.id),
+          this.requestService.fetchWarrantyRequestsForUser(user.id),
           this.requestService.fetchReturnRequestsByEmployee(user.id)
         ]);
 
-        // Merge both lists
-        this.requests = [...assetRequests, ...returnRequests];
+
+        console.log(`[MyRequests] Loaded ${assetRequests.length} asset requests and ${warrantyRequests.length} warranty requests`);
+        if (warrantyRequests.length > 0) {
+          console.log('[MyRequests] Sample Warranty Request:', warrantyRequests[0]);
+        }
+
+        // Merge both request types
+        this.requests = [...assetRequests, ...warrantyRequests, ...returnRequests];
+
+        console.log(`[MyRequests] Total requests after merge: ${this.requests.length}`);
+        console.log('[MyRequests] Request Types distribution:', this.requests.reduce((acc: any, r) => {
+          acc[r.requestType] = (acc[r.requestType] || 0) + 1;
+          return acc;
+        }, {}));
 
         // Sort by date descending
         this.requests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
@@ -130,6 +147,7 @@ export class MyRequestsComponent implements OnInit {
       const matchesSearch = !this.searchTerm ||
         req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        (req.assetName || '').toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.searchTerm.toLowerCase());
       const matchesType = !this.selectedType || req.requestType === this.selectedType;
       return matchesSearch && matchesType;
@@ -226,7 +244,8 @@ export class MyRequestsComponent implements OnInit {
 
       case RequestType.EXTEND_WARRANTY:
         return [
-          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
         ];
 
       default: // NEW_ASSET
@@ -259,11 +278,21 @@ export class MyRequestsComponent implements OnInit {
       if (request.requestType === RequestType.RETURN_ASSET) {
         // Fetch ALL approvals from t_asset_return_approvals for return requests
         const returnApprovals = await this.requestService.getReturnRequestProgress(request.id);
+
+        // Fetch all users to resolve approver_id → name
+        let allUsers: any[] = [];
+        try {
+          allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        } catch (e) {
+          console.warn('Failed to fetch users for name resolution:', e);
+        }
+        const userMap = new Map(allUsers.map((u: any) => [u.id, u.name]));
+
         progressData = returnApprovals.map((a: any) => ({
           stage: a.role || 'Unknown',
           status: a.status || 'Pending',
           approverId: a.approver_id,
-          approverName: a.role || 'Assigned Approver',
+          approverName: userMap.get(a.approver_id) || 'Assigned Approver',
           timestamp: a.action_date,
           comments: a.remarks
         }));
@@ -359,7 +388,8 @@ export class MyRequestsComponent implements OnInit {
           step.isCurrent = false;
         }
 
-        if (!currentStepFound && !step.isCompleted) {
+        // Don't mark rejected steps as "current" — they are terminal
+        if (!currentStepFound && !step.isCompleted && step.status !== 'Rejected') {
           step.isCurrent = true;
           currentStepFound = true;
         }
@@ -369,6 +399,26 @@ export class MyRequestsComponent implements OnInit {
       this.trackingSteps = this.trackingSteps.filter(step =>
         step.name !== 'To be Assigned'
       );
+
+      // 6. If any step was rejected, remove all subsequent steps (they were never reached)
+      const rejectedIndex = this.trackingSteps.findIndex(s => s.status === 'Rejected');
+      if (rejectedIndex !== -1) {
+        this.trackingSteps = this.trackingSteps.slice(0, rejectedIndex + 1);
+      }
+
+      // Extract rejection info if the request is rejected
+      if (request.status === 'Rejected') {
+        const rejectedStep = this.trackingSteps.find(step => step.status === 'Rejected');
+        if (rejectedStep) {
+          this.rejectionInfo = {
+            stage: rejectedStep.roleName,
+            reason: rejectedStep.comments || 'No reason provided',
+            approver: rejectedStep.name
+          };
+        }
+      } else {
+        this.rejectionInfo = null;
+      }
 
       this.overallProgress = this.calculateOverallProgress(request.status);
     } catch (error) {
@@ -426,9 +476,15 @@ export class MyRequestsComponent implements OnInit {
   calculateOverallProgress(requestStatus: string): number {
     const status = requestStatus.toLowerCase();
     if (status === 'completed') return 100;
-    if (status === 'rejected') return 0;
 
-    const completedCount = this.trackingSteps.filter(s => s.isCompleted).length;
+    const completedCount = this.trackingSteps.filter(s => s.isCompleted && s.status !== 'Rejected').length;
+    const totalSteps = this.trackingSteps.length;
+
+    // For rejected requests, show how far it got before rejection
+    if (status === 'rejected') {
+      if (totalSteps === 0) return 0;
+      return Math.round((completedCount / totalSteps) * 100);
+    }
 
     if (completedCount === 0) return 10;
     if (completedCount === 1) return 33;
@@ -569,40 +625,55 @@ export class MyRequestsComponent implements OnInit {
 
     try {
       this.loading = true;
-      const updateReq = {
-        tuple: {
-          old: { t_asset_requests: { request_id: request.requestNumber } },
-          new: { t_asset_requests: { status: 'Rejected' } }
-        }
-      };
-      await this.Getassetidbyapprovalid(request.requestNumber);
-      await this.requestService.submitNewRequestForm(updateReq);
-      
 
-      console.log("approval id222222222222", this.approval_id);
-
-      const updateReq2 = {
-        tuple: {
-          old: { t_request_approvals: { approval_id: this.approval_id } },
-          new: { t_request_approvals: { status: 'Rejected' } }
-        }
-      };
-      var res3 = await this.requestService.createEntryForRequestor(updateReq2);
-      console.log("response 3", res3);
-
-      await this.Getassetidbyapprovalid(request.requestNumber);
-      console.log("response 4", this.task_id);
-
-      // Complete the BPM task
-      console.log('Taskid:', this.task_id);
-      if (this.task_id) {
-        const req3 = {
-          TaskId: `${this.task_id}`,
-          Action: 'COMPLETE'
+      if (request.requestType === RequestType.RETURN_ASSET) {
+        // Withdraw Return Request: update t_asset_returns status
+        const updateReturnReq = {
+          tuple: {
+            old: { t_asset_returns: { return_id: request.requestNumber } },
+            new: { t_asset_returns: { status: 'Cancelled', remarks: 'Withdrawn by employee' } }
+          }
         };
-        await this.requestService.completeUserTask(req3 as any);
+        await this.requestService.createEntryForReturn(updateReturnReq);
+
+        this.notificationService.showToast('Return request withdrawn successfully.', 'info');
+      } else {
+        // Withdraw Standard Request: update t_asset_requests status
+        const updateReq = {
+          tuple: {
+            old: { t_asset_requests: { request_id: request.requestNumber } },
+            new: { t_asset_requests: { status: 'Rejected' } }
+          }
+        };
+        await this.Getassetidbyapprovalid(request.requestNumber);
+        await this.requestService.submitNewRequestForm(updateReq);
+
+        console.log("approval id222222222222", this.approval_id);
+
+        const updateReq2 = {
+          tuple: {
+            old: { t_request_approvals: { approval_id: this.approval_id } },
+            new: { t_request_approvals: { status: 'Rejected' } }
+          }
+        };
+        var res3 = await this.requestService.createEntryForRequestor(updateReq2);
+        console.log("response 3", res3);
+
+        await this.Getassetidbyapprovalid(request.requestNumber);
+        console.log("response 4", this.task_id);
+
+        // Complete the BPM task
+        console.log('Taskid:', this.task_id);
+        if (this.task_id) {
+          const req3 = {
+            TaskId: `${this.task_id}`,
+            Action: 'COMPLETE'
+          };
+          await this.requestService.completeUserTask(req3 as any);
+        }
+        this.notificationService.showToast('Request withdrawn successfully.', 'info');
       }
-      this.notificationService.showToast('Request withdrawn successfully.', 'info');
+
       this.closeTrackingModal();
       await this.loadRequests();
     } catch (error) {
@@ -629,15 +700,48 @@ export class MyRequestsComponent implements OnInit {
     }
 
     // 2. Patch the form values
+    const subCatValue = request.category || request.subCategory || '';
+
     this.resubmitForm.patchValue({
       requestNumber: request.requestNumber,
       requesterName: request.requesterName || '',
       assetType: typeId,
-      subCategory: request.subCategory || '',
+      subCategory: subCatValue,
       urgency: request.urgency || 'Medium',
       justification: request.justification || '',
       hasEmailApproval: request.hasEmailApproval || false
     });
+
+    // Final check: if subCategory is set but not in available list, we should still show it
+    if (subCatValue && !this.availableSubCategories.some(s => s.name === subCatValue)) {
+      this.availableSubCategories.push({ name: subCatValue, type_id: typeId });
+    }
+  }
+
+  onFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+      if (file.size > MAX_SIZE_BYTES) {
+        this.notificationService.showToast(
+          `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 5 MB.`,
+          'error'
+        );
+        this.selectedFileBase64 = null;
+        this.selectedFileName = null;
+        event.target.value = '';
+        return;
+      }
+      this.selectedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.selectedFileBase64 = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    } else {
+      this.selectedFileBase64 = null;
+      this.selectedFileName = null;
+    }
   }
 
   onResubmitTypeChange() {
@@ -671,6 +775,20 @@ export class MyRequestsComponent implements OnInit {
       const selectedTypeObj = this.masterAssetTypes.find(t => String(t.type_id) === String(formVal.assetType));
       const typeName = selectedTypeObj ? selectedTypeObj.type_name : 'Hardware';
 
+      // Validate file upload if email approval is checked
+      if (formVal.hasEmailApproval && !this.selectedFileBase64 && !this.selectedRequest.emailApprovalDoc) {
+        this.notificationService.showToast('Please upload the email approval document.', 'error');
+        this.loading = false;
+        return;
+      }
+
+      let dbFileName = this.selectedFileName || this.selectedRequest.emailApprovalDoc || '';
+      if (dbFileName.length > 50) {
+        const extIdx = dbFileName.lastIndexOf('.');
+        const ext = extIdx >= 0 ? dbFileName.substring(extIdx) : '';
+        dbFileName = dbFileName.substring(0, 50 - ext.length) + ext;
+      }
+
       // 1. API: UpdateT_asset_requests
       // This updates the existing record data for the same old request ID
       const updateReq = {
@@ -683,12 +801,27 @@ export class MyRequestsComponent implements OnInit {
               urgency: formVal.urgency,
               email_approval: String(formVal.hasEmailApproval),
               status: 'Pending',
-              temp1: formVal.subCategory
+              temp1: formVal.subCategory,
+              temp2: dbFileName,
+              document: dbFileName
             }
           }
         }
       };
       await this.requestService.submitNewRequestForm(updateReq);
+
+      // Handle File Upload if new file selected
+      if (this.selectedFileBase64) {
+        try {
+          const serverPath = await this.requestService.uploadFileToServer(this.selectedFileName!, this.selectedFileBase64);
+          if (serverPath) {
+            await this.requestService.updateRequestDocumentPath(this.selectedRequest.requestNumber, serverPath);
+          }
+        } catch (uploadErr) {
+          console.error('File upload failed during resubmit:', uploadErr);
+        }
+      }
+
       await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
 
       // 2. API: UpdateT_request_approvals
@@ -749,6 +882,9 @@ export class MyRequestsComponent implements OnInit {
   closeTrackingModal(): void {
     this.showTrackingModal = false;
     this.selectedRequest = null;
+    this.rejectionInfo = null;
+    this.selectedFileBase64 = null;
+    this.selectedFileName = null;
   }
 
   isFullyApproved(): boolean {

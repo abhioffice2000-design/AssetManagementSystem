@@ -138,6 +138,18 @@
           <span class="label">Requested By</span>
           <span class="value">{{ selectedWarrantyRequest.requesterName }}</span>
         </div>
+        <div class="summary-item manager-remarks-item" style="grid-column: span 2; background: #f0f9ff; border: 1px dashed #0ea5e9; border-radius: 8px; padding: 12px; margin-top: 8px;">
+          <span class="label" style="display: flex; align-items: center; gap: 4px; color: #0369a1; margin-bottom: 4px;">
+            <span class="material-icons" style="font-size: 16px;">comment</span>
+            Asset Manager Remarks
+          </span>
+          <span class="value" style="color: #0c4a6e; font-style: italic;" *ngIf="!loadingRemarks && managerRemarks">"{{ managerRemarks }}"</span>
+          <span class="value" style="color: #94a3b8; font-style: italic;" *ngIf="!loadingRemarks && !managerRemarks">No remarks provided by the manager.</span>
+          <span class="value" style="color: #0284c7; display: flex; align-items: center; gap: 8px;" *ngIf="loadingRemarks">
+            <span class="spinner-small"></span>
+            Loading remarks...
+          </span>
+        </div>
       </div>
 
       <div class="form-group">

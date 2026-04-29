@@ -95,7 +95,7 @@
           placeholder="Search by request number, requester, or category..." />
       </div>
       <div class="filter-group">
-        <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
+        <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()" *ngIf="activeTab !== 'return'">
           <option value="">All Urgencies</option>
           <option *ngFor="let u of urgencies" [value]="u">{{ u }}</option>
         </select>
@@ -360,7 +360,7 @@
               <span>{{ detailRequest.assetType }}<span *ngIf="detailRequest.category && detailRequest.category !== ''">
                   — {{ detailRequest.category }}</span></span>
             </div>
-            <div class="detail-item" *ngIf="detailRequest.requestType !== 'Extend Warranty'">
+            <div class="detail-item" *ngIf="detailRequest.requestType !== 'Extend Warranty' && detailRequest.requestType !== 'Return Asset'">
               <label>Urgency</label>
               <span class="urgency-badge" [ngClass]="getUrgencyClass(detailRequest.urgency)">{{ detailRequest.urgency |
                 uppercase }}</span>
@@ -494,7 +494,7 @@
           </div>
         </div>
 
-        <!-- Manager Remarks Section (for already processed requests) -->
+        <!-- Manager Remarks Section -->
         <div class="detail-section" *ngIf="detailRequest.status !== RequestStatus.PENDING && getAssetManagerRemarks(detailRequest)">
           <h4 class="detail-section-title" style="color: var(--primary);">
             <span class="material-icons-outlined">reviews</span>
@@ -502,6 +502,17 @@
           </h4>
           <div class="remarks-display-box" style="padding: 15px; background: #f0f7ff; border-radius: 12px; border-left: 4px solid var(--primary); margin-top: 10px;">
             <p style="margin: 0; font-style: italic; color: #2c5282;">"{{ getAssetManagerRemarks(detailRequest) }}"</p>
+          </div>
+        </div>
+
+        <!-- Allocation Team Remarks Section -->
+        <div class="detail-section" *ngIf="getAllocationRemarks(detailRequest)">
+          <h4 class="detail-section-title" style="color: #6366f1;">
+            <span class="material-icons-outlined">feedback</span>
+            Allocation Team Remarks
+          </h4>
+          <div class="remarks-display-box" style="padding: 15px; background: #f5f3ff; border-radius: 12px; border-left: 4px solid #6366f1; margin-top: 10px;">
+            <p style="margin: 0; font-style: italic; color: #4338ca;">"{{ getAllocationRemarks(detailRequest) }}"</p>
           </div>
         </div>
 
