@@ -29,6 +29,11 @@ export class MyRequestsComponent implements OnInit {
   loadingProgress = false;
   trackingSteps: any[] = [];
   overallProgress = 0;
+  rejectionInfo: { stage: string, reason: string, approver: string } | null = null;
+
+  // File upload for resubmit
+  selectedFileBase64: string | null = null;
+  selectedFileName: string | null = null;
 
   // Filters
   searchTerm = '';
@@ -370,6 +375,20 @@ export class MyRequestsComponent implements OnInit {
         step.name !== 'To be Assigned'
       );
 
+      // Extract rejection info if the request is rejected
+      if (request.status === 'Rejected') {
+        const rejectedStep = this.trackingSteps.find(step => step.status === 'Rejected');
+        if (rejectedStep) {
+          this.rejectionInfo = {
+            stage: rejectedStep.roleName,
+            reason: rejectedStep.comments || 'No reason provided',
+            approver: rejectedStep.name
+          };
+        }
+      } else {
+        this.rejectionInfo = null;
+      }
+
       this.overallProgress = this.calculateOverallProgress(request.status);
     } catch (error) {
       console.error('Error tracking request:', error);
@@ -629,15 +648,48 @@ export class MyRequestsComponent implements OnInit {
     }
 
     // 2. Patch the form values
+    const subCatValue = request.category || request.subCategory || '';
+    
     this.resubmitForm.patchValue({
       requestNumber: request.requestNumber,
       requesterName: request.requesterName || '',
       assetType: typeId,
-      subCategory: request.subCategory || '',
+      subCategory: subCatValue,
       urgency: request.urgency || 'Medium',
       justification: request.justification || '',
       hasEmailApproval: request.hasEmailApproval || false
     });
+
+    // Final check: if subCategory is set but not in available list, we should still show it
+    if (subCatValue && !this.availableSubCategories.some(s => s.name === subCatValue)) {
+      this.availableSubCategories.push({ name: subCatValue, type_id: typeId });
+    }
+  }
+
+  onFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+      if (file.size > MAX_SIZE_BYTES) {
+        this.notificationService.showToast(
+          `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 5 MB.`,
+          'error'
+        );
+        this.selectedFileBase64 = null;
+        this.selectedFileName = null;
+        event.target.value = '';
+        return;
+      }
+      this.selectedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.selectedFileBase64 = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    } else {
+      this.selectedFileBase64 = null;
+      this.selectedFileName = null;
+    }
   }
 
   onResubmitTypeChange() {
@@ -671,6 +723,20 @@ export class MyRequestsComponent implements OnInit {
       const selectedTypeObj = this.masterAssetTypes.find(t => String(t.type_id) === String(formVal.assetType));
       const typeName = selectedTypeObj ? selectedTypeObj.type_name : 'Hardware';
 
+      // Validate file upload if email approval is checked
+      if (formVal.hasEmailApproval && !this.selectedFileBase64 && !this.selectedRequest.emailApprovalDoc) {
+        this.notificationService.showToast('Please upload the email approval document.', 'error');
+        this.loading = false;
+        return;
+      }
+
+      let dbFileName = this.selectedFileName || this.selectedRequest.emailApprovalDoc || '';
+      if (dbFileName.length > 50) {
+        const extIdx = dbFileName.lastIndexOf('.');
+        const ext = extIdx >= 0 ? dbFileName.substring(extIdx) : '';
+        dbFileName = dbFileName.substring(0, 50 - ext.length) + ext;
+      }
+
       // 1. API: UpdateT_asset_requests
       // This updates the existing record data for the same old request ID
       const updateReq = {
@@ -683,12 +749,27 @@ export class MyRequestsComponent implements OnInit {
               urgency: formVal.urgency,
               email_approval: String(formVal.hasEmailApproval),
               status: 'Pending',
-              temp1: formVal.subCategory
+              temp1: formVal.subCategory,
+              temp2: dbFileName,
+              document: dbFileName
             }
           }
         }
       };
       await this.requestService.submitNewRequestForm(updateReq);
+
+      // Handle File Upload if new file selected
+      if (this.selectedFileBase64) {
+        try {
+          const serverPath = await this.requestService.uploadFileToServer(this.selectedFileName!, this.selectedFileBase64);
+          if (serverPath) {
+            await this.requestService.updateRequestDocumentPath(this.selectedRequest.requestNumber, serverPath);
+          }
+        } catch (uploadErr) {
+          console.error('File upload failed during resubmit:', uploadErr);
+        }
+      }
+
       await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
 
       // 2. API: UpdateT_request_approvals
@@ -749,6 +830,9 @@ export class MyRequestsComponent implements OnInit {
   closeTrackingModal(): void {
     this.showTrackingModal = false;
     this.selectedRequest = null;
+    this.rejectionInfo = null;
+    this.selectedFileBase64 = null;
+    this.selectedFileName = null;
   }
 
   isFullyApproved(): boolean {
