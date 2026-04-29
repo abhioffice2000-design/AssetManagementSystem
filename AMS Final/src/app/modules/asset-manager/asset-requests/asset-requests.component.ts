@@ -376,27 +376,78 @@ export class AssetRequestsComponent implements OnInit {
         try {
           await this.requestService.updateReturnAssetStatus(req6 as any);
 
-          // Request 2: Create next pending task for Allocation Team
-          const req7 = {
-            tuple: {
-              new: {
-                t_asset_return_approvals: {
-                  approver_id: 'usr_007', // Allocation Team ID
-                  request_id: this.selectedRequest.id,
-                  role: "Allocation Team Member",
-                  status: "Pending",
-                  remarks: this.actionComments,
+          // Check if this is the final confirmation stage
+          const isFinalConfirmation = this.selectedRequest.remarks === "Waiting for Hand-off Confirmation" || 
+                                      this.selectedRequest.currentStage?.toString().includes("Waiting") ||
+                                      (this.selectedRequest as any).status === "Pending" && (this.selectedRequest as any).role === "Asset Manager" && (this.selectedRequest as any).approverId === "usr_004" && this.selectedRequest.requesterId !== "usr_004"; // fallback heuristics
+
+          if (isFinalConfirmation || this.selectedRequest.remarks === "Waiting for Hand-off Confirmation") {
+            // This is the final stage. Complete the request.
+            console.log("Executing Final Return Confirmation...");
+            
+            // Update t_asset_returns main table status to 'Completed'
+            const updateReturnReq = {
+              tuple: {
+                old: { t_asset_returns: { return_id: this.selectedRequest.id } },
+                new: { t_asset_returns: { status: 'Completed', remarks: 'Return Completed and Confirmed' } }
+              }
+            };
+            try {
+              await this.requestService.createEntryForReturn(updateReturnReq as any);
+            } catch (e) {
+              console.error("Failed to update t_asset_returns status to Completed:", e);
+            }
+
+            const taskid = this.selectedRequest?.taskid;
+            if (taskid) {
+              await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+            }
+            this.notificationService.showToast(`Return request ${this.selectedRequest.id} completed.`, 'success');
+
+            // Send 'completed' email to Employee
+            this.mailService.sendReturnRequestNotification({
+              stage: 'completed',
+              returnId: this.selectedRequest.id,
+              employeeName: this.selectedRequest.requesterName,
+              assetName: this.selectedRequest.assetType,
+              remarks: this.actionComments || 'Return successfully completed.',
+              actionByName: currentUser.name
+            });
+
+          } else {
+            // This is the initial approval stage. Forward to Allocation Team.
+            const req7 = {
+              tuple: {
+                new: {
+                  t_asset_return_approvals: {
+                    approver_id: 'usr_007', // Allocation Team ID
+                    request_id: this.selectedRequest.id,
+                    role: "Allocation Team Member",
+                    status: "Pending",
+                    remarks: this.actionComments,
+                  }
                 }
               }
-            }
-          };
-          await this.requestService.completeTask(req7 as any);
+            };
+            await this.requestService.completeTask(req7 as any);
 
-          const taskid = this.selectedRequest?.taskid;
-          if (taskid) {
-            await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+            const taskid = this.selectedRequest?.taskid;
+            if (taskid) {
+              await this.requestService.completeUserTask({ TaskId: `${taskid}`, Action: 'COMPLETE' } as any);
+            }
+            this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
+
+            // Send email to Allocation Team
+            this.mailService.sendReturnRequestNotification({
+              stage: 'am_approved',
+              returnId: this.selectedRequest.id,
+              employeeName: this.selectedRequest.requesterName,
+              assetName: this.selectedRequest.assetType,
+              remarks: this.actionComments,
+              actionByName: currentUser.name,
+              nextApproverName: 'Allocation Team'
+            });
           }
-          this.notificationService.showToast(`Return request ${this.selectedRequest.id} approved.`, 'success');
         } catch (error) {
           console.error("Return Approval SOAP call failed:", error);
         }
@@ -504,6 +555,16 @@ export class AssetRequestsComponent implements OnInit {
           console.log("Step 3: BPM task completed");
         }
         this.notificationService.showToast(`Return request ${this.selectedRequest.id} rejected.`, 'info');
+
+        // Send email to Employee about rejection
+        this.mailService.sendReturnRequestNotification({
+          stage: 'am_rejected',
+          returnId: this.selectedRequest.id,
+          employeeName: this.selectedRequest.requesterName,
+          assetName: this.selectedRequest.assetType,
+          remarks: this.actionComments,
+          actionByName: currentUser.name
+        });
       } else {
         // Standard Request Rejection (New Asset / Warranty)
         const reqReject = {

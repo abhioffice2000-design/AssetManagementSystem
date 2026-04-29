@@ -8,6 +8,7 @@ import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../..
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { HeroService } from '../../../core/services/hero.service';
 import { Router } from '@angular/router';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 interface AssetTypeOption {
   type_id: string;
@@ -48,7 +49,8 @@ export class MyAssetsComponent implements OnInit {
     private notificationService: NotificationService,
     private fb: FormBuilder,
     private hs: HeroService,
-    private router: Router
+    private router: Router,
+    private adminService: AdminDataService
   ) { }
 
   async ngOnInit(): Promise<void> {

@@ -201,7 +201,7 @@
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
               <p class="step-comments mt-8 italic" *ngIf="step.comments">"{{ step.comments }}"</p>
               <div class="mt-12 pt-12"
-                *ngIf="last && isFullyApproved() && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
+                *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
                 style="border-top: 1px dashed var(--border-color);">
                 <button class="btn btn-primary"
                   style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;"
@@ -221,7 +221,8 @@
         </div>
       </div>
 
-      <div class="resubmit-form-container animate-fade-in" *ngIf="selectedRequest?.status === 'Rejected'">
+      <div class="resubmit-form-container animate-fade-in"
+        *ngIf="selectedRequest?.status === 'Rejected' && selectedRequest?.requestType !== 'Return Asset'">
         <!-- Rejection Reason Card -->
         <div class="rejection-details-card mb-24" *ngIf="rejectionInfo">
           <div class="rejection-header">
@@ -361,8 +362,8 @@
           </div>
         </form>
       </div>
-    </div>
-   
+
+      <!-- Rejected Return Request Info Panel -->
       <div class="resubmit-form-container animate-fade-in"
         *ngIf="selectedRequest?.status === 'Rejected' && selectedRequest?.requestType === 'Return Asset'">
         <div class="alert alert-danger mb-20" style="display: flex; gap: 12px; align-items: center;">
@@ -415,11 +416,11 @@
           </a>
         </div>
       </div>
-  </div>
+    </div>
 
-
-  <div class="modal-footer p-24 text-right">
-    <button class="btn-primary" (click)="closeTrackingModal()">Close Tracker</button>
+    <div class="modal-footer p-24 text-right">
+      <button class="btn-primary" (click)="closeTrackingModal()">Close Tracker</button>
+    </div>
   </div>
 </div>
 
