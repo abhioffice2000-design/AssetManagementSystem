@@ -659,8 +659,8 @@ export class AllocationTicketsComponent implements OnInit {
     this.loadTickets();
   }
 
-  async reject(ticket: EnrichedTicket): Promise<void> {
-    const remarks = this.rejectRemarks || 'Rejected by Allocation Team';
+  async reject(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
+    const remarks = remarksInput || this.decisionRemarks || 'Rejected by Allocation Team';
 
     try {
       // Step 1: Update approval record to Rejected
@@ -834,8 +834,8 @@ export class AllocationTicketsComponent implements OnInit {
     }
   }
 
-  async rejectAssetReturn(ticket: EnrichedTicket): Promise<void> {
-    const remarks = this.rejectRemarks || 'Rejected by Allocation Team';
+  async rejectAssetReturn(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
+    const remarks = remarksInput || this.rejectRemarks || 'Rejected by Allocation Team';
 
     try {
       // Step 1: Update current return approval status to "Rejected"
@@ -910,37 +910,27 @@ export class AllocationTicketsComponent implements OnInit {
     this.loadTickets();
   }
 
-  // ─── Reject Modal Methods ───────────────────────────────────────────────
+  // ─── Reject Methods ───────────────────────────────────────────────────
 
-  openRejectModal(ticket: EnrichedTicket): void {
-    this.ticketToReject = ticket;
-    this.rejectRemarks = '';
-    this.showRejectModal = true;
-  }
-
-  closeRejectModal(): void {
-    this.showRejectModal = false;
-    this.ticketToReject = null;
-    this.rejectRemarks = '';
-  }
-
-  async confirmReject(): Promise<void> {
-    if (!this.ticketToReject) return;
-
-    if (!this.rejectRemarks || this.rejectRemarks.trim() === '') {
-      alert('Rejection remarks are required.');
+  async handleRejectClick(ticket: EnrichedTicket): Promise<void> {
+    if (!this.decisionRemarks || this.decisionRemarks.trim() === '') {
+      this.notificationService.showToast('Rejection remarks are required in the Decision Remarks field.', 'warning');
       return;
     }
 
-    const ticket = this.ticketToReject;
-    this.closeRejectModal();
+    const remarks = this.decisionRemarks;
     this.closeDetails();
 
     if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
-      await this.rejectAssetReturn(ticket);
+      await this.rejectAssetReturn(ticket, remarks);
     } else {
-      await this.reject(ticket);
+      await this.reject(ticket, remarks);
     }
+  }
+
+  handleTableRejectClick(ticket: EnrichedTicket): void {
+    this.viewDetails(ticket);
+    this.notificationService.showToast('Please enter rejection remarks in the Decision Remarks field before rejecting.', 'info');
   }
 
 
