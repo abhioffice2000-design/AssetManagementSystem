@@ -70,6 +70,7 @@
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Asset Type</th>
                 <th>Status</th>
                 <th>Project</th>
                 <th>Assets</th>
@@ -89,6 +90,11 @@
                 <td>{{ user.email }}</td>
                 <td>
                   <span class="badge" [ngClass]="getRoleBadgeClass(user.role)">{{ user.role }}</span>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--text-primary);">
+                    {{ (user.role === assetManagerRoleName || user.role === assetTeamMemberRoleName) ? (user.assetTypeName || '—') : '—' }}
+                  </span>
                 </td>
                 <td>
                   <span class="badge" [ngClass]="user.isActive ? 'badge-green' : 'badge-default'">
@@ -118,7 +124,7 @@
                 </td>
               </tr>
               <tr *ngIf="filteredUsers.length === 0">
-                <td colspan="7" style="text-align: center; padding: 40px; opacity: 0.5;">
+                <td colspan="8" style="text-align: center; padding: 40px; opacity: 0.5;">
                   <span class="material-icons-outlined" style="font-size: 3rem; display: block; margin-bottom: 8px;">search_off</span>
                   No users found
                 </td>

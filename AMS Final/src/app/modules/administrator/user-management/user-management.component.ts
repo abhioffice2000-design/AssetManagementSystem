@@ -122,10 +122,10 @@ export class UserManagementComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
-    await this.loadUsers();
     await this.loadRoles();
     await this.loadProjects();
     await this.loadAssetTypes();
+    await this.loadUsers();
     this.allocations = this.adminDataService.getAllocations();
     this.filterUsers();
     this.filterProjects();
@@ -914,6 +914,17 @@ export class UserManagementComponent implements OnInit {
   private async loadUsers(): Promise<void> {
     try {
       this.users = (await this.adminDataService.GetAllUserRoleProjectDetails()).reverse();
+      
+      // Enrich with asset type names for table display if not already populated
+      this.users.forEach(user => {
+        if (user.assetTypeId && !user.assetTypeName) {
+          const type = this.assetTypes.find(t => t.id === user.assetTypeId);
+          if (type) {
+            user.assetTypeName = type.name;
+          }
+        }
+      });
+
       this.updateProjectMemberCounts();
     } catch (error) {
       console.error('Unable to load DB users for admin user management.', error);
