@@ -177,8 +177,11 @@
       </div>
 
       <div class="comments-section">
-        <label>Manager Remarks</label>
+        <label>Manager Remarks *</label>
         <textarea [(ngModel)]="actionComments" placeholder="Enter your comments here..." rows="4"></textarea>
+        <small class="error-text" *ngIf="!actionComments || actionComments.trim() === ''" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px; display: block;">
+          * Mandatory for {{ actionType === 'approve' ? 'approval' : 'rejection' }}
+        </small>
       </div>
     </div>
 
@@ -254,8 +257,11 @@
             <p>{{ detailRequest.justification }}</p>
           </div>
           <div class="detail-item full-col" *ngIf="detailRequest.status === 'Pending'">
-            <label>Manager Remarks</label>
+            <label>Manager Remarks *</label>
             <textarea [(ngModel)]="actionComments" placeholder="Enter your comments here..." rows="3" style="width: 100%; border: 1.5px solid var(--border-color); border-radius: 10px; padding: 12px; margin-top: 8px; font-family: inherit; font-size: 0.95rem;"></textarea>
+            <small class="error-text" *ngIf="!actionComments || actionComments.trim() === ''" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px; display: block;">
+              * Mandatory for approval/rejection
+            </small>
           </div>
         </div>
       </div>

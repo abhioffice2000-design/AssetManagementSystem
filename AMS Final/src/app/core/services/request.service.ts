@@ -2183,4 +2183,17 @@ export class RequestService {
       return err;
     })
   }
+  getAssetTypeFromAssetId(request: any) {
+    return this.hs.ajax(
+      'Gettypeidfromassetid',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
 }

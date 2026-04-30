@@ -34,7 +34,7 @@
       <thead>
         <tr>
           <th>Request ID</th>
-          <th>Type</th>
+          <th *ngIf="selectedType !== 'Extend Warranty'">Type</th>
           <th>Asset Name</th>
           <th>Reason</th>
           <th>Urgency</th>
@@ -45,7 +45,7 @@
       <tbody>
         <tr *ngFor="let req of paginatedRequests">
           <td class="text-bold text-primary">{{ req.requestNumber }}</td>
-          <td>
+          <td *ngIf="selectedType !== 'Extend Warranty'">
             <div class="type-cell" [ngClass]="'type-' + req.assetType.toLowerCase()">
               <span class="material-icons-outlined">{{ getAssetIcon(req.assetType) }}</span>
               <span>{{ req.assetType }}</span>
@@ -79,7 +79,7 @@
           </td>
         </tr>
         <tr *ngIf="totalFilteredCount === 0 && !loading">
-          <td colspan="7" class="text-center text-muted p-24">No requests found matching your filters.</td>
+          <td [attr.colspan]="selectedType === 'Extend Warranty' ? 6 : 7" class="text-center text-muted p-24">No requests found matching your filters.</td>
         </tr>
       </tbody>
     </table>
