@@ -156,6 +156,17 @@
   }
 }
 
+.reason-truncate {
+  display: block;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.85rem;
+  color: #475569;
+  cursor: help;
+}
+
 /* Tracking Modal Styles */
 .modal-overlay {
   position: fixed;
