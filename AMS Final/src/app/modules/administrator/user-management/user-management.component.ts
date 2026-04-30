@@ -518,6 +518,20 @@ export class UserManagementComponent implements OnInit {
         }
       }
 
+      // Restriction: Ensure only one Allocation Team Member per Asset Type
+      if (targetRoleName === this.assetTeamMemberRoleName.toLowerCase() && this.editUserForm.assetTypeId) {
+        await this.loadAssetTypes();
+        const existingType = this.assetTypes.find(t => t.id === this.editUserForm.assetTypeId);
+        if (existingType) {
+          const teamMember = (existingType.teamMembers || '').trim();
+          if (teamMember !== '' && teamMember !== this.editingUser.name) {
+            this.notificationService.showToast('An Allocation Team Member is already assigned to this asset type. Please remove the existing member first.', 'error');
+            this.isSavingEdit = false;
+            return;
+          }
+        }
+      }
+
       // Restriction: Ensure only one Team Lead per Project
       if (targetRoleName === this.teamLeadRoleName.toLowerCase() && this.editUserForm.projectId) {
         await this.loadProjects(); // Get fresh data
@@ -663,6 +677,17 @@ export class UserManagementComponent implements OnInit {
       const existingType = this.assetTypes.find(t => t.id === this.newUser.assetTypeId);
       if (existingType && (existingType.assetManagerId || existingType.assetManager)) {
         this.notificationService.showToast('An Asset Manager is already assigned to this asset type. Please remove the existing manager first.', 'error');
+        this.isSavingUser = false;
+        return;
+      }
+    }
+
+    // Restriction: Ensure only one Allocation Team Member per Asset Type
+    if (roleName === this.assetTeamMemberRoleName && this.newUser.assetTypeId) {
+      await this.loadAssetTypes();
+      const existingType = this.assetTypes.find(t => t.id === this.newUser.assetTypeId);
+      if (existingType && existingType.teamMembers.trim()) {
+        this.notificationService.showToast('An Allocation Team Member is already assigned to this asset type. Please remove the existing member first.', 'error');
         this.isSavingUser = false;
         return;
       }
@@ -864,7 +889,7 @@ export class UserManagementComponent implements OnInit {
     }
 
     if (this.newUser.roleName === this.assetTeamMemberRoleName) {
-      return this.assetTypes;
+      return this.assetTypes.filter(assetType => !assetType.teamMembers.trim());
     }
 
     return [];

@@ -58,6 +58,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'User Management', icon: 'people', route: `${base}/users` },
           { label: 'Master Data', icon: 'settings', route: `${base}/master-data` },
           { label: 'Asset Transactions', icon: 'sync_alt', route: `${base}/transactions` },
+          { label: 'Warranty Scheduler', icon: 'schedule', route: `${base}/warranty-scheduler` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;

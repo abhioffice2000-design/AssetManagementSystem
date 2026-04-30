@@ -208,7 +208,8 @@ export class WarrantyRequestsComponent implements OnInit {
     if (!request || !action) return;
 
     if (!this.actionComments || this.actionComments.trim() === '') {
-      alert('Approver remarks are required.');
+      const actionText = action === 'approve' ? 'Approval' : 'Rejection';
+      alert(`${actionText} remarks are mandatory.`);
       return;
     }
 
@@ -274,7 +275,8 @@ export class WarrantyRequestsComponent implements OnInit {
 
         this.notificationService.showToast(`Warranty request approved.`, 'success');
       } else {
-        // Handle Rejection using the same specialized warranty table
+        // Handle Rejection
+        // 1. Update existing manager approval entry
         await this.requestService.updateWarrantyRequestApproval(
           this.detailRequest.approvalId as string,
           'Rejected',
@@ -282,11 +284,24 @@ export class WarrantyRequestsComponent implements OnInit {
           this.detailRequest.assignedAssetId as string
         );
 
+        // 2. Update master request status to 'Rejected'
+        await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Rejected');
+
+        // 3. Complete BPM task
         if (this.detailRequest.taskid) {
           await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
         }
 
-        this.notificationService.showToast(`Warranty request rejected.`, 'info');
+        // 4. Send Rejection Email
+        this.mailService.sendWarrantyRejectionNotification({
+          requestId: this.detailRequest.id,
+          employeeName: this.detailRequest.requesterName,
+          managerName: currentUser.name,
+          remarks: this.actionComments,
+          assetName: this.detailRequest.assetName || this.detailRequest.category
+        });
+
+        this.notificationService.showToast(`Warranty request rejected and employee notified.`, 'info');
       }
 
       this.closeActionModal();

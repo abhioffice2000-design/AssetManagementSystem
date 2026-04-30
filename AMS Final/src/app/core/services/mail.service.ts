@@ -415,6 +415,44 @@ Allocation Team
   }
 
   /**
+   * Notifies the employee that their warranty extension request has been rejected.
+   */
+  async sendWarrantyRejectionNotification(params: {
+    employeeName: string;
+    assetName: string;
+    requestId: string;
+    managerName: string;
+    remarks: string;
+  }): Promise<void> {
+    console.log(`[MailService] Dispatching warranty extension rejection for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `Warranty Extension Rejected: ${params.assetName} - ${params.requestId}`;
+    const body = `
+Dear ${params.employeeName},
+
+Your request to extend the warranty for your assigned asset has been reviewed and declined by the Asset Manager.
+
+Request Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Asset Name: ${params.assetName}
+Status: Rejected
+Manager Remarks: ${params.remarks}
+---------------------------------------------
+
+If you require further clarification, please contact the IT Assets Department.
+
+Best Regards,
+IT Assets Department
+Adnate IT Solutions
+    `.trim();
+
+    await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${subject}`, body);
+  }
+
+
+  /**
    * Notifies the employee that their warranty extension request has been approved
    * and the asset's warranty has been updated.
    */

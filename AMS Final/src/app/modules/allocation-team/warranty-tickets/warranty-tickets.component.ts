@@ -153,7 +153,8 @@ export class WarrantyTicketsComponent implements OnInit {
 
   get managerRemarks(): string {
     if (!this.selectedWarrantyRequest?.approvalChain) return '';
-    const managerApproval = this.selectedWarrantyRequest.approvalChain.find(a => 
+    // Look for the most recent entry with 'Manager' in the role/stage
+    const managerApproval = [...this.selectedWarrantyRequest.approvalChain].reverse().find(a => 
       a.stage.toString().toLowerCase().includes('manager') || 
       a.stage.toString().toLowerCase().includes('mgr')
     );
