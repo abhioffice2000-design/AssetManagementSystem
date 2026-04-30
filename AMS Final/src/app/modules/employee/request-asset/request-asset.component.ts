@@ -243,7 +243,7 @@ export class RequestAssetComponent implements OnInit {
 
       // 4. Trigger BPM Workflow
       const request3 = {
-        InputDoc: this.selectedFileBase64 ? `${this.selectedFileName}|${this.selectedFileBase64}` : formVal.hasEmailApproval.toString(),
+        InputDoc: formVal.hasEmailApproval.toString(),
         Inputusrid: user.id,
         Inputrequestapprovalid: `${newapprovalid}`,
         Inputrequestid: `${newrequestid}`
