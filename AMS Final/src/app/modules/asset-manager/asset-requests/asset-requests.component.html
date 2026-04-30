@@ -392,12 +392,6 @@
               <label>Employee Reason</label>
               <span>{{ detailRequest.justification }}</span>
             </div>
-            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Return Asset'">
-              <label>Team Lead Remark</label>
-              <span class="remark-text" style="color: var(--primary); font-weight: 500;">
-                {{ (detailRequest.teamLeadJustification && detailRequest.teamLeadJustification !== '—') ? detailRequest.teamLeadJustification : 'Empty' }}
-              </span>
-            </div>
             <div class="detail-item">
               <label>Date</label>
               <span>{{ detailRequest.requestDate | date: 'dd MMM yyyy, hh:mm a' }}</span>
@@ -427,16 +421,11 @@
                   </select>
                 </div>
                 <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation'">
-                  <label>Assign Allocation Team Member</label>
-                  <select class="asset-select" name="allocationMember" [(ngModel)]="selectedAllocationMemberId"
-                    (ngModelChange)="onMemberSelect($event)">
-                    <option value="">-- Select Team Member --</option>
-                    <option *ngFor="let member of allocationTeamMemberList"
-                      [value]="member?.old?.m_users?.user_id || member?.m_users?.user_id || member?.user_id">
-                      {{ (member?.old?.m_users?.name || member?.m_users?.name || member?.name) + ' — ' +
-                      (member?.old?.m_users?.email || member?.m_users?.email || member?.email || '') }}
-                    </option>
-                  </select>
+                  <label>Allocation Team Member</label>
+                  <span style="display: block; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; color: #1e293b; font-weight: 600; border: 1px solid #e2e8f0;">
+                    <span class="material-icons-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 6px; color: var(--primary);">person</span>
+                    {{ getSelectedAllocationMemberName() }}
+                  </span>
                 </div>
               </ng-container>
 

@@ -421,10 +421,7 @@
     border-bottom: none;
   }
 
-  &.expiry-critical {
-    border-left-color: #dc2626;
-    background: rgba(220, 38, 38, 0.02);
-  }
+ 
 
   &.expiry-warning {
     border-left-color: #f59e0b;
@@ -476,10 +473,6 @@
   color: var(--text-secondary);
   white-space: nowrap;
 
-  .expiry-critical & {
-    background: rgba(220, 38, 38, 0.1);
-    color: #dc2626;
-  }
 
   .expiry-warning & {
     background: rgba(245, 158, 11, 0.1);

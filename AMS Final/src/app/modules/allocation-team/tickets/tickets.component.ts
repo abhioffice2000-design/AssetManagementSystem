@@ -211,7 +211,7 @@ export class AllocationTicketsComponent implements OnInit {
             if (asset) {
               ticket.assetName = asset.asset_name || ticket.assetName;
               ticket.assetType = asset.type_id || ticket.assetType;
-              ticket.subCategory = asset.sub_category_id || ticket.subCategory;
+              ticket.subCategory = this.subCategoryMap.get(asset.sub_category_id) || asset.sub_category_id || ticket.subCategory;
               ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
             }
           }
@@ -311,37 +311,25 @@ export class AllocationTicketsComponent implements OnInit {
         {}
       );
       const tuples = this.hs.xmltojson(res, 'tuple');
-      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
-      const returnTupleById = new Map<string, any>();
-      tupleArray.forEach((tuple: any) => {
-        const data = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
-        const returnId = this.getVal(data?.return_id);
-        if (returnId) returnTupleById.set(returnId, tuple);
-      });
+      if (tuples) {
+        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
+        this.resolvedReturnTickets = tupleArray
+          .map((t: any) => this.mapReturnTupleToEnrichedTicket(t))
+          .filter(t =>
+            t.status === RequestStatus.COMPLETED ||
+            t.status === RequestStatus.APPROVED ||
+            t.status === RequestStatus.REJECTED ||
+            t.status === RequestStatus.CANCELLED
+          );
 
-      this.resolvedReturnTickets = [];
-      for (const approval of resolvedApprovals) {
-        const baseTuple = returnTupleById.get(approval.request_id) ?? {
-          old: {
-            t_asset_returns: {
-              return_id: approval.request_id,
-              status: approval.status,
-              remarks: approval.remarks,
-              return_date: approval.action_date,
-              t_asset_return_approvals: approval
-            }
-          }
-        };
-        const ticket = this.mapReturnTupleToEnrichedTicket(baseTuple);
-        ticket.approvalid = approval.return_approval_id || ticket.approvalid;
-        ticket.status = approval.status;
-        ticket.reason = approval.remarks || ticket.reason;
-        ticket.assignedDate = approval.action_date || ticket.assignedDate;
-        await this.enrichReturnTicketWithAssetDetails(ticket);
-        this.resolvedReturnTickets.push(ticket);
+        // Enrich with asset details if missing
+        for (const ticket of this.resolvedReturnTickets) {
+          await this.enrichTicketWithAssetDetails(ticket);
+        }
+        console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets`);
+      } else {
+        this.resolvedReturnTickets = [];
       }
-
-      console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets for ${approverId}`);
     } catch (err) {
       console.error('Failed to load resolved return tickets:', err);
       this.resolvedReturnTickets = [];
@@ -383,18 +371,8 @@ export class AllocationTicketsComponent implements OnInit {
     const statusStr = this.getVal(returnData?.status) ?? this.getVal(approvalObj?.status) ?? 'Pending';
     const status = this.mapToStatus(statusStr);
 
-    // Recursive search for TaskID to handle any XML structure
-    // const taskId = this.findTaskIdRecursively(tuple) || '—';
-    const taskId = "-";
-    // if (taskId === '—') {
-    //   console.warn('CRITICAL: TaskID still missing for Return ID:', this.getVal(returnData?.return_id));
-    //   console.log('Full Raw Tuple for analysis:', JSON.stringify(tuple));
-    // } else {
-    //   console.log(`Successfully identified TaskID [${taskId}] for return ${this.getVal(returnData?.return_id)}`);
-    // }
-
     return {
-      taskid: this.getVal(approvalObj?.temp2) ?? '-',
+      taskid: returnData?.t_asset_return_approvals.temp2,
       approvalid: this.getVal(approvalObj?.return_approval_id) ?? '—',
       ticketId: this.getVal(returnData?.return_id) ?? this.getVal(approvalObj?.request_id) ?? '—',
       requestorName: this.getVal(userData?.name) ?? '—',
@@ -457,7 +435,8 @@ export class AllocationTicketsComponent implements OnInit {
       subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',
 
-      assetId: this.getVal(assetData?.asset_id) ?? this.getVal(reqData?.asset_id) ?? this.getVal(parent?.asset_id) ?? '—',
+      // Reference from resolved return tickets: use temp1 for assetId if missing
+      assetId: this.getVal(assetData?.asset_id) ?? this.getVal(reqData?.asset_id) ?? this.getVal(reqData?.temp1) ?? this.getVal(parent?.asset_id) ?? '—',
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '—',
       availabilityStatus: this.getVal(assetData?.status) ?? '—',
       assignedDate: this.getVal(reqData?.created_at) ?? '',
