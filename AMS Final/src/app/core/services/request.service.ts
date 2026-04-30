@@ -286,7 +286,12 @@ export class RequestService {
     }
   }
 
-  async fetchPendingReturnApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
+  async fetchPendingReturnApprovalsFromService(approverId: string): Promise<AssetRequest[]> {
+    if (!approverId) {
+      console.warn('Approver ID is required to fetch return approvals.');
+      return [];
+    }
+
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>

@@ -77,7 +77,16 @@ export class AssetRequestsComponent implements OnInit {
 
     try {
       const currentUser = this.authService.getCurrentUser();
-      const approverId = currentUser?.id || 'usr_004';
+      const approverId = currentUser?.id;
+      if (!approverId) {
+        this.allRequests = [];
+        this.pendingRequests = [];
+        this.confirmationRequests = [];
+        this.returnRequests = [];
+        this.filteredRequests = [];
+        this.loadError = 'Current user is missing. Please log in again.';
+        return;
+      }
 
       // Fetch all three in parallel: all requests, pending requests, and available assets
       // const [allReqs, pendingReqs, returnReqs] = await Promise.all([
