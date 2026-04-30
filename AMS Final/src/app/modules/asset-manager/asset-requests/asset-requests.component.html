@@ -99,9 +99,9 @@
           <option value="">All Urgencies</option>
           <option *ngFor="let u of urgencies" [value]="u">{{ u }}</option>
         </select>
-        <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()" *ngIf="activeTab === 'all'">
-          <option value="">All Statuses</option>
-          <option *ngFor="let s of statuses" [value]="s">{{ s }}</option>
+        <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()" *ngIf="activeTab === 'pending' || activeTab === 'all' || activeTab === 'return'">
+          <option value="">All Requests</option>
+          <option *ngFor="let s of statusFilterOptions" [value]="s">{{ s }} Requests</option>
         </select>
       </div>
     </div>
@@ -142,7 +142,7 @@
                 <span class="material-icons-outlined">info</span>
                 Details
               </button>
-              <ng-container *ngIf="activeTab === 'pending' || activeTab === 'return'">
+              <ng-container *ngIf="(activeTab === 'pending' || activeTab === 'return') && req.status === RequestStatus.PENDING && req.currentStage === 'Asset Manager Approval'">
                 <button class="btn-approve" (click)="openActionModal(req, 'approve')">
                   <span class="material-icons-outlined">check</span>
                   Approve
@@ -160,11 +160,11 @@
       <!-- Empty State -->
       <div class="empty-state card" *ngIf="filteredRequests.length === 0">
         <span class="material-icons-outlined empty-icon">task_alt</span>
-        <h4 *ngIf="activeTab === 'pending'">No pending approvals</h4>
+        <h4 *ngIf="activeTab === 'pending'">No requests found</h4>
         <h4 *ngIf="activeTab === 'return'">No return requests found</h4>
         <h4 *ngIf="activeTab === 'all'">No requests found</h4>
         <p class="text-muted">
-          {{ activeTab === 'pending' ? 'All caught up! There are no requests awaiting your approval.' : 
+          {{ activeTab === 'pending' ? 'Try changing the status filter to view pending, approved, or rejected requests.' : 
              (activeTab === 'return' ? 'There are no return requests at this time.' : 
              'Try adjusting your search or filter criteria.') }}
         </p>
@@ -370,7 +370,7 @@
               <label>Role</label>
               <span>{{ detailRequest.requesterRoleName || detailRequest.requesterRole || '—' }}</span>
             </div>
-            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Extend Warranty'">
+            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Extend Warranty' && detailRequest.requestType !== 'Return Asset'">
               <label>Document</label>
               <div *ngIf="detailRequest.document" class="doc-actions-wrapper">
                 <span class="email-doc">
@@ -388,11 +388,11 @@
               </div>
               <span *ngIf="!detailRequest.document">—</span>
             </div>
-            <div class="detail-item full-col">
+            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Return Asset'">
               <label>Employee Reason</label>
               <span>{{ detailRequest.justification }}</span>
             </div>
-            <div class="detail-item full-col">
+            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Return Asset'">
               <label>Team Lead Remark</label>
               <span class="remark-text" style="color: var(--primary); font-weight: 500;">
                 {{ (detailRequest.teamLeadJustification && detailRequest.teamLeadJustification !== '—') ? detailRequest.teamLeadJustification : 'Empty' }}
@@ -562,7 +562,7 @@
 
         <!-- Pending / All tabs — original approve/reject flow -->
         <ng-container
-          *ngIf="activeTab !== 'confirmation' && detailRequest && detailRequest.currentStage === 'Asset Manager Approval' && detailRequest.status !== 'Rejected' && detailRequest.status !== 'Completed'">
+          *ngIf="activeTab !== 'confirmation' && detailRequest && detailRequest.currentStage === 'Asset Manager Approval' && detailRequest.status === RequestStatus.PENDING">
           <button class="btn-approve" (click)="directConfirmAction(detailRequest, 'approve')">
             <span class="material-icons-outlined">check</span>
             Approve

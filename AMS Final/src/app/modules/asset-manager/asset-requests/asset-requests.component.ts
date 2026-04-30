@@ -25,9 +25,10 @@ export class AssetRequestsComponent implements OnInit {
   confirmationSearchTerm = '';
   activeTab: 'pending' | 'all' | 'confirmation' | 'return' = 'pending';
   searchTerm = '';
-  selectedStatus = '';
+  selectedStatus: RequestStatus | '' = RequestStatus.PENDING;
   selectedUrgency = '';
   statuses = Object.values(RequestStatus);
+  statusFilterOptions = [RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.REJECTED];
   urgencies = Object.values(RequestUrgency);
   RequestStatus = RequestStatus; // Add this to use in template
   availableAssets: any[] = [];
@@ -85,11 +86,12 @@ export class AssetRequestsComponent implements OnInit {
       //   this.requestService.fetchPendingReturnApprovalsFromService(approverId),
       // Fetch all in parallel: all requests, pending requests, confirmation requests, and available assets
       // Fetch all in parallel with individual error handling to prevent dashboard crash if one service fails
-      const [allReqs, pendingReqs, confirmReqs, returnReqs] = await Promise.all([
+      const [allReqs, pendingReqs, confirmReqs, returnReqs, allReturnReqs] = await Promise.all([
         this.requestService.fetchAllRequestsFromService(approverId).catch(err => { console.error('All Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingRequestsFromService(approverId).catch(err => { console.error('Pending Req fetch failed:', err); return []; }),
         this.requestService.fetchConfirmationRequestsFromService(approverId).catch(err => { console.error('Confirm Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingReturnApprovalsFromService(approverId).catch(err => { console.error('Return Req fetch failed:', err); return []; }),
+        this.requestService.fetchAllReturnRequestsFromService().catch(err => { console.error('All Return Req fetch failed:', err); return []; }),
         this.loadAvailableAssets().catch(err => { console.error('Assets load failed:', err); return []; })
       ] as any[]);
 
@@ -103,7 +105,7 @@ export class AssetRequestsComponent implements OnInit {
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
       this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
       console.log('Allocation Team Members:', this.allocationTeamMemberList);
-      this.returnRequests = returnReqs;
+      this.returnRequests = this.mergeRequests(allReturnReqs, returnReqs);
       console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
       // Stats from all requests (ensure total reflects live data)
@@ -193,7 +195,7 @@ export class AssetRequestsComponent implements OnInit {
   switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
     this.activeTab = tab;
     this.searchTerm = '';
-    this.selectedStatus = '';
+    this.selectedStatus = (tab === 'pending' || tab === 'return') ? RequestStatus.PENDING : '';
     this.selectedUrgency = '';
     this.confirmationSearchTerm = '';
     this.currentPage = 1; // Reset page on tab switch
@@ -203,7 +205,7 @@ export class AssetRequestsComponent implements OnInit {
   applyFilters(): void {
     let source: AssetRequest[] = [];
     if (this.activeTab === 'pending') {
-      source = this.pendingRequests;
+      source = this.mergeRequests(this.allRequests, this.pendingRequests);
     } else if (this.activeTab === 'return') {
       source = this.returnRequests;
     } else if (this.activeTab === 'confirmation') {
@@ -219,10 +221,10 @@ export class AssetRequestsComponent implements OnInit {
         req.requestNumber.toLowerCase().includes(currentSearch.toLowerCase()) ||
         req.requesterName.toLowerCase().includes(currentSearch.toLowerCase()) ||
         req.category.toLowerCase().includes(currentSearch.toLowerCase());
-      const matchesStatus = !this.selectedStatus || req.status === this.selectedStatus;
+      const matchesStatus = this.matchesSelectedStatus(req.status);
       const matchesUrgency = !this.selectedUrgency || req.urgency === this.selectedUrgency;
       return matchesSearch && matchesStatus && matchesUrgency;
-    }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    }).sort((a, b) => this.getRequestSortTime(b) - this.getRequestSortTime(a));
 
     console.log(`[AssetRequests] applyFilters: tab=${this.activeTab}, sourceCount=${source.length}, filteredCount=${this.filteredRequests.length}`);
     if (this.selectedStatus) {
@@ -234,9 +236,35 @@ export class AssetRequestsComponent implements OnInit {
         req.id.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.requesterName.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase());
-    }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    }).sort((a, b) => this.getRequestSortTime(b) - this.getRequestSortTime(a));
 
     this.currentPage = 1; // Reset page on filter change
+  }
+
+  private getRequestSortTime(request: AssetRequest): number {
+    const dateValue = request.lastUpdated || request.requestDate;
+    const timestamp = dateValue ? new Date(dateValue).getTime() : NaN;
+    if (!Number.isNaN(timestamp)) return timestamp;
+
+    const numericId = String(request.id || request.requestNumber || '').match(/\d+/g)?.join('');
+    return numericId ? Number(numericId) : 0;
+  }
+
+  private matchesSelectedStatus(status: RequestStatus): boolean {
+    if (!this.selectedStatus) return true;
+    if (this.selectedStatus === RequestStatus.APPROVED) {
+      return status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED;
+    }
+    return status === this.selectedStatus;
+  }
+
+  private mergeRequests(...groups: AssetRequest[][]): AssetRequest[] {
+    const byId = new Map<string, AssetRequest>();
+    groups.flat().forEach(request => {
+      const key = request.id || request.requestNumber;
+      if (key) byId.set(key, request);
+    });
+    return Array.from(byId.values());
   }
 
   get paginatedRequests(): AssetRequest[] {
@@ -365,6 +393,12 @@ export class AssetRequestsComponent implements OnInit {
       if (this.selectedRequest.requestType === RequestType.RETURN_ASSET) {
         console.log("Executing Return Approval Flow...");
 
+        if (!this.selectedRequest.returnapprovalId) {
+          this.notificationService.showToast('Approval ID is missing for this return request. Please refresh and try again.', 'error');
+          console.error('[ReturnApproval] Missing returnapprovalId for request:', this.selectedRequest);
+          return;
+        }
+
         // Request 1: Update current manager approval to 'Approved'
         const req6 = {
           tuple: {
@@ -379,15 +413,15 @@ export class AssetRequestsComponent implements OnInit {
           // Check if this is the final confirmation stage
           // The approval remarks from Allocation Team set "Waiting for Hand-off Confirmation"
           const approvalRemarks = this.selectedRequest.approvalChain?.[0]?.comments || '';
-          const isFinalConfirmation = approvalRemarks === "Waiting for Hand-off Confirmation" || 
-                                      this.selectedRequest.currentStage?.toString().includes("Waiting");
+          const isFinalConfirmation = approvalRemarks === "Waiting for Hand-off Confirmation" ||
+            this.selectedRequest.currentStage?.toString().includes("Waiting");
 
           console.log(`[ReturnApproval] approvalRemarks="${approvalRemarks}", isFinalConfirmation=${isFinalConfirmation}`);
 
           if (isFinalConfirmation) {
             // This is the final stage. Complete the request.
             console.log("Executing Final Return Confirmation...");
-            
+
             // Update t_asset_returns main table status to 'Completed'
             const updateReturnReq = {
               tuple: {
@@ -435,11 +469,16 @@ export class AssetRequestsComponent implements OnInit {
 
           } else {
             // This is the initial approval stage. Forward to Allocation Team.
+            const allocationApproverId = await this.requestService.resolveReturnApproverId(
+              this.selectedRequest.assignedAssetId || '',
+              'rol_05'
+            );
+
             const req7 = {
               tuple: {
                 new: {
                   t_asset_return_approvals: {
-                    approver_id: 'usr_007', // Allocation Team ID
+                    approver_id: allocationApproverId,
                     request_id: this.selectedRequest.id,
                     role: "Allocation Team Member",
                     status: "Pending",

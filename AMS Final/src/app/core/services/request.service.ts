@@ -330,6 +330,43 @@ export class RequestService {
     }
   }
 
+  async fetchAllReturnRequestsFromService(): Promise<AssetRequest[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_asset_returnsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromReturn_id: '0', toReturn_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetT_asset_returnsObjects response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      const requests = tupleArray.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
+
+      return Promise.all(requests.map(async (req) => {
+        if (req.assignedAssetId) {
+          const asset = await this.getAssetDetailsById(req.assignedAssetId);
+          if (asset) {
+            req.assetName = asset.asset_name || req.assetName;
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.category = asset.sub_category_id || req.category;
+            req.assignedSerial = asset.serial_number || req.assignedSerial;
+            req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
+            req.assignedWarrantyExpiry = asset.warranty_expiry || req.assignedWarrantyExpiry;
+          }
+        }
+        return req;
+      }));
+    } catch (err) {
+      console.error('Failed to fetch all return requests:', err);
+      return [];
+    }
+  }
+
   async fetchPendingWarrantyApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -643,7 +680,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      assetType: this.getNullableValue(assetInfo?.type_id || assetInfo?.asset_type) || this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
       category: 'Warranty extension',
       subCategory: assetName,
       assetName: assetName,
@@ -1162,11 +1199,14 @@ export class RequestService {
   private mapReturnTupleToRequest(tuple: any): AssetRequest {
     const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
     const userInfo = data?.m_users || {};
-    const approvalData = data?.t_asset_return_approvals || {};
+    let approvalData = data?.t_asset_return_approvals || {};
+    if (Array.isArray(approvalData)) {
+      approvalData = approvalData.find((approval: any) => this.getNullableValue(approval?.status) === 'Pending') || approvalData[0] || {};
+    }
 
     const assetInfo = data?.m_assets || tuple?.old?.m_assets || tuple?.m_assets || {};
 
-    const status = this.mapToStatus(data?.status || '');
+    const status = this.mapToStatus(data?.status || approvalData?.status || '');
     const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
 
     return {
@@ -1183,7 +1223,7 @@ export class RequestService {
       category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
       assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id),
+      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id || approvalData?.temp1),
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
@@ -1211,6 +1251,64 @@ export class RequestService {
   /**
    * Handles null/xsi:nil values from the SOAP response.
    */
+  async getTypeIdFromAssetId(assetId: string): Promise<string> {
+    if (assetId.startsWith('typ_')) return assetId;
+
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Gettypeidfromassetid xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <assetid>${assetId}</assetid>
+    </Gettypeidfromassetid>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.hs.ajax(null, null, {}, soapRequest);
+    const tuple = this.hs.xmltojson(response, 'tuple');
+    const row = Array.isArray(tuple) ? tuple[0] : tuple;
+    const asset = row?.old?.m_assets || row?.m_assets || row;
+    const typeId = this.getNullableValue(asset?.type_id);
+
+    if (!typeId) {
+      throw new Error(`Asset type is not configured for asset ${assetId}.`);
+    }
+
+    return typeId;
+  }
+
+  async getUserIdByTypeAndRole(assetTypeId: string, roleId: string): Promise<string> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getuseridbytypeandrole xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Asset_type_id>${assetTypeId}</Asset_type_id>
+      <Asset_role_id>${roleId}</Asset_role_id>
+    </Getuseridbytypeandrole>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.hs.ajax(null, null, {}, soapRequest);
+    const tuple = this.hs.xmltojson(response, 'tuple');
+    const row = Array.isArray(tuple) ? tuple[0] : tuple;
+    const user = row?.old?.m_users || row?.m_users || row;
+    const userId = this.getNullableValue(user?.user_id);
+
+    if (!userId) {
+      throw new Error(`No active user found for asset type ${assetTypeId} and role ${roleId}.`);
+    }
+
+    return userId;
+  }
+
+  async resolveReturnApproverId(assetId: string, roleId: 'rol_04' | 'rol_05'): Promise<string> {
+    if (!assetId) {
+      throw new Error('Asset ID is missing for this return request.');
+    }
+
+    const assetTypeId = await this.getTypeIdFromAssetId(assetId);
+    return this.getUserIdByTypeAndRole(assetTypeId, roleId);
+  }
+
   private getNullableValue(value: any): string | undefined {
     if (value === null || value === undefined) return undefined;
     if (typeof value === 'object' && value !== null) {

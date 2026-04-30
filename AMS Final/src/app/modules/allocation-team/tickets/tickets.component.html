@@ -33,6 +33,11 @@
         Resolved
         <span class="tab-count resolved-count" *ngIf="resolvedTickets.length > 0">{{ resolvedTickets.length }}</span>
       </button>
+      <button [class.active]="activeTab === 'return'" (click)="setTab('return')">
+        <span class="material-icons">assignment_return</span>
+        Return Requests
+        <span class="tab-count" *ngIf="allReturnTickets.length > 0">{{ allReturnTickets.length }}</span>
+      </button>
       <button [class.active]="activeTab === 'resolvedReturn'" (click)="setTab('resolvedReturn')">
         <span class="material-icons">assignment_return</span>
         Resolved Return Tickets
@@ -66,6 +71,16 @@
         </ng-container>
 
         <!-- Filter for Resolved Tab -->
+        <ng-container *ngIf="activeTab === 'return'">
+          <select class="asset-filter" [(ngModel)]="selectedReturnStatus" (ngModelChange)="onFilterChange()"
+            style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
+            <option value="">All Return Requests</option>
+            <option value="Pending">Pending Requests</option>
+            <option value="Approved">Approved Requests</option>
+            <option value="Rejected">Rejected Requests</option>
+          </select>
+        </ng-container>
+
         <ng-container *ngIf="activeTab === 'resolved' || activeTab === 'resolvedReturn'">
           <select class="asset-filter" [(ngModel)]="selectedResolvedStatus" (ngModelChange)="onFilterChange()"
             style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
@@ -119,12 +134,12 @@
                   <span class="material-icons">visibility</span>
                   View Details
                 </button>
-                <button *ngIf="activeTab === 'unresolved'"
+                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (ticket.status === 'Pending' || ticket.status === 'In Progress')) || (activeTab === 'resolved' && ticket.status === 'Approved')"
                   class="btn-allocate"
                   (click)="ticket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(ticket) : allocate(ticket)">
                   <span class="material-icons">check_circle</span>
                 </button>
-                <button *ngIf="activeTab === 'unresolved'"
+                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (ticket.status === 'Pending' || ticket.status === 'In Progress')) || (activeTab === 'resolved' && ticket.status === 'Approved')"
                   class="btn-reject" (click)="handleTableRejectClick(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
@@ -208,15 +223,15 @@
             <span class="detail-label">Request Date</span>
             <span class="detail-value">{{ selectedTicket.assignedDate | date:'longDate' }}</span>
           </div>
-          <div class="detail-item">
+          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET">
             <span class="detail-label">Team Lead</span>
             <span class="detail-value">{{ selectedTicket.teamLeadName }}</span>
           </div>
-          <div class="detail-item">
+          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET">
             <span class="detail-label">Urgency</span>
             <span class="detail-value">{{ selectedTicket.urgency }}</span>
           </div>
-          <div class="detail-item">
+          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET">
             <span class="detail-label">Reason</span>
             <span class="detail-value">{{ selectedTicket.reason }}</span>
           </div>
@@ -262,7 +277,7 @@
         </div>
       </div>
 
-      <div class="remarks-section" *ngIf="activeTab === 'unresolved'">
+      <div class="remarks-section" *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (selectedTicket.status === 'Pending' || selectedTicket.status === 'In Progress'))">
         <label for="decisionRemarks">Decision Remarks <span class="mandatory-star"
             style="font-size: 11px; color: #94a3b8; font-weight: normal;">(mandatory for rejection)</span></label>
         <textarea id="decisionRemarks" [(ngModel)]="decisionRemarks"
@@ -272,9 +287,9 @@
 
       <!-- Action Buttons inside Drawer -->
       <div class="drawer-actions"
-        *ngIf="activeTab === 'unresolved'">
+        *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (selectedTicket.status === 'Pending' || selectedTicket.status === 'In Progress')) || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
         <button class="drawer-btn-allocate"
-          (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(selectedTicket) : allocate(selectedTicket); closeDetails()">
+          (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(selectedTicket) : allocate(selectedTicket); selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET && closeDetails()">
           <span class="material-icons">check_circle</span>
           {{ selectedTicket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' :
           (selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? 'Confirm Return' : 'Allocate') }}
