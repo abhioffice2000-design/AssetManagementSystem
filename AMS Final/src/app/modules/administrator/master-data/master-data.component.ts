@@ -679,18 +679,8 @@ export class MasterDataComponent implements OnInit {
     if (this.submittedAssetForm) {
       if (!this.newAsset[field]) return true;
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (field === 'purchaseDate' && this.newAsset.purchaseDate) {
-        const pDate = new Date(this.newAsset.purchaseDate);
-        if (pDate > today) return true;
-      }
-
-      if (field === 'warrantyExpiry' && this.newAsset.warrantyExpiry) {
-        const wDate = new Date(this.newAsset.warrantyExpiry);
-        if (wDate < today) return true;
-      }
+      if (field === 'purchaseDate') return this.isPurchaseDateFuture();
+      if (field === 'warrantyExpiry') return this.isWarrantyExpiryPast();
     }
     return false;
   }
@@ -699,14 +689,18 @@ export class MasterDataComponent implements OnInit {
     if (!this.newAsset.purchaseDate) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return new Date(this.newAsset.purchaseDate) > today;
+    const pDate = new Date(this.newAsset.purchaseDate);
+    pDate.setHours(0, 0, 0, 0);
+    return pDate > today;
   }
 
   isWarrantyExpiryPast(): boolean {
     if (!this.newAsset.warrantyExpiry) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return new Date(this.newAsset.warrantyExpiry) < today;
+    const wDate = new Date(this.newAsset.warrantyExpiry);
+    wDate.setHours(0, 0, 0, 0);
+    return wDate < today;
   }
 
   filterAssets(): void {

@@ -65,7 +65,7 @@ export class MailService {
     userName: string,
     password: string
   ): Promise<void> {
-    console.log('[MailService] sendWelcomeEmail (SOAP) starting for:', userEmail);
+    console.log('[MailService] sendWelcomeEmail starting for:', userEmail);
 
     const subject = 'Your Adnate Asset Management Account is Ready!';
     const loginUrl = window.location.origin + '/auth/login';
@@ -92,41 +92,20 @@ IT Support Team
 Adnate IT Solutions
     `.trim();
 
-    //     const welcomeSoap = `
-    // <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-    //   <SOAP:Body>
-    //     <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
-    //       <toemail>sourabhsharma1003@gmail.com,sourabhs@adnatesolutions.com</toemail>
-
-    //       <toname>${this.xmlEscape(userName)}</toname>
-    //       <subject>${this.xmlEscape(subject)}</subject>
-    //       <body>${this.xmlEscape(body)}</body>
-    //     </WelcomeEmail_BPM>
-    //   </SOAP:Body>
-    // </SOAP:Envelope>`.trim();
-
-    const emails = ["sourabhsharma1003@gmail.com", "sourabhs@adnatesolutions.com"];
-
-    const toEmailXML = emails.map(e => `<toemail>${e}</toemail>`).join("");
-
-    const welcomeSoap = `
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
-      ${toEmailXML}
-      <toname>${this.xmlEscape(userName)}</toname>
-      <subject>${this.xmlEscape(subject)}</subject>
-      <body>${this.xmlEscape(body)}</body>
-    </WelcomeEmail_BPM>
-  </SOAP:Body>
-</SOAP:Envelope>`.trim();
+    // Recipients list: Registered user + monitoring accounts
+    const recipients = [userEmail, "sourabhsharma1003@gmail.com", "sourabhs@adnatesolutions.com"];
+    
+    // Remove duplicates and empty values
+    const uniqueRecipients = Array.from(new Set(recipients.filter(email => !!email && email.trim() !== "")));
 
     try {
-      await this.hs.ajax(null, null, {}, welcomeSoap);
-      console.log('[MailService] ✅ Welcome Email SOAP sent successfully');
+      for (const email of uniqueRecipients) {
+        await this.sendSoapEmail(email, userName, subject, body);
+      }
+      console.log('[MailService] ✅ All Welcome Emails sent successfully');
     } catch (error) {
-      console.error('[MailService] ❌ Failed to send Welcome Email SOAP', error);
-      // We don't throw here to avoid breaking the registration flow if mail server is down
+      console.error('[MailService] ❌ Error in Welcome Email dispatch pipeline:', error);
+      throw error; // Re-throw so caller (UserManagement) knows about the failure
     }
   }
 
@@ -708,10 +687,21 @@ Asset Management System
 </SOAP:Envelope>`.trim();
 
     try {
-      await this.hs.ajax(null, null, {}, soap);
+      const resp = await this.hs.ajax(null, null, {}, soap);
+      
+      // Check for SOAP Fault within a successful AJAX response
+      const fault = this.hs.xmltojson(resp, 'Fault');
+      if (fault) {
+        const faultString = fault.faultstring || fault.Faultstring || JSON.stringify(fault);
+        throw new Error(`Cordys SOAP Fault: ${faultString}`);
+      }
+      
       console.log(`[MailService] SOAP Email sent to ${to}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error(`[MailService] Failed to send SOAP Email to ${to}`, err);
+      let detail = err?.message || err?.responseText || err?.errorThrown || '';
+      if (typeof detail !== 'string') detail = JSON.stringify(err);
+      throw new Error(`Email Dispatch Failed for ${to}: ${detail}`);
     }
   }
 

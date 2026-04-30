@@ -106,6 +106,14 @@ export class UserManagementComponent implements OnInit {
   userAssignedAssets: AssignedAsset[] = [];
   isLoadingUserAssets = false;
 
+  // Confirmation Modal State
+  showConfirmModal = false;
+  showConfirmAction = true;
+  confirmTitle = '';
+  confirmMessage = '';
+  confirmBtnText = 'Confirm';
+  onConfirmCallback: (() => void) | null = null;
+
   constructor(
     private assetService: AssetService,
     private adminDataService: AdminDataService,
@@ -168,6 +176,23 @@ export class UserManagementComponent implements OnInit {
 
   async toggleProjectStatus(project: Project): Promise<void> {
     const newStatus = project.status === 'Active' ? 'Completed' : 'Active';
+
+    // Restriction: Cannot inactivate project if members or team lead are assigned
+    if (project.status === 'Active') {
+      const hasTeamLead = project.teamLead && project.teamLead.trim() !== '' && project.teamLead !== '-';
+      const hasMembers = (project.memberCount || 0) > 0;
+
+      if (hasTeamLead || hasMembers) {
+        this.openConfirmModal(
+          'Action Required',
+          'First remove the team lead or employee from the project before marking it as inactive.',
+          () => {},
+          true // isWarning only
+        );
+        return;
+      }
+    }
+
     const projectIdToUpdate = project.id || project.projectCode; // project_id
     if (!projectIdToUpdate) {
       this.notificationService.showToast('Unable to update project: Missing Project ID.', 'error');
@@ -187,6 +212,28 @@ export class UserManagementComponent implements OnInit {
 
   setTab(tab: UserTab): void {
     this.activeTab = tab;
+  }
+
+  // Generic Confirmation Modal Methods
+  openConfirmModal(title: string, message: string, callback: () => void, isWarning: boolean = false) {
+    this.confirmTitle = title;
+    this.confirmMessage = message;
+    this.onConfirmCallback = callback;
+    this.showConfirmAction = !isWarning;
+    this.confirmBtnText = isWarning ? 'Close' : 'Confirm';
+    this.showConfirmModal = true;
+  }
+
+  closeConfirmModal() {
+    this.showConfirmModal = false;
+    this.onConfirmCallback = null;
+  }
+
+  handleConfirm() {
+    if (this.onConfirmCallback) {
+      this.onConfirmCallback();
+    }
+    this.closeConfirmModal();
   }
 
   // Modals for add
@@ -430,6 +477,20 @@ export class UserManagementComponent implements OnInit {
     return true;
   }
 
+  get availableProjectsForEditUser(): Project[] {
+    if (!this.editingUser) return this.projects;
+
+    if (this.editUserForm.roleName === this.teamLeadRoleName) {
+      return this.projects.filter(project => {
+        const hasNoLead = !project.teamLead?.trim() || project.teamLead === '-';
+        const isCurrentLead = project.teamLeadId === this.editingUser?.id;
+        return hasNoLead || isCurrentLead;
+      });
+    }
+
+    return this.projects;
+  }
+
   async saveUser(): Promise<void> {
     if (!this.editingUser || !this.canSaveEditUser) {
       return;
@@ -439,7 +500,54 @@ export class UserManagementComponent implements OnInit {
 
     try {
       const targetRoleName = this.editUserForm.roleName.trim().toLowerCase();
+
+      // Restriction: Ensure only one Asset Manager per Asset Type
+      if (targetRoleName === this.assetManagerRoleName.toLowerCase() && this.editUserForm.assetTypeId) {
+        await this.loadAssetTypes(); // Get fresh data to avoid stale checks
+        const existingType = this.assetTypes.find(t => t.id === this.editUserForm.assetTypeId);
+        if (existingType) {
+          const amId = (existingType.assetManagerId || '').trim();
+          const amName = (existingType.assetManager || '').trim();
+          const hasManager = amId !== '' || amName !== '';
+          
+          if (hasManager && amId !== this.editingUser.id) {
+            this.notificationService.showToast('An Asset Manager is already assigned to this asset type. Please remove the existing manager first.', 'error');
+            this.isSavingEdit = false;
+            return;
+          }
+        }
+      }
+
+      // Restriction: Ensure only one Team Lead per Project
+      if (targetRoleName === this.teamLeadRoleName.toLowerCase() && this.editUserForm.projectId) {
+        await this.loadProjects(); // Get fresh data
+        const targetProject = this.projects.find(p => p.id === this.editUserForm.projectId);
+        if (targetProject) {
+          const tlId = (targetProject.teamLeadId || '').trim();
+          const tlName = (targetProject.teamLead || '').trim();
+          const hasLead = (tlId !== '' && tlId !== '-') || (tlName !== '' && tlName !== '-');
+          
+          if (hasLead && tlId !== this.editingUser.id) {
+            this.openConfirmModal(
+              'Team Lead Already Assigned',
+              `The project '${targetProject.name}' already has a Team Lead assigned. Please remove the existing Team Lead from that project first.`,
+              () => {},
+              true // isWarning only
+            );
+            this.isSavingEdit = false;
+            return;
+          }
+        }
+      }
+
       const selectedRole = this.roles.find(r => r.name.trim().toLowerCase() === targetRoleName);
+      if (!selectedRole && this.editUserForm.roleName !== this.editingUser.role) {
+        console.error('[UserManagement] Selected role not found in roles list:', targetRoleName);
+        this.notificationService.showToast('Invalid role selected.', 'error');
+        this.isSavingEdit = false;
+        return;
+      }
+
       const updates: {
         email?: string;
         roleId?: string;
@@ -470,6 +578,15 @@ export class UserManagementComponent implements OnInit {
 
       await this.adminDataService.updateUserDetails(this.editingUser.id, updates);
 
+      // IMPORTANT: If user was a Team Lead and their role changed, we must clear their TL assignment from the project
+      if (this.editingUser.role === this.teamLeadRoleName && this.editUserForm.roleName !== this.teamLeadRoleName) {
+        // Find if they were leading any project and clear it
+        const ledProject = this.projects.find(p => p.teamLeadId === this.editingUser?.id);
+        if (ledProject) {
+           await this.adminDataService.assignTeamLeadToProject(ledProject.id, ''); 
+        }
+      }
+
       // If role changed to TeamLead and a project was selected, assign as TL
       if (updates.roleId && targetRoleName === this.teamLeadRoleName.toLowerCase() && this.editUserForm.projectId) {
         await this.adminDataService.assignTeamLeadToProject(this.editUserForm.projectId, this.editingUser.id);
@@ -479,12 +596,16 @@ export class UserManagementComponent implements OnInit {
       await this.loadUsers();
       await this.loadRoles();
       await this.loadProjects();
+      await this.loadAssetTypes();
       this.filterUsers();
       this.notificationService.showToast('User details updated successfully!', 'success');
       this.closeEditModal();
 
     } catch (error) {
-      console.error('Failed to update user:', error);
+      console.error('Unable to update user details.', error);
+      const errorMsg = error instanceof Error ? error.message : 'Please try again.';
+      this.notificationService.showToast(`Failed to update user details: ${errorMsg}`, 'error');
+    } finally {
       this.isSavingEdit = false;
     }
   }
@@ -536,39 +657,59 @@ export class UserManagementComponent implements OnInit {
       return;
     }
 
+    // Restriction: Ensure only one Asset Manager per Asset Type
+    if (roleName === this.assetManagerRoleName && this.newUser.assetTypeId) {
+      await this.loadAssetTypes(); // Get fresh data
+      const existingType = this.assetTypes.find(t => t.id === this.newUser.assetTypeId);
+      if (existingType && (existingType.assetManagerId || existingType.assetManager)) {
+        this.notificationService.showToast('An Asset Manager is already assigned to this asset type. Please remove the existing manager first.', 'error');
+        this.isSavingUser = false;
+        return;
+      }
+    }
+
     this.isSavingUser = true;
+    const generatedPassword = this.newUser.password || 'Qwerty@1234';
 
     try {
-      const userId = this.generateNextUserId();
-      
-      const generatedPassword = this.newUser.password || 'Qwerty@1234';
-
-      await this.adminDataService.addUser({
-        userId,
+      // 1. Add User (This now includes strict Cordys creation check)
+      console.log('[UserManagement] Initiating user registration flow...');
+      const userId = await this.adminDataService.addUser({
+        userId: this.generateNextUserId(),
         name,
         email,
-        roleId: selectedRole.id,
         password: generatedPassword,
+        roleId: selectedRole.id,
         projectId: this.newUser.projectId || undefined,
         assetTypeId: this.newUser.assetTypeId || undefined
       });
 
+      // 2. Assign Project TL if needed
       if (roleName === this.teamLeadRoleName && this.newUser.projectId) {
+        console.log('[UserManagement] Assigning Team Lead role to project...');
         await this.adminDataService.assignTeamLeadToProject(this.newUser.projectId, userId);
       }
 
+      // 3. Send Welcome Email (MUST succeed or throw)
+      console.log('[UserManagement] Dispatching welcome emails...');
+      await this.mailService.sendWelcomeEmail(email, name, generatedPassword);
+
+      // 4. Finalize
+      console.log('[UserManagement] Registration flow completed successfully.');
       await this.loadUsers();
       await this.loadProjects();
+      await this.loadAssetTypes();
+      await this.loadRoles();
       this.filterUsers();
-      this.notificationService.showToast(`User '${name}' created successfully!`, 'success');
-      
-      // Send Welcome Email (replicating self-registration behavior with the NEW generated password)
-      this.mailService.sendWelcomeEmail(email, name, generatedPassword);
-      
+      this.notificationService.showToast(`User '${name}' created and welcome email sent!`, 'success');
       this.closeAddUserModal();
 
     } catch (error) {
-      console.error('Unable to add new user.', error);
+      console.error('[UserManagement] Registration failed at some stage:', error);
+      this.isSavingUser = false;
+      const errorMsg = error instanceof Error ? error.message : 'Please try again.';
+      this.notificationService.showToast(errorMsg, 'error');
+    } finally {
       this.isSavingUser = false;
     }
   }
