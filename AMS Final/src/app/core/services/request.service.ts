@@ -208,10 +208,10 @@ export class RequestService {
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
 
       this.allRequestsList = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
-      
+
       console.log(`[RequestService] fetchAllRequestsFromService: Fetched ${this.allRequestsList.length} total requests`);
       console.log(`[RequestService] Sample of fetched requests:`, this.allRequestsList.slice(0, 5).map(r => ({ id: r.id, status: r.status })));
-      
+
       return [...this.allRequestsList];
     } catch (err) {
       console.error('Failed to fetch requests from GetRequestsForAssetManager:', err);
@@ -330,6 +330,43 @@ export class RequestService {
     }
   }
 
+  async fetchAllReturnRequestsFromService(): Promise<AssetRequest[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_asset_returnsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromReturn_id: '0', toReturn_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+
+      if (!tuples) {
+        console.warn('No tuples found in GetT_asset_returnsObjects response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      const requests = tupleArray.map((tuple: any) => this.mapReturnTupleToRequest(tuple));
+
+      return Promise.all(requests.map(async (req) => {
+        if (req.assignedAssetId) {
+          const asset = await this.getAssetDetailsById(req.assignedAssetId);
+          if (asset) {
+            req.assetName = asset.asset_name || req.assetName;
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.category = asset.sub_category_id || req.category;
+            req.assignedSerial = asset.serial_number || req.assignedSerial;
+            req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
+            req.assignedWarrantyExpiry = asset.warranty_expiry || req.assignedWarrantyExpiry;
+          }
+        }
+        return req;
+      }));
+    } catch (err) {
+      console.error('Failed to fetch all return requests:', err);
+      return [];
+    }
+  }
+
   async fetchPendingWarrantyApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -412,7 +449,7 @@ export class RequestService {
 
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
       console.log(`[RequestService] Fetched ${tupleArray.length} pending warranty requests for user ${userId}`);
-      
+
       return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
     } catch (err) {
       console.error('Failed to fetch pending warranty requests for user:', err);
@@ -585,38 +622,38 @@ export class RequestService {
    */
   private mapWarrantyTupleToRequest(tuple: any): AssetRequest {
     const parent = tuple?.old || tuple;
-    
+
     // In Cordys join queries, tables can be siblings or nested.
     // Try to find approval data in both common patterns.
-    const approvalData = parent?.t_extend_request_approvals || 
-                         parent?.t_extend_asset_requests?.t_extend_request_approvals || 
-                         parent;
+    const approvalData = parent?.t_extend_request_approvals ||
+      parent?.t_extend_asset_requests?.t_extend_request_approvals ||
+      parent;
 
-    const reqData = parent?.t_extend_asset_requests || 
-                    approvalData?.t_extend_asset_requests || 
-                    (parent.request_id ? parent : {});
-                    
+    const reqData = parent?.t_extend_asset_requests ||
+      approvalData?.t_extend_asset_requests ||
+      (parent.request_id ? parent : {});
+
     const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || {};
-    
+
     // Asset metadata can be in multiple places depending on the join depth
-    const assetInfo = parent?.m_assets || 
-                     reqData?.m_assets || 
-                     approvalData?.m_assets || 
-                     parent?.t_extend_asset_requests?.m_assets || 
-                     parent?.t_extend_request_approvals?.m_assets ||
-                     {};
+    const assetInfo = parent?.m_assets ||
+      reqData?.m_assets ||
+      approvalData?.m_assets ||
+      parent?.t_extend_asset_requests?.m_assets ||
+      parent?.t_extend_request_approvals?.m_assets ||
+      {};
 
     // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
     const assetName = this.getNullableValue(reqData?.temp1 || parent?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
     const serialNumber = this.getNullableValue(
-      reqData?.temp2 || 
-      parent?.temp2 || 
-      reqData?.serial_number || 
-      reqData?.asset_tag || 
-      assetInfo?.serial_number || 
-      assetInfo?.asset_tag || 
-      assetInfo?.serial_no || 
-      assetInfo?.Serial_number || 
+      reqData?.temp2 ||
+      parent?.temp2 ||
+      reqData?.serial_number ||
+      reqData?.asset_tag ||
+      assetInfo?.serial_number ||
+      assetInfo?.asset_tag ||
+      assetInfo?.serial_no ||
+      assetInfo?.Serial_number ||
       parent?.serial_number
     ) || 'N/A';
     const expiryDate = this.getNullableValue(reqData?.temp3 || assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
@@ -643,7 +680,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      assetType: this.getNullableValue(assetInfo?.type_id || assetInfo?.asset_type) || this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
       category: 'Warranty extension',
       subCategory: assetName,
       assetName: assetName,
@@ -776,7 +813,7 @@ export class RequestService {
   async getRequestProgress(requestId: string): Promise<any[]> {
     // Normalize ID to lowercase for the backend service (e.g., AR_072 -> ar_072)
     const normalizedId = requestId.toLowerCase();
-    
+
     // If it's a warranty extension request (EW or EX prefix), use the specialized warranty progress service
     if (normalizedId.startsWith('ew') || normalizedId.startsWith('ex')) {
       return this.getWarrantyProgress(requestId);
@@ -798,17 +835,21 @@ export class RequestService {
       if (!data) return [];
       const tupleArray = Array.isArray(data) ? data : [data];
 
-      return tupleArray.map((tuple: any) => {
+      // Map and then sort/reverse to ensure we have the latest status for each role
+      const results = tupleArray.map((tuple: any) => {
         const approvalData = tuple?.old?.t_request_approvals || tuple?.t_request_approvals || tuple;
         return {
           stage: approvalData?.role || approvalData?.temp1 || 'Unknown Role/Stage',
           status: approvalData?.status || 'Pending',
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
-          timestamp: approvalData?.created_at,
+          timestamp: approvalData?.action_date || approvalData?.created_at || '',
           comments: approvalData?.remarks || approvalData?.reason || approvalData?.temp2 || ''
         };
       });
+
+      // Reverse the array so that progress.find() gets the most recent action for a stage
+      return results.reverse();
     } catch (err) {
       console.error('Error fetching request progress:', err);
       return [];
@@ -1142,8 +1183,8 @@ export class RequestService {
       requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
       requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
       teamLeadJustification: this.getNullableValue(
-        parent?.t_request_approvals?.reason || 
-        parent?.t_request_approvals?.remarks || 
+        parent?.t_request_approvals?.reason ||
+        parent?.t_request_approvals?.remarks ||
         parent?.t_request_approvals?.temp2 ||
         reqData?.t_request_approvals?.reason ||
         reqData?.t_request_approvals?.remarks ||
@@ -1158,11 +1199,14 @@ export class RequestService {
   private mapReturnTupleToRequest(tuple: any): AssetRequest {
     const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
     const userInfo = data?.m_users || {};
-    const approvalData = data?.t_asset_return_approvals || {};
+    let approvalData = data?.t_asset_return_approvals || {};
+    if (Array.isArray(approvalData)) {
+      approvalData = approvalData.find((approval: any) => this.getNullableValue(approval?.status) === 'Pending') || approvalData[0] || {};
+    }
 
     const assetInfo = data?.m_assets || tuple?.old?.m_assets || tuple?.m_assets || {};
 
-    const status = this.mapToStatus(data?.status || '');
+    const status = this.mapToStatus(data?.status || approvalData?.status || '');
     const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
 
     return {
@@ -1179,7 +1223,7 @@ export class RequestService {
       category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
       assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id),
+      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id || approvalData?.temp1),
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
@@ -1207,6 +1251,64 @@ export class RequestService {
   /**
    * Handles null/xsi:nil values from the SOAP response.
    */
+  async getTypeIdFromAssetId(assetId: string): Promise<string> {
+    if (assetId.startsWith('typ_')) return assetId;
+
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Gettypeidfromassetid xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <assetid>${assetId}</assetid>
+    </Gettypeidfromassetid>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.hs.ajax(null, null, {}, soapRequest);
+    const tuple = this.hs.xmltojson(response, 'tuple');
+    const row = Array.isArray(tuple) ? tuple[0] : tuple;
+    const asset = row?.old?.m_assets || row?.m_assets || row;
+    const typeId = this.getNullableValue(asset?.type_id);
+
+    if (!typeId) {
+      throw new Error(`Asset type is not configured for asset ${assetId}.`);
+    }
+
+    return typeId;
+  }
+
+  async getUserIdByTypeAndRole(assetTypeId: string, roleId: string): Promise<string> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Getuseridbytypeandrole xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Asset_type_id>${assetTypeId}</Asset_type_id>
+      <Asset_role_id>${roleId}</Asset_role_id>
+    </Getuseridbytypeandrole>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.hs.ajax(null, null, {}, soapRequest);
+    const tuple = this.hs.xmltojson(response, 'tuple');
+    const row = Array.isArray(tuple) ? tuple[0] : tuple;
+    const user = row?.old?.m_users || row?.m_users || row;
+    const userId = this.getNullableValue(user?.user_id);
+
+    if (!userId) {
+      throw new Error(`No active user found for asset type ${assetTypeId} and role ${roleId}.`);
+    }
+
+    return userId;
+  }
+
+  async resolveReturnApproverId(assetId: string, roleId: 'rol_04' | 'rol_05'): Promise<string> {
+    if (!assetId) {
+      throw new Error('Asset ID is missing for this return request.');
+    }
+
+    const assetTypeId = await this.getTypeIdFromAssetId(assetId);
+    return this.getUserIdByTypeAndRole(assetTypeId, roleId);
+  }
+
   private getNullableValue(value: any): string | undefined {
     if (value === null || value === undefined) return undefined;
     if (typeof value === 'object' && value !== null) {
@@ -1247,14 +1349,26 @@ export class RequestService {
 
   private determineStage(status: RequestStatus, role: string = ''): ApprovalStage {
     const r = role.toLowerCase();
-    if (r.includes('team lead')) return ApprovalStage.TEAM_LEAD;
-    if (r.includes('asset manager')) return ApprovalStage.ASSET_MANAGER;
-    if (r.includes('allocation')) return ApprovalStage.ALLOCATION;
 
+    // If we have an approval record and it's already approved, the current stage is the NEXT one
+    const isApproved = status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED;
+
+    if (r.includes('team lead')) {
+      return isApproved ? ApprovalStage.ASSET_MANAGER : ApprovalStage.TEAM_LEAD;
+    }
+    if (r.includes('asset manager')) {
+      return isApproved ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER;
+    }
+    if (r.includes('allocation')) {
+      return isApproved ? ApprovalStage.COMPLETED : ApprovalStage.ALLOCATION;
+    }
+
+    // Fallback logic based on status if role is ambiguous
     switch (status) {
       case RequestStatus.PENDING: return ApprovalStage.TEAM_LEAD;
-      case RequestStatus.APPROVED: return ApprovalStage.ALLOCATION;
+      case RequestStatus.APPROVED: return ApprovalStage.ASSET_MANAGER;
       case RequestStatus.COMPLETED: return ApprovalStage.COMPLETED;
+      case RequestStatus.REJECTED: return ApprovalStage.REJECTED;
       default: return ApprovalStage.TEAM_LEAD;
     }
   }
@@ -2007,7 +2121,7 @@ export class RequestService {
 
   callBPMForwarrantyexpiry(request: any) {
     return this.hs.ajax(
-      'AMS_warranty_expiry',
+      'AMS_warranty_expiry_Final',
       'http://schemas.cordys.com/default',
       request
     ).then((res: any) => {
@@ -2055,5 +2169,18 @@ export class RequestService {
       console.error('getReturnRequestProgress failed:', err);
       return this.fetchReturnApprovalsByRequestId(requestId);
     }
+  }
+  getAssetManagerByAssetTypeId(request: any) {
+    return this.hs.ajax(
+      'GetAssetManagerForParticularAsset',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
   }
 }

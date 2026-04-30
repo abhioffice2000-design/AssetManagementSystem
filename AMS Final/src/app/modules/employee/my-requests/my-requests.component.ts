@@ -721,6 +721,22 @@ export class MyRequestsComponent implements OnInit {
   onFileSelected(event: any): void {
     const file = event.target.files[0];
     if (file) {
+      // Validate file type: only images and PDFs allowed
+      const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+        this.notificationService.showToast(
+          'Only image files (PNG, JPG) and PDF files are allowed.',
+          'error'
+        );
+        this.selectedFileBase64 = null;
+        this.selectedFileName = null;
+        event.target.value = '';
+        return;
+      }
+
       const MAX_SIZE_BYTES = 5 * 1024 * 1024;
       if (file.size > MAX_SIZE_BYTES) {
         this.notificationService.showToast(
@@ -823,7 +839,7 @@ export class MyRequestsComponent implements OnInit {
       }
 
       await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
-
+      
       // 2. API: UpdateT_request_approvals
       // This adds a new entry (column/row) for the same request ID to restart approval flow
       // Resolve dynamic approver IDs

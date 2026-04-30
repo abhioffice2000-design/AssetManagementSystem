@@ -181,7 +181,8 @@ export class MyAssetComponent implements OnInit {
         this.pendingRequests = requests.filter((req: AssetRequest) =>
           req.status === 'Pending' ||
           req.status === 'In Progress' ||
-          req.status === 'Approved'
+          req.status === 'Approved' ||
+          req.status === 'Rejected'
         );
         this.requestsCurrentPage = 1;
         console.log('[MyAsset] PendingRequestsForTeamLead count:', this.pendingRequests.length);
@@ -220,13 +221,14 @@ export class MyAssetComponent implements OnInit {
       // Attempt to extract the newly generated ID from the first insert, fallback to asset.id if not found
       const returnData = this.hs.xmltojson(res1, 't_asset_returns');
       const newReturnId = (returnData && (returnData.id || returnData.return_id)) ? (returnData.id || returnData.return_id) : asset.id;
+      const assetManagerId = await this.requestService.resolveReturnApproverId(asset.id, 'rol_04');
       
       const approvalPayload = {
         tuple: {
           new: {
             t_asset_return_approvals: {
               request_id: newReturnId,
-              approver_id: 'usr_004',
+              approver_id: assetManagerId,
               role: 'Asset Manager',
               status: "Pending"
             }
@@ -291,6 +293,7 @@ export class MyAssetComponent implements OnInit {
           }
         }
       };
+      
       await this.hs.ajax('UpdateT_asset_return_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalPayload);
 
       this.notificationService.showToast('Warranty extension requested successfully', 'success');
@@ -529,10 +532,10 @@ export class MyAssetComponent implements OnInit {
             t_asset_requests: { 
               status: 'Pending', // Reset to pending for re-approval
               urgency: this.editForm.urgency,
-              justification: this.editForm.justification,
+              reason: this.editForm.justification,
               asset_type: this.editForm.assetType,
-              category: this.editForm.category,
-              updated_at: new Date().toISOString()
+              temp1: this.editForm.category,
+              created_at: new Date().toISOString()
             } 
           }
         }

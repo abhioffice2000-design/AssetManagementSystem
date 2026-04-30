@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { WarrantySchedulerService } from './core/services/warranty-scheduler.service';
 
 declare var $: any;
 
@@ -10,7 +11,10 @@ declare var $: any;
 export class AppComponent implements OnInit {
   title = 'ams';
 
+  constructor(private warrantyScheduler: WarrantySchedulerService) {}
+
   ngOnInit() {
+    this.warrantyScheduler.initScheduler();
     console.log('AppComponent initialized. Checking for Cordys SDK...', typeof $, typeof $.cordys);
     
     // Configure Cordys SDK to use the proxy root endpoints (bypassing the default /cordys/ prefix)

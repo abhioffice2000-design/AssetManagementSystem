@@ -71,6 +71,7 @@ export enum ApprovalStage {
   TEAM_LEAD = 'Team Lead Approval',
   ASSET_MANAGER = 'Asset Manager Approval',
   ALLOCATION = 'Asset Allocation',
+  REJECTED = 'Rejected',
   COMPLETED = 'Completed'
 }
 

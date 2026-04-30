@@ -89,13 +89,14 @@ export class ReturnAssetComponent implements OnInit {
 
       const tReturns = res3?.old?.t_asset_returns || res3?.new?.t_asset_returns || res3?.t_asset_returns || {};
       const return_id = tReturns.return_id || tReturns.id || 'SYS_UNKNOWN';
+      const assetManagerId = await this.requestService.resolveReturnApproverId(this.selectedAsset.id, 'rol_04');
 
       var request4 = {
         tuple: {
           new: {
             t_asset_return_approvals: {
               request_id: `${return_id}`,
-              approver_id: `usr_004`,
+              approver_id: assetManagerId,
               role: `Asset Manager`,
               status: `Pending`,
               remarks: 'waiting for approval'

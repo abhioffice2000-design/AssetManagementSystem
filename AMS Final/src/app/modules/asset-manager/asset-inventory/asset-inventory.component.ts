@@ -13,8 +13,8 @@ export class AssetInventoryComponent implements OnInit {
   searchTerm = '';
   selectedType = '';
   selectedStatus = '';
-  assetTypes = Object.values(AssetType);
-  assetStatuses = Object.values(AssetStatus);
+  assetTypes: string[] = [];
+  assetStatuses = ['Allocated', 'Available', 'Move to allocation team']
   selectedAsset: Asset | null = null;
   showDetailModal = false;
 
@@ -33,6 +33,18 @@ export class AssetInventoryComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadAssets();
+    this.loadAssetTypes();
+  }
+
+  async loadAssetTypes(): Promise<void> {
+    try {
+      const counts = await this.assetService.fetchAssetTypeWiseCount();
+      this.assetTypes = counts.map(c => c.type_name);
+    } catch (err) {
+      console.error('Failed to load asset types:', err);
+      // Fallback
+      this.assetTypes = Object.values(AssetType) as string[];
+    }
   }
 
   async loadAssets(): Promise<void> {

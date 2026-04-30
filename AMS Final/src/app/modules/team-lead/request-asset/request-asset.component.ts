@@ -8,6 +8,9 @@ import { NotificationService } from '../../../core/services/notification.service
 import { AssetType, AssetCategory } from '../../../core/models/asset.model';
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
 import { HeroService } from '../../../core/services/hero.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
+import { UserRole } from '../../../core/models/user.model';
+
 
 @Component({
   selector: 'app-tl-request-asset',
@@ -34,7 +37,8 @@ export class RequestAssetComponent implements OnInit {
     private authService: AuthService,
     private notificationService: NotificationService,
     private router: Router,
-    private hs: HeroService
+    private hs: HeroService,
+    private adminService: AdminDataService,
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -118,8 +122,8 @@ export class RequestAssetComponent implements OnInit {
   }
 
 
-
-  onSubmit(): void {
+assetmanagerid:any;
+  async onSubmit() {
     if (this.requestForm.invalid) {
       this.requestForm.markAllAsTouched();
       return;
@@ -152,73 +156,73 @@ export class RequestAssetComponent implements OnInit {
 
     console.log('[RequestAsset] Submitting to Cordys:', soapData);
 
-    let requestId: any;
+    try {
+      const resp: any = await this.hs.ajax('UpdateT_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData);
+      console.log('[RequestAsset] t_asset_requests insert response:', resp);
 
-    this.hs.ajax('UpdateT_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData)
-      .then((resp: any) => {
-        console.log('[RequestAsset] t_asset_requests insert response:', resp);
+      // Extract the new request_id from the Cordys response
+      const responseData = this.hs.xmltojson(resp, 't_asset_requests');
+      const requestId = responseData?.request_id || (Array.isArray(responseData) ? responseData[0]?.request_id : undefined);
 
-        // Extract the new request_id from the Cordys response
-        const responseData = this.hs.xmltojson(resp, 't_asset_requests');
-        requestId = responseData?.request_id ||
-                    (Array.isArray(responseData) ? responseData[0]?.request_id : undefined);
+      console.log('[RequestAsset] New request_id:', requestId);
 
-        console.log('[RequestAsset] New request_id:', requestId);
-
-        if (!requestId) {
-          console.warn('[RequestAsset] No request_id returned; skipping t_request_approvals insert.');
-          this.notificationService.showToast('Request saved but approval record could not be created.', 'error');
-          this.isSubmitting = false;
-          this.router.navigate(['/team-lead/my-asset']);
-          return;
-        }
-
-        // Now insert into t_request_approvals
-        const approvalData = {
-          tuple: {
-            new: {
-              t_request_approvals: {
-                request_id: requestId,
-                approver_id: 'usr_004',
-                role: 'Asset Manager',
-                status: 'Pending',
-                temp1: formVal.subCategory  // asset_name/subcat_id
-              }
-            }
-          }
-        };
-
-        console.log('[RequestAsset] Inserting approval record:', approvalData);
-
-        return this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalData);
-      })
-      .then((approvalResp: any) => {
-        const approvalData = this.hs.xmltojson(approvalResp, 't_request_approvals');
-        const approvalId = approvalData?.approval_id || 
-                           (Array.isArray(approvalData) ? approvalData[0]?.approval_id : undefined);
-
-        console.log('[RequestAsset] New approval_id:', approvalId);
-
-        if (requestId && approvalId) {
-          const bpmReq = {
-            InputDoc: 'false', // Team Leads always follow standard approval for themselves
-            Inputusrid: user.id,
-            Inputrequestapprovalid: `${approvalId}`,
-            Inputrequestid: `${requestId}`
-          };
-          this.requestService.callBPMForRequest(bpmReq);
-        }
-
-        this.notificationService.showToast('Asset request submitted successfully!', 'success');
-        this.notificationService.addNotification('Request Submitted', 'Your request has been saved and sent for approval.', 'info');
-
+      if (!requestId) {
+        console.warn('[RequestAsset] No request_id returned; skipping t_request_approvals insert.');
+        this.notificationService.showToast('Request saved but approval record could not be created.', 'error');
         this.isSubmitting = false;
         this.router.navigate(['/team-lead/my-asset']);
-      })
-      .catch((err: any) => {
-        console.error('[RequestAsset] Submission failed:', err);
-        this.notificationService.showToast('Failed to save request to database. Please try again.', 'error');
-        this.isSubmitting = false;
-      });
+        return;
+      }
+
+      // Fetch dynamic Asset Manager assignment
+      const assignment = await this.adminService.getAssignmentByAssetType(this.selectedTypeName);
+      if (assignment) {
+        this.assetmanagerid = assignment.assetManagerId;
+      }
+
+      // Now insert into t_request_approvals
+      const approvalData = {
+        tuple: {
+          new: {
+            t_request_approvals: {
+              request_id: requestId,
+              approver_id: this.assetmanagerid,
+              role: 'Asset Manager',
+              status: 'Pending',
+              temp1: formVal.subCategory  // asset_name/subcat_id
+            }
+          }
+        }
+      };
+
+      console.log('[RequestAsset] Inserting approval record:', approvalData);
+      const approvalResp: any = await this.hs.ajax('UpdateT_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalData);
+      
+      const approvalResult = this.hs.xmltojson(approvalResp, 't_request_approvals');
+      const approvalId = approvalResult?.approval_id || (Array.isArray(approvalResult) ? approvalResult[0]?.approval_id : undefined);
+
+      console.log('[RequestAsset] New approval_id:', approvalId);
+
+      if (requestId && approvalId) {
+        const bpmReq = {
+          InputDoc: 'false', // Team Leads always follow standard approval for themselves
+          Inputusrid: user.id,
+          Inputrequestapprovalid: `${approvalId}`,
+          Inputrequestid: `${requestId}`,
+          InputIsteamlead: user.role === UserRole.TEAM_LEAD ? 'true' : 'false'
+        };
+        await this.requestService.callBPMForRequest(bpmReq);
+      }
+
+      this.notificationService.showToast('Asset request submitted successfully!', 'success');
+      this.notificationService.addNotification('Request Submitted', 'Your request has been saved and sent for approval.', 'info');
+
+      this.isSubmitting = false;
+      this.router.navigate(['/team-lead/my-asset']);
+    } catch (err: any) {
+      console.error('[RequestAsset] Submission failed:', err);
+      this.notificationService.showToast('Failed to save request to database. Please try again.', 'error');
+      this.isSubmitting = false;
+    }
   }
 }

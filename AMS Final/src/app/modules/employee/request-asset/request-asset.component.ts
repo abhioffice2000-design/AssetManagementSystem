@@ -60,6 +60,9 @@ export class RequestAssetComponent implements OnInit {
   async loadMasterData(): Promise<void> {
     try {
       console.log('[RequestAsset Debug] Starting master data load...');
+      // 0. Populate User Cache for approver resolution
+      await this.adminService.GetAllUserRoleProjectDetails();
+
       const [types, subCats] = await Promise.all([
         this.assetService.getAllAssetTypesCordys(),
         this.assetService.getAllSubcategoriesCordys()
@@ -116,6 +119,22 @@ export class RequestAssetComponent implements OnInit {
   onFileSelected(event: any): void {
     const file = event.target.files[0];
     if (file) {
+      // Validate file type: only images and PDFs allowed
+      const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+        this.notificationService.showToast(
+          'Only image files (PNG, JPG) and PDF files are allowed.',
+          'error'
+        );
+        this.selectedFileBase64 = null;
+        this.selectedFileName = null;
+        event.target.value = '';
+        return;
+      }
+
       // Limit file size to 5 MB to avoid SOAP gateway payload limits
       const MAX_SIZE_BYTES = 5 * 1024 * 1024;
       if (file.size > MAX_SIZE_BYTES) {
@@ -222,8 +241,8 @@ export class RequestAssetComponent implements OnInit {
 
       // 3. Resolve Approvers & Create Approval Entry
       const approverDetails = await this.resolveApproverDetails(typeName);
-      const teamLeadId = approverDetails['Team Lead']?.id || 'usr_003';
-      const assetManagerId = approverDetails['Asset Manager']?.id || 'usr_004';
+      const teamLeadId = approverDetails['Team Lead']?.id || 'usr_001';
+      const assetManagerId = approverDetails['Asset Manager']?.id || 'usr_001';
 
       const request2 = {
         tuple: {
@@ -243,7 +262,7 @@ export class RequestAssetComponent implements OnInit {
 
       // 4. Trigger BPM Workflow
       const request3 = {
-        InputDoc: this.selectedFileBase64 ? `${this.selectedFileName}|${this.selectedFileBase64}` : formVal.hasEmailApproval.toString(),
+        InputDoc: formVal.hasEmailApproval.toString(),
         Inputusrid: user.id,
         Inputrequestapprovalid: `${newapprovalid}`,
         Inputrequestid: `${newrequestid}`
@@ -288,7 +307,7 @@ export class RequestAssetComponent implements OnInit {
         if (project?.teamLead) {
           details['Team Lead'] = {
             name: project.teamLead,
-            id: project.teamLeadId || this.adminService.findUserIdByName(project.teamLead) || 'usr_003'
+            id: project.teamLeadId || this.adminService.findUserIdByName(project.teamLead) || 'usr_001'
           };
         }
       }
@@ -299,7 +318,7 @@ export class RequestAssetComponent implements OnInit {
         if (assignment) {
           details['Asset Manager'] = {
             name: assignment.assetManager,
-            id: assignment.assetManagerId || this.adminService.findUserIdByName(assignment.assetManager) || 'usr_004'
+            id: assignment.assetManagerId || this.adminService.findUserIdByName(assignment.assetManager) || 'usr_001'
           };
         }
       }

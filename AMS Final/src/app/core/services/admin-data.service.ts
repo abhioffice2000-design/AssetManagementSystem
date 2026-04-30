@@ -2,6 +2,8 @@ import { Injectable } from '@angular/core';
 import { User } from '../models/user.model';
 import { HeroService } from './hero.service';
 
+declare var $: any;
+
 export interface Allocation {
   id: string;
   allocationId: string;
@@ -269,13 +271,15 @@ export class AdminDataService {
     name: string;
     email: string;
     roleId: string;
+    password?: string;
     projectId?: string;
     assetTypeId?: string;
-  }): Promise<void> {
+  }): Promise<string> {
     const userId = this.normalizeNullable(user.userId, '');
     const name = this.normalizeNullable(user.name, '');
     const email = this.normalizeNullable(user.email, '');
     const roleId = this.normalizeNullable(user.roleId, '');
+    const password = user.password || 'Qwerty@1234';
     const projectId = this.normalizeNullable(user.projectId, '');
     const assetTypeId = this.normalizeNullable(user.assetTypeId, '');
 
@@ -294,7 +298,7 @@ export class AdminDataService {
         <Credentials allowDuplicate="true">
           <UserIDPassword>
             <UserID>${this.xmlEscape(email)}</UserID>
-            <Password>Qwerty@1234</Password>
+            <Password>${this.xmlEscape(password)}</Password>
           </UserIDPassword>
         </Credentials>
         <Roles>
@@ -306,16 +310,52 @@ export class AdminDataService {
 </SOAP:Envelope>`.trim();
 
     try {
-      await this.heroService.ajax(null, null, {}, createUserSoap);
-    } catch (e: any) {
-      const errorText = e?.responseText || e?.message || String(e) || '';
-      if (errorText.toLowerCase().includes('already') || errorText.toLowerCase().includes('duplicate') || errorText.toLowerCase().includes('exist')) {
-        console.warn('Cordys User already exists, proceeding to DB insertion.');
-      } else {
-        throw new Error('Failed to create user in Cordys: ' + (e?.message || errorText));
+      // Step 0: Ensure valid administrative context (Matching the working self-registration flow)
+      console.log('[AdminDataService] Refreshing admin authentication context...');
+      await new Promise<void>((resolve, reject) => {
+        if (typeof $ !== 'undefined' && $.cordys?.authentication?.sso) {
+          $.cordys.authentication.sso.authenticate('sourabhs', 'sourabhs')
+            .done(() => resolve())
+            .fail((err: any) => reject(err));
+        } else {
+          resolve(); // Fallback if Cordys SDK is missing
+        }
+      });
+
+      console.log('[AdminDataService] Creating user in Cordys organization...');
+      const resp = await this.heroService.ajax(null, null, {}, createUserSoap);
+      
+      // Check for SOAP Fault within a successful AJAX response (Cordys specific)
+      const fault = this.heroService.xmltojson(resp, 'Fault');
+      if (fault) {
+        const fs = fault.faultstring || fault.Faultstring || JSON.stringify(fault);
+        // Only proceed if it's explicitly a "user already exists" scenario
+        if (fs.toLowerCase().includes('already exists') || fs.toLowerCase().includes('user exists')) {
+          console.warn('[AdminDataService] User already exists in Cordys, proceeding to DB sync.');
+        } else {
+          throw new Error(`Cordys SOAP Fault: ${fs}`);
+        }
       }
+    } catch (e: any) {
+      // If we threw the Error above, re-throw it to stop the flow
+      if (e instanceof Error && e.message.includes('Cordys SOAP Fault')) throw e;
+
+      console.error('[AdminDataService] Cordys User Creation Request Failed:', e);
+      const errorText = e?.responseText || '';
+      
+      // Fuzzy check for existing user in error response
+      const isAlreadyExists = errorText.toLowerCase().includes('already exists') || 
+                              errorText.toLowerCase().includes('duplicate user');
+      
+      if (!isAlreadyExists) {
+        let detail = e?.responseText || e?.errorThrown || '';
+        if (typeof detail !== 'string') detail = JSON.stringify(e);
+        throw new Error(`Cordys Platform Rejection: ${detail}`);
+      }
+      console.warn('[AdminDataService] User already exists (via error), proceeding to DB sync.');
     }
 
+    // 2. Add User details to DB - Only reached if Cordys succeeded or user already existed
     const addUserSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -328,9 +368,10 @@ export class AdminDataService {
             <email>${this.xmlEscape(email)}</email>
             <role_id>${this.xmlEscape(roleId)}</role_id>
             <status>Active</status>
-            <temp1>Qwerty@1234</temp1>
+            <temp1>${this.xmlEscape(password)}</temp1>
             ${projectId ? `<project_id>${this.xmlEscape(projectId)}</project_id>` : ''}
             ${assetTypeId ? `<asset_type_id>${this.xmlEscape(assetTypeId)}</asset_type_id>` : ''}
+            <created_at>${new Date().toISOString()}</created_at>
           </m_users>
         </new>
       </tuple>
@@ -339,6 +380,7 @@ export class AdminDataService {
 </SOAP:Envelope>`.trim();
 
     await this.heroService.ajax(null, null, {}, addUserSoap);
+    return userId;
   }
 
   async getAssetTypeAssignmentDetails(): Promise<AssetTypeAssignment[]> {
@@ -575,6 +617,8 @@ export class AdminDataService {
       const userEmail = updates.email || cached?.email || '';
       if (userEmail) {
         await this.updateUserRoleInCordys(userEmail, updates.roleId);
+      } else {
+        console.error('[AdminDataService] Cannot update Cordys role: User email not found in cache or updates for ID:', userId);
       }
     }
 
@@ -659,14 +703,15 @@ export class AdminDataService {
   }
 
   private async updateUserRoleInCordys(userEmail: string, newRoleId: string): Promise<void> {
-    const cordysRole = this.mapRoleIdToCordysRole(newRoleId);
-
-    // Remove all existing AMS roles first, then assign new one
+    const newCordysRole = this.mapRoleIdToCordysRole(newRoleId);
     const allAmsRoles = ['AMS_Admin', 'AMS_TeamLead', 'AMS_Employee', 'AMS_AssetManager', 'AMS_AssetAllocationTeam'];
 
-    // Remove existing AMS roles
-    for (const oldRole of allAmsRoles) {
-      if (oldRole === cordysRole) continue; // Skip the new role
+    // Helper for delay to avoid rapid-fire SOAP issues in Cordys
+    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    // 1. Remove all OTHER AMS roles first (Clean Slate)
+    for (const roleToRemove of allAmsRoles) {
+      if (roleToRemove === newCordysRole) continue;
 
       const removeRoleSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -675,7 +720,7 @@ export class AdminDataService {
       <User>
         <UserName>${this.xmlEscape(userEmail)}</UserName>
         <Roles>
-          <Role application="">${this.xmlEscape(oldRole)}</Role>
+          <Role application="">${this.xmlEscape(roleToRemove)}</Role>
         </Roles>
       </User>
     </RemoveRolesFromUser>
@@ -684,12 +729,13 @@ export class AdminDataService {
 
       try {
         await this.heroService.ajax(null, null, {}, removeRoleSoap);
-      } catch {
-        // Ignore errors — role might not be assigned
+        await delay(300); // Small pause between role operations
+      } catch (err) {
+        // Silently ignore if role wasn't assigned or user missing from LDAP at this stage
       }
     }
 
-    // Assign new Cordys role
+    // 2. Assign the new Cordys role
     const assignRoleSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -697,7 +743,7 @@ export class AdminDataService {
       <User>
         <UserName>${this.xmlEscape(userEmail)}</UserName>
         <Roles>
-          <Role application="">${this.xmlEscape(cordysRole)}</Role>
+          <Role application="">${this.xmlEscape(newCordysRole)}</Role>
         </Roles>
       </User>
     </AssignRolesToUser>
@@ -706,9 +752,19 @@ export class AdminDataService {
 
     try {
       await this.heroService.ajax(null, null, {}, assignRoleSoap);
+      console.log(`[AdminDataService] Successfully assigned new role: ${newCordysRole}`);
     } catch (e: any) {
       console.error('Failed to assign Cordys role:', e);
-      throw new Error('Failed to assign user role in Cordys: ' + (e?.message || String(e)));
+      let errorDetail = e?.responseText || e?.errorThrown || '';
+      
+      // If user is missing from LDAP, we log it and proceed (allowing DB-only users)
+      if (errorDetail.includes('getUserFailed') || errorDetail.includes('Could not get user')) {
+        console.warn(`[AdminDataService] User ${userEmail} not found in Cordys LDAP. Skipping sync.`);
+        return;
+      }
+
+      if (typeof errorDetail !== 'string') errorDetail = JSON.stringify(e);
+      throw new Error(`Cordys Role Assignment Failed: ${errorDetail}`);
     }
   }
 

@@ -16,7 +16,6 @@ type AddAssetForm = {
   serialNumber: string;
   purchaseDate: string;
   warrantyExpiry: string;
-  reminderDays: number;
 };
 type AssetCategoryGroup = {
   type: AssetType | string;
@@ -91,6 +90,8 @@ export class MasterDataComponent implements OnInit {
   assetsInSelectedSub: Asset[] = [];
   subDetailsCurrentPage = 1;
   subDetailsPageSize = 5;
+  subCatCurrentPage = 1;
+  subCatPageSize = 5;
   assetTypeChartData: ChartData<'bar', number[], string> = {
     labels: [],
     datasets: [{ data: [] }]
@@ -216,7 +217,7 @@ export class MasterDataComponent implements OnInit {
     const serviceCategories = this.assetService.getCategories();
     this.assetCategories = [...serviceCategories];
     
-    // Augment assetCategories with empty subcategories from DB
+    // Augment assetCategories with IDs from DB
     dbSubCats.forEach(dbCat => {
       const catName = dbCat.name || dbCat.sub_category_name || dbCat.SUB_CATEGORY_NAME || '';
       const dbCatTypeId = dbCat.type_id || dbCat.Type_id || dbCat.TYPE_ID || '';
@@ -230,7 +231,10 @@ export class MasterDataComponent implements OnInit {
       const typeName = typeObj ? (typeObj.type_name || typeObj.name || typeObj.TYPE_NAME) : dbCatTypeId;
 
       let existingCategory = this.assetCategories.find(c => c.type === typeName && (c.name === catName || c.subCategories.includes(catName)));
-      if (!existingCategory) {
+      if (existingCategory) {
+        // Sync the actual DB ID to avoid collision during next generation
+        existingCategory.id = dbCat.sub_category_id || existingCategory.id;
+      } else {
          this.assetCategories.push({
            id: dbCat.sub_category_id || `cat_db_${Math.random()}`,
            name: catName,
@@ -381,12 +385,21 @@ export class MasterDataComponent implements OnInit {
   }
 
   async saveAssetType(): Promise<void> {
+    const trimmed = this.newTypeName.trim();
+    if (!trimmed || this.isSaving) return;
 
-    if (!this.newTypeName.trim() || this.isSaving) return;
+    // Unique check
+    const isDuplicate = this.assetTypes.some(t => t.type.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      this.notificationService.showToast(`Asset Type '${trimmed}' already exists.`, 'error');
+      return;
+    }
+    
     this.isSaving = true;
     try {
-      // Simulate/Generate ID (e.g. typ_01, typ_06)
-      const nextId = `typ_${String(this.assetTypes.length + 1).padStart(2, '0')}`;
+      // Use timestamp-based unique ID to avoid any PK collision
+      const nextId = `typ_${Date.now().toString().slice(-5)}`;
+      
       await this.assetService.addAssetType(nextId, this.newTypeName.trim());
       this.notificationService.showToast(`Asset Type '${this.newTypeName}' created successfully!`, 'success');
       this.closeAddTypeModal();
@@ -400,16 +413,20 @@ export class MasterDataComponent implements OnInit {
   }
 
   async saveSubCategory(): Promise<void> {
-    if (!this.newSubCategoryName.trim() || !this.selectedTypeIdForSubCategory || this.isSaving) return;
+    const trimmed = this.newSubCategoryName.trim();
+    if (!trimmed || !this.selectedTypeIdForSubCategory || this.isSaving) return;
+
+    // Unique check
+    const isDuplicate = this.assetCategories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      this.notificationService.showToast(`Subcategory '${trimmed}' already exists.`, 'error');
+      return;
+    }
+
     this.isSaving = true;
     try {
-      // Robust Max ID increment
-      const catNumericIds = this.assetCategories.map(c => {
-        const match = (c.id || '').match(/\d+/);
-        return match ? parseInt(match[0], 10) : 0;
-      });
-      const maxCatId = catNumericIds.length > 0 ? Math.max(...catNumericIds) : 0;
-      const nextId = `cat_${String(maxCatId + 1).padStart(3, '0')}`;
+      // Use timestamp-based unique ID to avoid any PK collision
+      const nextId = `cat_${Date.now().toString().slice(-6)}`;
       await this.assetService.addAssetSubCategory(nextId, this.newSubCategoryName.trim(), this.selectedTypeIdForSubCategory);
       this.notificationService.showToast(`Subcategory '${this.newSubCategoryName}' added successfully!`, 'success');
       this.closeAddSubCategoryModal();
@@ -424,7 +441,37 @@ export class MasterDataComponent implements OnInit {
 
   async saveAsset(): Promise<void> {
     this.submittedAssetForm = true;
-    if (!this.newAsset.type || !this.newAsset.category || !this.newAsset.name || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || this.isSaving) {
+    
+    // Check for unique asset name
+    const trimmedName = (this.newAsset.name || '').trim();
+    const isDuplicate = this.assets.some(a => a.name.toLowerCase() === trimmedName.toLowerCase());
+    
+    if (isDuplicate) {
+      this.notificationService.showToast(`An asset with the name '${trimmedName}' already exists. Asset names must be unique.`, 'error');
+      return;
+    }
+
+    // Check for unique serial number
+    const trimmedSerial = (this.newAsset.serialNumber || '').trim();
+    if (trimmedSerial) {
+      const isSerialDuplicate = this.assets.some(a => (a.serialNumber || '').toLowerCase() === trimmedSerial.toLowerCase());
+      if (isSerialDuplicate) {
+        this.notificationService.showToast(`An asset with serial number '${trimmedSerial}' already exists. Serial numbers must be unique.`, 'error');
+        return;
+      }
+    }
+
+    if (this.isPurchaseDateFuture()) {
+      this.notificationService.showToast('Purchase Date cannot be in the future.', 'error');
+      return;
+    }
+
+    if (this.isWarrantyExpiryPast()) {
+      this.notificationService.showToast('Warranty Expiry Date cannot be in the past.', 'error');
+      return;
+    }
+
+    if (!this.newAsset.type || !this.newAsset.category || !trimmedName || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || this.isSaving) {
       return;
     }
 
@@ -455,8 +502,7 @@ export class MasterDataComponent implements OnInit {
         vendor: 'Internal',
         serialNumber: this.newAsset.serialNumber,
         cost: 0,
-        condition: AssetCondition.GOOD,
-        reminderDays: this.newAsset.reminderDays
+        condition: AssetCondition.GOOD
       };
 
       // Securely fetch exact IDs from DB based on mapped name
@@ -630,7 +676,31 @@ export class MasterDataComponent implements OnInit {
   }
 
   isFieldInvalid(field: keyof typeof this.newAsset): boolean {
-    return this.submittedAssetForm && !this.newAsset[field];
+    if (this.submittedAssetForm) {
+      if (!this.newAsset[field]) return true;
+
+      if (field === 'purchaseDate') return this.isPurchaseDateFuture();
+      if (field === 'warrantyExpiry') return this.isWarrantyExpiryPast();
+    }
+    return false;
+  }
+
+  isPurchaseDateFuture(): boolean {
+    if (!this.newAsset.purchaseDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const pDate = new Date(this.newAsset.purchaseDate);
+    pDate.setHours(0, 0, 0, 0);
+    return pDate > today;
+  }
+
+  isWarrantyExpiryPast(): boolean {
+    if (!this.newAsset.warrantyExpiry) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const wDate = new Date(this.newAsset.warrantyExpiry);
+    wDate.setHours(0, 0, 0, 0);
+    return wDate < today;
   }
 
   filterAssets(): void {
@@ -841,12 +911,32 @@ export class MasterDataComponent implements OnInit {
   }
 
   filterSubcategories() {
+    this.subCatCurrentPage = 1;
     if (!this.selectedSubCategoryTypeFilter) {
       this.filteredEnrichedSubcategories = [...this.enrichedSubcategories];
     } else {
       this.filteredEnrichedSubcategories = this.enrichedSubcategories.filter(sub => 
         String(sub.type).trim().toLowerCase() === String(this.selectedSubCategoryTypeFilter).trim().toLowerCase()
       );
+    }
+  }
+
+  get paginatedSubcategories() {
+    const startIndex = (this.subCatCurrentPage - 1) * this.subCatPageSize;
+    return this.filteredEnrichedSubcategories.slice(startIndex, startIndex + this.subCatPageSize);
+  }
+
+  get totalSubCatPages() {
+    return Math.ceil(this.filteredEnrichedSubcategories.length / this.subCatPageSize);
+  }
+
+  get subCatPageNumbers() {
+    return Array.from({ length: this.totalSubCatPages }, (_, i) => i + 1);
+  }
+
+  setSubCatPage(page: number) {
+    if (page >= 1 && page <= this.totalSubCatPages) {
+      this.subCatCurrentPage = page;
     }
   }
 
@@ -873,8 +963,7 @@ export class MasterDataComponent implements OnInit {
       name: '',
       serialNumber: '',
       purchaseDate: '',
-      warrantyExpiry: '',
-      reminderDays: 30
+      warrantyExpiry: ''
     };
   }
 }

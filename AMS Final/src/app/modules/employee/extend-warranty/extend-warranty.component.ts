@@ -122,7 +122,8 @@ export class ExtendWarrantyComponent implements OnInit {
       });
   }
 
-  submitextendwarranty() {
+  async submitextendwarranty() {
+    debugger
     if (this.warrantyForm.invalid) {
       this.warrantyForm.markAllAsTouched();
       return;
@@ -136,7 +137,13 @@ export class ExtendWarrantyComponent implements OnInit {
 
     this.isLoading = true;
     const formVal = this.warrantyForm.value;
-
+    console.log("formval", formVal);
+    var assetReq = {
+      Asset_type_id: formVal.assetId
+    }
+    var assetresp = await this.requestService.getAssetManagerByAssetTypeId(assetReq)
+    console.log(assetresp);
+    var rs = assetresp.old.m_users.user_id
     const soapData = {
       tuple: {
         new: {
@@ -185,7 +192,7 @@ export class ExtendWarrantyComponent implements OnInit {
             new: {
               t_extend_request_approvals: {
                 request_id: requestId,
-                approver_id: 'usr_004',
+                approver_id: `${rs}`,
                 role: 'Asset Manager',
                 status: 'Pending',
                 remarks: formVal.justification,

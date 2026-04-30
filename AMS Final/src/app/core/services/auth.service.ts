@@ -21,8 +21,8 @@ export class AuthService {
 
 
   constructor(
-    private router: Router, 
-    private http: HttpClient, 
+    private router: Router,
+    private http: HttpClient,
     private hs: HeroService,
     private mailService: MailService
   ) {
@@ -173,7 +173,7 @@ export class AuthService {
 
       // Background resolution for project details if standard mapping was incomplete
       if (user.projectId && (!user.projectName || !user.teamLeadName)) {
-         this.resolveProjectDetailsInBackground(user);
+        this.resolveProjectDetailsInBackground(user);
       }
 
       return user;
@@ -185,7 +185,7 @@ export class AuthService {
 
   private async resolveProjectDetailsInBackground(user: User) {
     if (!user.projectId) return;
-    
+
     const getProjectSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -203,26 +203,26 @@ export class AuthService {
         }
 
         // Find the specific project that matches the user's projectId (or projectCode)
-        const matchingProject = projectsData.find((p: any) => 
+        const matchingProject = projectsData.find((p: any) =>
           p.project_id === user.projectId || p.project_code === user.projectId
         );
 
         if (matchingProject) {
           user.projectName = matchingProject.project_name || user.projectName;
-          
+
           // Resolve teamLeadName. Cordys might return an object for nulls. 
           // We check if it's a string, otherwise fallback to undefined.
           user.teamLeadName = matchingProject.team_lead || matchingProject.tl_id;
           user.teamLeadId = matchingProject.tl_id || matchingProject.team_lead;
-          
+
           // Final sanity check for objects
           if (user.teamLeadName && typeof user.teamLeadName === 'object') user.teamLeadName = undefined;
           if (user.teamLeadId && typeof user.teamLeadId === 'object') user.teamLeadId = undefined;
-          
+
           // Update subject if this is the current user
           const current = this.currentUserSubject.value;
           if (current && current.id === user.id) {
-            const updatedUser = {...current, projectName: user.projectName, teamLeadName: user.teamLeadName, teamLeadId: user.teamLeadId};
+            const updatedUser = { ...current, projectName: user.projectName, teamLeadName: user.teamLeadName, teamLeadId: user.teamLeadId };
             this.currentUserSubject.next(updatedUser);
             localStorage.setItem('currentUser', JSON.stringify(updatedUser));
           }
@@ -413,7 +413,7 @@ export class AuthService {
       <tuple>
         <new>
           <m_users qAccess="0" qConstraint="0" qInit="0" qValues="">
-            <user_id>${this.xmlEscape(nextUserId)}</user_id>
+          
             <name>${this.xmlEscape(userName)}</name>
             <email>${this.xmlEscape(email)}</email>
             <role_id>${this.xmlEscape(dbRoleId)}</role_id>
@@ -468,9 +468,9 @@ export class AuthService {
         joinDate: new Date().toISOString().split('T')[0]
       };
 
-       localStorage.setItem('currentUser', JSON.stringify(newUser));
-       localStorage.setItem('userId', newUser.id);
-       this.currentUserSubject.next(newUser);
+      localStorage.setItem('currentUser', JSON.stringify(newUser));
+      localStorage.setItem('userId', newUser.id);
+      this.currentUserSubject.next(newUser);
 
       // Step 6: Send Welcome Email
       console.log('Step 6: Sending welcome email via Cordys BPM...');
