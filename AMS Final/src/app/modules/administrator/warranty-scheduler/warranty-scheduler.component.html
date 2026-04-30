@@ -52,11 +52,16 @@
       </div>
     </div>
 
-    <div class="card-footer border-top">
-      <button class="btn btn-primary btn-lg" [disabled]="isSaving" (click)="saveSchedule()">
+    <div class="card-footer border-top d-flex justify-content-between">
+      <button class="btn btn-primary" [disabled]="isSaving" (click)="saveSchedule()">
         <span class="material-icons-outlined" *ngIf="!isSaving">save</span>
         <span class="spinner" *ngIf="isSaving"></span>
-        {{ isSaving ? 'Saving Schedule...' : 'Save Configuration' }}
+        {{ isSaving ? 'Saving...' : 'Save Configuration' }}
+      </button>
+
+      <button class="btn btn-outline" [disabled]="isSaving" (click)="runNow()">
+        <span class="material-icons-outlined">play_arrow</span>
+        Run Now (Manual)
       </button>
     </div>
   </div>

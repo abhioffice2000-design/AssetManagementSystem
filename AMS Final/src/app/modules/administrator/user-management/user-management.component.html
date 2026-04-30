@@ -322,8 +322,11 @@
         <label>Project</label>
         <select class="form-control" [(ngModel)]="editUserForm.projectId">
           <option value="">Keep current / Select a project</option>
-          <option *ngFor="let project of projects" [value]="project.id">{{ project.name }}</option>
+          <option *ngFor="let project of availableProjectsForEditUser" [value]="project.id">{{ project.name }}</option>
         </select>
+        <div class="field-error" *ngIf="editUserForm.roleName === teamLeadRoleName && availableProjectsForEditUser.length === 0">
+          All projects have Team Lead, add new projects to assign a team lead.
+        </div>
       </div>
 
       <!-- Conditional: Asset Type (for Asset Manager / Asset Team) -->
@@ -513,7 +516,7 @@
           <option *ngFor="let project of availableProjectsForNewUser" [value]="project.id">{{ project.name }}</option>
         </select>
         <div class="field-error" *ngIf="newUser.roleName === teamLeadRoleName && availableTeamLeadProjects.length === 0">
-          No project is available without an assigned team lead.
+          All projects have Team Lead, add new projects to assign a team lead.
         </div>
       </div>
       <div class="form-group mb-16" *ngIf="shouldShowAssetTypeDropdown">
@@ -843,6 +846,30 @@
               [disabled]="isSavingPassword || newPassword.length < 8" 
               (click)="saveNewPassword()">
         {{ isSavingPassword ? 'Saving...' : 'Update Password' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic Confirmation Modal -->
+<div class="modal-overlay" *ngIf="showConfirmModal">
+  <div class="modal-container animate-slide-up confirmation-modal" style="max-width: 450px;">
+    <div class="modal-header">
+      <div [class.header-icon-danger]="!showConfirmAction" [class.header-icon-primary]="showConfirmAction">
+        <span class="material-icons-outlined">{{ showConfirmAction ? 'help_outline' : 'warning' }}</span>
+      </div>
+      <h3>{{ confirmTitle }}</h3>
+      <button class="btn-icon" (click)="closeConfirmModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body text-center py-24">
+      <p class="confirm-message" style="margin: 0; color: #64748b; font-size: 1.1rem; line-height: 1.5;">{{ confirmMessage }}</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeConfirmModal()">{{ showConfirmAction ? 'Cancel' : 'Close' }}</button>
+      <button class="btn" [class.btn-primary]="showConfirmAction" (click)="handleConfirm()" *ngIf="showConfirmAction">
+        {{ confirmBtnText }}
       </button>
     </div>
   </div>
