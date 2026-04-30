@@ -34,7 +34,7 @@ export interface EnrichedTicket {
 })
 export class AllocationTicketsComponent implements OnInit {
   RequestType = RequestType;
-  activeTab: 'unresolved' | 'resolved' | 'resolvedReturn' = 'unresolved';
+  activeTab: 'unresolved' | 'resolved' | 'return' | 'resolvedReturn' = 'unresolved';
   loading = true;
   allTickets: EnrichedTicket[] = [];
   resolvedTickets: EnrichedTicket[] = [];
@@ -56,6 +56,7 @@ export class AllocationTicketsComponent implements OnInit {
   selectedAssetType: string = '';
   selectedRequestType: string = ''; // New filter
   selectedResolvedStatus = '';
+  selectedReturnStatus = '';
   isSaving = false;
   decisionRemarks = '';
   // New filter for Resolved tab
@@ -136,7 +137,12 @@ export class AllocationTicketsComponent implements OnInit {
     this.loading = true;
     try {
       const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
-      const userId = currentUser?.id ?? 'usr_007';
+      const userId = currentUser?.id;
+      if (!userId) {
+        this.allTickets = [];
+        console.warn('[AllocationTickets] Current user is missing. Cannot load tickets.');
+        return;
+      }
 
       const resRequests = await this.hs.ajax(
         'GetallpendingrequestsForAllocationTeamMemberwithTeamLead',
@@ -174,7 +180,14 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async loadReturnTickets(): Promise<void> {
-    const request = { Approver_id: this.currentUser?.id };
+    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const approverId = currentUser?.id;
+    if (!approverId) {
+      this.returnTickets = [];
+      console.warn('[AllocationTickets] Current user is missing. Cannot load return tickets.');
+      return;
+    }
+    const request = { Approver_id: approverId };
 
     try {
       const res = await this.hs.ajax(
@@ -260,39 +273,82 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async loadResolvedReturnTickets(): Promise<void> {
+    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const approverId = currentUser?.id;
+    if (!approverId) {
+      this.resolvedReturnTickets = [];
+      return;
+    }
+
     try {
+      const approvalsRes = await this.hs.ajax(
+        'GetT_asset_return_approvalsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromReturn_approval_id: '0', toReturn_approval_id: 'zzzzzzzzzz' }
+      );
+      const approvalTuples = this.hs.xmltojson(approvalsRes, 'tuple');
+      const approvalArray: any[] = approvalTuples ? (Array.isArray(approvalTuples) ? approvalTuples : [approvalTuples]) : [];
+      const resolvedApprovals = approvalArray
+        .map((tuple: any) => this.mapReturnApprovalTuple(tuple))
+        .filter((approval: any) =>
+          approval.approver_id === approverId &&
+          (
+            approval.status === RequestStatus.APPROVED ||
+            approval.status === RequestStatus.REJECTED ||
+            approval.status === RequestStatus.COMPLETED ||
+            approval.status === RequestStatus.CANCELLED
+          )
+        );
+
+      if (!resolvedApprovals.length) {
+        this.resolvedReturnTickets = [];
+        return;
+      }
+
       const res = await this.hs.ajax(
         'Getallreturnrequests',
         'http://schemas.cordys.com/AMS_Database_Metadata',
         {}
       );
       const tuples = this.hs.xmltojson(res, 'tuple');
-      if (tuples) {
-        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
-        this.resolvedReturnTickets = tupleArray
-          .map((t: any) => this.mapReturnTupleToEnrichedTicket(t))
-          .filter(t => 
-            t.status === RequestStatus.COMPLETED || 
-            t.status === RequestStatus.APPROVED || 
-            t.status === RequestStatus.REJECTED || 
-            t.status === RequestStatus.CANCELLED
-          );
-        
-        // Enrich with asset details if missing
-        for (const ticket of this.resolvedReturnTickets) {
-          await this.enrichTicketWithAssetDetails(ticket);
-        }
-        console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets`);
-      } else {
-        this.resolvedReturnTickets = [];
+      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
+      const returnTupleById = new Map<string, any>();
+      tupleArray.forEach((tuple: any) => {
+        const data = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
+        const returnId = this.getVal(data?.return_id);
+        if (returnId) returnTupleById.set(returnId, tuple);
+      });
+
+      this.resolvedReturnTickets = [];
+      for (const approval of resolvedApprovals) {
+        const baseTuple = returnTupleById.get(approval.request_id) ?? {
+          old: {
+            t_asset_returns: {
+              return_id: approval.request_id,
+              status: approval.status,
+              remarks: approval.remarks,
+              return_date: approval.action_date,
+              t_asset_return_approvals: approval
+            }
+          }
+        };
+        const ticket = this.mapReturnTupleToEnrichedTicket(baseTuple);
+        ticket.approvalid = approval.return_approval_id || ticket.approvalid;
+        ticket.status = approval.status;
+        ticket.reason = approval.remarks || ticket.reason;
+        ticket.assignedDate = approval.action_date || ticket.assignedDate;
+        await this.enrichReturnTicketWithAssetDetails(ticket);
+        this.resolvedReturnTickets.push(ticket);
       }
+
+      console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets for ${approverId}`);
     } catch (err) {
       console.error('Failed to load resolved return tickets:', err);
       this.resolvedReturnTickets = [];
     }
   }
 
-  setTab(tab: 'unresolved' | 'resolved' | 'resolvedReturn'): void {
+  setTab(tab: 'unresolved' | 'resolved' | 'return' | 'resolvedReturn'): void {
     this.activeTab = tab;
     this.currentPage = 1;
   }
@@ -315,13 +371,15 @@ export class AllocationTicketsComponent implements OnInit {
 
   private mapReturnTupleToEnrichedTicket(tuple: any): EnrichedTicket {
     const returnData = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
-    let approvalObj = returnData?.t_asset_return_approvals ?? {};
+    let approvalObj = returnData?.t_asset_return_approvals ?? tuple?.old?.t_asset_return_approvals ?? tuple?.t_asset_return_approvals ?? {};
 
     if (Array.isArray(approvalObj)) {
       approvalObj = approvalObj.find((a: any) => this.getVal(a.status) === 'Pending') ?? approvalObj[0] ?? {};
     }
 
     const userData = returnData?.m_users ?? {};
+    const assetData = returnData?.m_assets ?? tuple?.old?.m_assets ?? tuple?.m_assets ?? {};
+    const assetId = this.getVal(returnData?.temp1) ?? this.getVal(assetData?.asset_id) ?? this.getVal(approvalObj?.temp1) ?? 'â€”';
     const statusStr = this.getVal(returnData?.status) ?? this.getVal(approvalObj?.status) ?? 'Pending';
     const status = this.mapToStatus(statusStr);
 
@@ -336,15 +394,15 @@ export class AllocationTicketsComponent implements OnInit {
     // }
 
     return {
-      taskid: returnData?.t_asset_return_approvals.temp2,
+      taskid: this.getVal(approvalObj?.temp2) ?? '-',
       approvalid: this.getVal(approvalObj?.return_approval_id) ?? '—',
       ticketId: this.getVal(returnData?.return_id) ?? this.getVal(approvalObj?.request_id) ?? '—',
       requestorName: this.getVal(userData?.name) ?? '—',
-      assetType: 'Hardware',
-      subCategory: 'N/A',
-      assetName: 'Asset Return',
-      assetId: this.getVal(returnData?.temp1) ?? '—',
-      warrantyExpiry: '—',
+      assetType: this.getVal(assetData?.type_id) ?? this.getVal(assetData?.asset_type) ?? 'Hardware',
+      subCategory: this.getVal(assetData?.sub_category_id) ?? 'N/A',
+      assetName: this.getVal(assetData?.asset_name) ?? 'Asset Return',
+      assetId,
+      warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '-',
       availabilityStatus: 'N/A',
       assignedDate: this.getVal(returnData?.return_date) ?? '',
       assetManagerName: '—',
@@ -362,7 +420,9 @@ export class AllocationTicketsComponent implements OnInit {
         currentStage: ApprovalStage.ALLOCATION,
         requestDate: this.getVal(returnData?.return_date) ?? '',
         lastUpdated: this.getVal(returnData?.return_date) ?? '',
-        assignedAssetId: this.getVal(returnData?.temp1) ?? '',
+        assignedAssetId: assetId && assetId !== '-' ? assetId : '',
+        assetType: this.getVal(assetData?.type_id) ?? this.getVal(assetData?.asset_type) ?? '',
+        assetName: this.getVal(assetData?.asset_name) ?? '',
         approvalChain: [{ stage: ApprovalStage.ALLOCATION, action: 'Pending' }],
         comments: []
       } as any
@@ -528,12 +588,22 @@ export class AllocationTicketsComponent implements OnInit {
     );
   }
 
+  get allReturnTickets(): EnrichedTicket[] {
+    const byId = new Map<string, EnrichedTicket>();
+    [...this.returnTickets, ...this.resolvedReturnTickets].forEach(ticket => {
+      if (ticket.ticketId) byId.set(ticket.ticketId, ticket);
+    });
+    return Array.from(byId.values());
+  }
+
   get filteredTickets(): EnrichedTicket[] {
     let source: EnrichedTicket[] = [];
     if (this.activeTab === 'unresolved') {
       source = this.unresolvedTickets;
     } else if (this.activeTab === 'resolved') {
       source = this.resolvedTickets;
+    } else if (this.activeTab === 'return') {
+      source = this.allReturnTickets;
     } else if (this.activeTab === 'resolvedReturn') {
       source = this.resolvedReturnTickets;
     }
@@ -556,7 +626,12 @@ export class AllocationTicketsComponent implements OnInit {
         (this.selectedResolvedStatus === 'Approved' && (t.status === RequestStatus.COMPLETED || t.status === RequestStatus.APPROVED)) ||
         (this.selectedResolvedStatus === 'Rejected' && t.status === RequestStatus.REJECTED);
 
-      return matchesSearch && matchesType && matchesRequestType && matchesResolvedStatus;
+      const matchesReturnStatus = this.activeTab !== 'return' || !this.selectedReturnStatus ||
+        (this.selectedReturnStatus === 'Pending' && (t.status === RequestStatus.PENDING || t.status === RequestStatus.IN_PROGRESS)) ||
+        (this.selectedReturnStatus === 'Approved' && (t.status === RequestStatus.APPROVED || t.status === RequestStatus.COMPLETED)) ||
+        (this.selectedReturnStatus === 'Rejected' && t.status === RequestStatus.REJECTED);
+
+      return matchesSearch && matchesType && matchesRequestType && matchesResolvedStatus && matchesReturnStatus;
     });
 
     // Sort by Date (Descending - Newest first)
@@ -764,13 +839,14 @@ export class AllocationTicketsComponent implements OnInit {
 
     if (!ticket.ticketId || ticket.ticketId === '—' || !ticket.approvalid || ticket.approvalid === '—') {
       console.error("Cannot proceed: Missing Ticket ID or Approval ID", ticket);
+      this.notificationService.showToast('Approval details are missing for this return ticket. Please refresh and try again.', 'error');
       return;
     }
 
-    // Force routing to usr_004 for returns
-    const approverId = 'usr_004';
-
     try {
+      const assetLookupId = this.getReturnAssetLookupId(ticket);
+      const approverId = await this.requestService.resolveReturnApproverId(assetLookupId, 'rol_04');
+
       // 1. Update current approval status
       var req11 = {
         tuple: {
@@ -813,13 +889,14 @@ export class AllocationTicketsComponent implements OnInit {
               request_id: ticket.ticketId,
               role: "Asset Manager",
               status: "Pending",
-              remarks: "Waiting for Hand-off Confirmation"
+              remarks: "Waiting for Hand-off Confirmation",
+              temp1: assetLookupId
             }
           }
         }
       };
 
-      // console.log("Step 2: Creating entry for Asset Manager (usr_004)...", req12);
+      console.log(`Step 2: Creating entry for Asset Manager (${approverId})...`, req12);
       const res2 = await this.requestService.createNewEntryForAssetManagerConfirmationAssetReturn(req12 as any);
       console.log("Step 2 Complete. Response:", res2);
 
@@ -859,11 +936,39 @@ export class AllocationTicketsComponent implements OnInit {
       });
 
       console.log("All steps finished for return ticket:", ticket.ticketId);
-      this.loadTickets();
+      this.notificationService.showToast(`Return request ${ticket.ticketId} sent to Asset Manager for final confirmation.`, 'success');
+      this.closeDetails();
+      await this.loadTickets();
 
     } catch (error) {
       console.error("Critical error in allocateAssetReturn workflow:", error);
+      this.notificationService.showToast(`Failed to confirm return request ${ticket.ticketId}.`, 'error');
     }
+  }
+
+  private mapReturnApprovalTuple(tuple: any): any {
+    const data = tuple?.old?.t_asset_return_approvals ?? tuple?.t_asset_return_approvals ?? tuple;
+    return {
+      return_approval_id: this.getVal(data?.return_approval_id) ?? '',
+      request_id: this.getVal(data?.request_id) ?? '',
+      approver_id: this.getVal(data?.approver_id) ?? '',
+      role: this.getVal(data?.role) ?? '',
+      status: this.mapToStatus(this.getVal(data?.status) ?? ''),
+      remarks: this.getVal(data?.remarks) ?? '',
+      action_date: this.getVal(data?.action_date) ?? this.getVal(data?.created_at) ?? ''
+    };
+  }
+
+  private async enrichReturnTicketWithAssetDetails(ticket: EnrichedTicket): Promise<void> {
+    if (!ticket.assetId || ticket.assetId === 'â€”') return;
+
+    const asset = await this.requestService.getAssetDetailsById(ticket.assetId);
+    if (!asset) return;
+
+    ticket.assetName = asset.asset_name || ticket.assetName;
+    ticket.assetType = asset.type_id || ticket.assetType;
+    ticket.subCategory = asset.sub_category_id || ticket.subCategory;
+    ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
   }
 
   async rejectAssetReturn(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
@@ -943,6 +1048,22 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   // ─── Reject Methods ───────────────────────────────────────────────────
+
+  private getReturnAssetLookupId(ticket: EnrichedTicket): string {
+    if (ticket.assetId && ticket.assetId !== 'â€”' && ticket.assetId !== '-' && ticket.assetId !== 'N/A') {
+      return ticket.assetId;
+    }
+
+    if (ticket.rawRequest?.assignedAssetId) {
+      return ticket.rawRequest.assignedAssetId;
+    }
+
+    if (ticket.assetType && ticket.assetType.startsWith('typ_')) {
+      return ticket.assetType;
+    }
+
+    return '';
+  }
 
   async handleRejectClick(ticket: EnrichedTicket): Promise<void> {
     if (!this.decisionRemarks || this.decisionRemarks.trim() === '') {
