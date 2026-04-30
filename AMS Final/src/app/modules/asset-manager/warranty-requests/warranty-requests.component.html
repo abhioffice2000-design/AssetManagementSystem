@@ -163,15 +163,10 @@
         <div class="detail-grid">
           <div class="detail-item full-col">
             <label>Allocation Team Member</label>
-            <select class="asset-select" [(ngModel)]="selectedAllocationMemberId">
-              <option value="">-- Choose Team Member --</option>
-              <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
-                {{ member.name }} — {{ member.email }}
-              </option>
-            </select>
-            <small class="error-text" *ngIf="!selectedAllocationMemberId" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px; display: block;">
-              * Mandatory for approval
-            </small>
+            <span style="display: block; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; color: #1e293b; font-weight: 600; border: 1px solid #e2e8f0; margin-top: 5px;">
+              <span class="material-icons-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 6px; color: var(--primary);">person</span>
+              {{ getSelectedAllocationMemberName() }}
+            </span>
           </div>
         </div>
       </div>
@@ -245,12 +240,10 @@
           </div>
           <div class="detail-item full-col">
             <label>Allocation Team Member</label>
-            <select class="asset-select" [(ngModel)]="selectedAllocationMemberId" style="width: 100%; height: 42px; border: 1.5px solid var(--border-color); border-radius: 10px; padding: 0 16px; font-size: 0.95rem; background: var(--card-bg); color: var(--text-main); transition: all 0.3s ease; cursor: pointer;">
-              <option value="">-- Choose Execution Team Member --</option>
-              <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
-                {{ member.name }} — {{ member.email }}
-              </option>
-            </select>
+            <span style="display: block; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; color: #1e293b; font-weight: 600; border: 1px solid #e2e8f0; margin-top: 5px;">
+              <span class="material-icons-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 6px; color: var(--primary);">person</span>
+              {{ getSelectedAllocationMemberName() }}
+            </span>
           </div>
           <div class="detail-item full-col">
             <label>Employee Justification</label>

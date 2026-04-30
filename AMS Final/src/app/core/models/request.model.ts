@@ -53,8 +53,7 @@ export enum RequestType {
 export enum RequestUrgency {
   LOW = 'Low',
   MEDIUM = 'Medium',
-  HIGH = 'High',
-  CRITICAL = 'Critical'
+  HIGH = 'High'
 }
 
 export enum RequestStatus {

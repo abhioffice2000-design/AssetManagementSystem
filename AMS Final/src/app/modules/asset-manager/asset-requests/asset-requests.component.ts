@@ -112,7 +112,16 @@ export class AssetRequestsComponent implements OnInit {
       this.pendingRequests = pendingReqs.filter((r: AssetRequest) => !confirmationIds.has(r.id));
 
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
-      this.allocationTeamMemberList = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
+      const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
+      this.allocationTeamMemberList = rawMembers.map((m: any) => ({
+        user_id: m?.old?.m_users?.user_id || m?.m_users?.user_id || m?.user_id || '',
+        name: m?.old?.m_users?.name || m?.m_users?.name || m?.name || 'Unknown',
+        email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
+      }));
+
+      if (this.allocationTeamMemberList.length > 0) {
+        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+      }
       console.log('Allocation Team Members:', this.allocationTeamMemberList);
       this.returnRequests = this.mergeRequests(allReturnReqs, returnReqs);
       console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
@@ -324,7 +333,6 @@ export class AssetRequestsComponent implements OnInit {
 
   getUrgencyClass(urgency: RequestUrgency): string {
     switch (urgency) {
-      case RequestUrgency.CRITICAL: return 'urgency-critical';
       case RequestUrgency.HIGH: return 'urgency-high';
       case RequestUrgency.MEDIUM: return 'urgency-medium';
       case RequestUrgency.LOW: return 'urgency-low';
@@ -899,6 +907,8 @@ export class AssetRequestsComponent implements OnInit {
           );
 
           if (stageProgress) {
+
+
             return {
               ...entry,
               action: (stageProgress.status === 'Approved' || stageProgress.status === 'Rejected') ? stageProgress.status : entry.action,
@@ -1119,6 +1129,17 @@ export class AssetRequestsComponent implements OnInit {
     if (!path) return 'attachment';
     const parts = path.split(/[\\\/]/);
     return parts[parts.length - 1] || 'attachment';
+  }
+
+  getSelectedAllocationMemberName(): string {
+    if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
+      this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+    }
+    
+    const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
+    if (!member) return 'Not Assigned';
+    
+    return member.email ? `${member.name} — ${member.email}` : member.name;
   }
 
 }

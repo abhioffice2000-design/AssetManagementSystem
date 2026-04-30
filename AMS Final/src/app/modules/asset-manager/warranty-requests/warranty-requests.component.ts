@@ -85,6 +85,10 @@ export class WarrantyRequestsComponent implements OnInit {
         email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
       }));
 
+      if (this.allocationTeamMemberList.length > 0) {
+        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+      }
+
       this.applyFilters();
     } catch (err: any) {
       console.error('Failed to load warranty requests:', err);
@@ -155,7 +159,6 @@ export class WarrantyRequestsComponent implements OnInit {
 
   getUrgencyClass(urgency: RequestUrgency): string {
     switch (urgency) {
-      case RequestUrgency.CRITICAL: return 'urgency-critical';
       case RequestUrgency.HIGH: return 'urgency-high';
       case RequestUrgency.MEDIUM: return 'urgency-medium';
       case RequestUrgency.LOW: return 'urgency-low';
@@ -166,7 +169,6 @@ export class WarrantyRequestsComponent implements OnInit {
   async openDetailModal(request: AssetRequest): Promise<void> {
     this.detailRequest = { ...request };
     this.actionComments = '';
-    this.selectedAllocationMemberId = '';
 
     try {
       // Fetch fresh data using user-provided SOAP request logic
@@ -194,7 +196,6 @@ export class WarrantyRequestsComponent implements OnInit {
     this.detailRequest = request;
     this.actionType = action;
     this.actionComments = '';
-    this.selectedAllocationMemberId = '';
     this.showActionModal = true;
   }
 
@@ -320,5 +321,16 @@ export class WarrantyRequestsComponent implements OnInit {
     if (diff === 0) return 'Today';
     if (diff === 1) return 'Yesterday';
     return `${diff} days ago`;
+  }
+
+  getSelectedAllocationMemberName(): string {
+    if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
+      this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+    }
+    
+    const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
+    if (!member) return 'Not Assigned';
+    
+    return member.email ? `${member.name} — ${member.email}` : member.name;
   }
 }

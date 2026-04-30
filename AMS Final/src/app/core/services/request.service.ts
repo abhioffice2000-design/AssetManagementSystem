@@ -174,6 +174,7 @@ export class RequestService {
       this.requestsLoaded = true;
 
       console.log(`Fetched ${this.requests.length} pending requests from service`);
+      console.log("request are.............", this.requests)
       return [...this.requests];
     } catch (err) {
       console.error('Failed to fetch requests from GetallpendingrequestsForAssetManager:', err);
@@ -728,7 +729,8 @@ export class RequestService {
    *   t_request_approvals.approval_id / status / remarks / temp1 etc. — approval record fields
    */
   private mapConfirmationTupleToRequest(tuple: any): AssetRequest {
-    const approval = tuple?.old?.t_request_approvals || tuple?.t_request_approvals || {};
+    debugger
+    const approval = tuple?.old?.t_request_approvals;
     const reqData = approval?.t_asset_requests || {};
     const assetData = approval?.m_assets || {};
     const userInfo = approval?.m_users || {};
@@ -785,7 +787,7 @@ export class RequestService {
       requesterRole: this.getNullableValue(userInfo?.role_id),
       requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
       requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
-      teamLeadJustification: this.getNullableValue(approval?.reason || approval?.remarks || approval?.temp2)
+      teamLeadJustification: this.getNullableValue(approval?.reason || approval?.remarks)
     };
   }
 
@@ -849,7 +851,7 @@ export class RequestService {
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
           timestamp: approvalData?.action_date || approvalData?.created_at || '',
-          comments: approvalData?.remarks || approvalData?.reason || approvalData?.temp2 || ''
+          comments: approvalData?.remarks || approvalData?.reason || ''
         };
       });
 
@@ -1190,10 +1192,8 @@ export class RequestService {
       teamLeadJustification: this.getNullableValue(
         parent?.t_request_approvals?.reason ||
         parent?.t_request_approvals?.remarks ||
-        parent?.t_request_approvals?.temp2 ||
         reqData?.t_request_approvals?.reason ||
-        reqData?.t_request_approvals?.remarks ||
-        reqData?.t_request_approvals?.temp2
+        reqData?.t_request_approvals?.remarks
       )
     };
   }
@@ -1318,6 +1318,7 @@ export class RequestService {
     if (value === null || value === undefined) return undefined;
     if (typeof value === 'object' && value !== null) {
       if (value['@nil'] === 'true' || value['@null'] === 'true') return undefined;
+      if (value['#text'] !== undefined) return String(value['#text']);
       return undefined;
     }
     if (typeof value === 'string' && value.trim() === '') return undefined;
@@ -1326,7 +1327,6 @@ export class RequestService {
 
   private mapToUrgency(urgency: string): RequestUrgency {
     const normalized = urgency.toLowerCase();
-    if (normalized.includes('critical')) return RequestUrgency.CRITICAL;
     if (normalized.includes('high')) return RequestUrgency.HIGH;
     if (normalized.includes('medium')) return RequestUrgency.MEDIUM;
     if (normalized.includes('low')) return RequestUrgency.LOW;
@@ -1968,7 +1968,7 @@ export class RequestService {
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
+      console.log("response for all pending request...........",res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
