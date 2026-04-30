@@ -119,6 +119,22 @@ export class RequestAssetComponent implements OnInit {
   onFileSelected(event: any): void {
     const file = event.target.files[0];
     if (file) {
+      // Validate file type: only images and PDFs allowed
+      const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+      const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf'];
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+        this.notificationService.showToast(
+          'Only image files (PNG, JPG) and PDF files are allowed.',
+          'error'
+        );
+        this.selectedFileBase64 = null;
+        this.selectedFileName = null;
+        event.target.value = '';
+        return;
+      }
+
       // Limit file size to 5 MB to avoid SOAP gateway payload limits
       const MAX_SIZE_BYTES = 5 * 1024 * 1024;
       if (file.size > MAX_SIZE_BYTES) {

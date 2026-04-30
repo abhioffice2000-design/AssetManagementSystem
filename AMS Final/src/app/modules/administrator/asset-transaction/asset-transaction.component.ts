@@ -400,14 +400,14 @@ export class AssetTransactionComponent implements OnInit {
 
   formatSubcategory(subCatId: string): string {
     if (!subCatId || subCatId === '-') return '-';
-    
+
     const subCatMap: { [key: string]: string } = {
       'cat_001': 'Laptop',
       'cat_002': 'Software License',
       'cat_003': 'Monitor',
       'cat_004': 'Peripheral'
     };
-    
+
     // Return mapped name if exists, otherwise return the id itself (in case it's already a name).
     return subCatMap[subCatId.toLowerCase()] || subCatId;
   }
@@ -446,11 +446,11 @@ export class AssetTransactionComponent implements OnInit {
         uniqueStatuses.add(normalized);
       }
     });
-    
+
     // Ensure standard statuses are present if they exist in data, but also include any others
     const standard = ['Pending', 'Approved', 'Rejected', 'Completed'];
     const current = Array.from(uniqueStatuses).sort();
-    
+
     // Merge standard and any other unique statuses found
     this.statusOptions = ['All', ...new Set([...standard.filter(s => current.includes(s)), ...current])];
   }
