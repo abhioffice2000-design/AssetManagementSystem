@@ -55,8 +55,8 @@
               Asset Manager.</p>
 
             <div *ngIf="requestForm.get('hasEmailApproval')?.value" class="mt-16 animate-slide-up">
-              <input type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.eml,.msg" (change)="onFileSelected($event)">
-              <p class="text-xs text-muted mt-8">Upload email screenshot or PDF</p>
+              <input type="file" class="form-control" accept=".pdf,.png,.jpg,.jpeg" (change)="onFileSelected($event)">
+              <p class="text-xs text-muted mt-8">Upload image (PNG, JPG) or PDF only</p>
             </div>
           </div>
         </div>

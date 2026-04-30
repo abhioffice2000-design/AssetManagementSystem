@@ -334,7 +334,7 @@
                 <div class="file-upload-container mt-12 animate-slide-up"
                   *ngIf="resubmitForm.get('hasEmailApproval')?.value">
                   <div class="file-input-wrapper">
-                    <input type="file" (change)="onFileSelected($event)" accept=".pdf,.png,.jpg,.jpeg,.eml,.msg"
+                    <input type="file" (change)="onFileSelected($event)" accept=".pdf,.png,.jpg,.jpeg"
                       id="fileResubmit" class="hidden-input">
                     <label for="fileResubmit" class="file-label">
                       <span class="material-icons-outlined">upload_file</span>
