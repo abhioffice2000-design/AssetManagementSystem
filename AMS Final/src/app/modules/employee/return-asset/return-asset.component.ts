@@ -69,8 +69,6 @@ export class ReturnAssetComponent implements OnInit {
       const dd = String(today.getDate()).padStart(2, '0');
       const formattedDate = `${yyyy}-${mm}-${dd}`;
 
-      const remarks = "waiting for approval .";
-
       var request3 = {
         tuple: {
           new: {
@@ -78,7 +76,7 @@ export class ReturnAssetComponent implements OnInit {
               requested_by: `${user.id}`,
               return_date: formattedDate,
               status: 'Pending',
-              remarks: 'waiting for approval',
+              remarks: formVal.justification,
               temp1: this.selectedAsset.id
             }
           }

@@ -17,7 +17,7 @@
         <span class="material-icons-outlined">pending_actions</span>
       </div>
       <div class="mini-stat-info">
-        <span class="mini-stat-value">{{ pendingRequests.length }}</span>
+        <span class="mini-stat-value">{{ requestStats.pending }}</span>
         <span class="mini-stat-label">Awaiting Action</span>
       </div>
     </div>
@@ -325,11 +325,13 @@
               </div>
 
               <div class="hz-timeline-content">
-                <span class="hz-timeline-stage">{{ entry.stage }}</span>
+                <span class="hz-timeline-stage">
+                  {{ getApprovalStageLabel(entry.stage) }}<span *ngIf="entry.approverName"> ({{ entry.approverName }})</span>
+                </span>
                 <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action
                   }}</span>
-                <div class="hz-timeline-meta" *ngIf="entry.approverName">
-                  <span class="material-icons-outlined">person</span> {{ entry.approverName }}
+                <div class="hz-timeline-meta" *ngIf="entry.approverId && !entry.approverName">
+                  <span class="material-icons-outlined">person</span> {{ entry.approverId }}
                 </div>
                 <div class="hz-timeline-meta" *ngIf="entry.timestamp">
                   <span class="material-icons-outlined">schedule</span> {{ entry.timestamp | date: 'dd MMM, hh:mm a' }}
@@ -391,6 +393,10 @@
             <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Return Asset'">
               <label>Employee Reason</label>
               <span>{{ detailRequest.justification }}</span>
+            </div>
+            <div class="detail-item full-col" *ngIf="detailRequest.requestType === 'Return Asset'">
+              <label>Employee Return Reason</label>
+              <span>{{ getReturnEmployeeReason(detailRequest) }}</span>
             </div>
             <div class="detail-item">
               <label>Date</label>
@@ -484,7 +490,7 @@
         </div>
 
         <!-- Manager Remarks Section -->
-        <div class="detail-section" *ngIf="detailRequest.status !== RequestStatus.PENDING && getAssetManagerRemarks(detailRequest)">
+        <div class="detail-section" *ngIf="getAssetManagerRemarks(detailRequest)">
           <h4 class="detail-section-title" style="color: var(--primary);">
             <span class="material-icons-outlined">reviews</span>
             Manager Remarks
