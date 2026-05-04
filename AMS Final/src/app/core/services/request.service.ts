@@ -2115,7 +2115,10 @@ export class RequestService {
           approver_id: data?.approver_id || '',
           role: data?.role || '',
           status: data?.status || '',
-          remarks: data?.remarks || ''
+          remarks: data?.remarks || '',
+          action_date: data?.action_date || '',
+          temp1: data?.temp1 || '',
+          temp2: data?.temp2 || ''
         };
       });
     } catch (err) {
@@ -2163,7 +2166,9 @@ export class RequestService {
             role: data?.role || '',
             status: data?.status || '',
             remarks: data?.remarks || '',
-            action_date: data?.action_date || ''
+            action_date: data?.action_date || '',
+            temp1: data?.temp1 || '',
+            temp2: data?.temp2 || ''
           };
         })
         .filter((r: any) => r.request_id === requestId);

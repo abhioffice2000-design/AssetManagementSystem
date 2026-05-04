@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
-import { AssetRequest, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
+import { AssetRequest, ApprovalEntry, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
 import { HeroService } from 'src/app/core/services/hero.service';
 import { MailService } from 'src/app/core/services/mail.service';
 import { NotificationService } from 'src/app/core/services/notification.service';
@@ -215,6 +215,7 @@ export class AllocationTicketsComponent implements OnInit {
               ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
             }
           }
+          await this.enrichReturnTicketWithApprovalHistory(ticket);
         }
 
         console.log('Return Tickets Statuses:', this.returnTickets.map(t => `${t.ticketId}: ${t.status}`));
@@ -274,13 +275,34 @@ export class AllocationTicketsComponent implements OnInit {
 
   async loadResolvedReturnTickets(): Promise<void> {
     const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
-    const approverId = currentUser?.id;
+    const approverId = currentUser?.id ?? currentUser?.user_id ?? currentUser?.userId;
     if (!approverId) {
       this.resolvedReturnTickets = [];
       return;
     }
 
     try {
+      const res = await this.hs.ajax(
+        'Getallreturnrequests',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        {}
+      );
+      const tuples = this.hs.xmltojson(res, 'tuple');
+      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
+      const returnTupleById = new Map<string, any>();
+      const approvalsById = new Map<string, any>();
+
+      tupleArray.forEach((tuple: any) => {
+        const data = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
+        const returnId = this.getVal(data?.return_id);
+        if (returnId) returnTupleById.set(returnId, tuple);
+
+        const approvals = this.extractReturnApprovalsFromReturnTuple(tuple);
+        approvals.forEach((approval: any) => {
+          if (approval.return_approval_id) approvalsById.set(approval.return_approval_id, approval);
+        });
+      });
+
       const approvalsRes = await this.hs.ajax(
         'GetT_asset_return_approvalsObjects',
         'http://schemas.cordys.com/AMS_Database_Metadata',
@@ -288,10 +310,16 @@ export class AllocationTicketsComponent implements OnInit {
       );
       const approvalTuples = this.hs.xmltojson(approvalsRes, 'tuple');
       const approvalArray: any[] = approvalTuples ? (Array.isArray(approvalTuples) ? approvalTuples : [approvalTuples]) : [];
-      const resolvedApprovals = approvalArray
+      approvalArray
         .map((tuple: any) => this.mapReturnApprovalTuple(tuple))
+        .forEach((approval: any) => {
+          if (approval.return_approval_id) approvalsById.set(approval.return_approval_id, approval);
+        });
+
+      let resolvedApprovals = Array.from(approvalsById.values())
         .filter((approval: any) =>
           approval.approver_id === approverId &&
+          this.isAllocationReturnRole(approval.role) &&
           (
             approval.status === RequestStatus.APPROVED ||
             approval.status === RequestStatus.REJECTED ||
@@ -301,35 +329,60 @@ export class AllocationTicketsComponent implements OnInit {
         );
 
       if (!resolvedApprovals.length) {
+        const progressApprovals: any[] = [];
+        for (const returnId of returnTupleById.keys()) {
+          const progress = await this.requestService.getReturnRequestProgress(returnId);
+          progressApprovals.push(...progress);
+        }
+        resolvedApprovals = progressApprovals.filter((approval: any) => {
+          const status = this.mapToStatus(approval.status || '');
+          return approval.approver_id === approverId &&
+            this.isAllocationReturnRole(approval.role) &&
+            (
+              status === RequestStatus.APPROVED ||
+              status === RequestStatus.REJECTED ||
+              status === RequestStatus.COMPLETED ||
+              status === RequestStatus.CANCELLED
+            );
+        });
+      }
+
+      if (!resolvedApprovals.length) {
         this.resolvedReturnTickets = [];
         return;
       }
 
-      const res = await this.hs.ajax(
-        'Getallreturnrequests',
-        'http://schemas.cordys.com/AMS_Database_Metadata',
-        {}
-      );
-      const tuples = this.hs.xmltojson(res, 'tuple');
-      if (tuples) {
-        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
-        this.resolvedReturnTickets = tupleArray
-          .map((t: any) => this.mapReturnTupleToEnrichedTicket(t))
-          .filter(t =>
-            t.status === RequestStatus.COMPLETED ||
-            t.status === RequestStatus.APPROVED ||
-            t.status === RequestStatus.REJECTED ||
-            t.status === RequestStatus.CANCELLED
-          );
+      this.resolvedReturnTickets = [];
+      for (const approval of resolvedApprovals) {
+        const baseTuple = returnTupleById.get(approval.request_id) ?? {
+          old: {
+            t_asset_returns: {
+              return_id: approval.request_id,
+              status: approval.status,
+              remarks: approval.remarks,
+              return_date: approval.action_date,
+              temp1: approval.temp1,
+              t_asset_return_approvals: approval
+            }
+          }
+        };
 
-        // Enrich with asset details if missing
-        for (const ticket of this.resolvedReturnTickets) {
-          await this.enrichTicketWithAssetDetails(ticket);
+        const ticket = this.mapReturnTupleToEnrichedTicket(baseTuple);
+        ticket.approvalid = approval.return_approval_id || ticket.approvalid;
+        ticket.status = approval.status;
+        ticket.reason = ticket.reason || approval.remarks || '—';
+        ticket.assignedDate = approval.action_date || ticket.assignedDate;
+        ticket.taskid = approval.temp2 || ticket.taskid;
+        if ((!ticket.assetId || ticket.assetId === '—' || ticket.assetId === 'â€”') && approval.temp1) {
+          ticket.assetId = approval.temp1;
+          ticket.rawRequest.assignedAssetId = approval.temp1;
         }
-        console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets`);
-      } else {
-        this.resolvedReturnTickets = [];
+        await this.enrichReturnTicketWithAssetDetails(ticket);
+        await this.enrichReturnTicketWithApprovalHistory(ticket);
+        this.resolvedReturnTickets.push(ticket);
       }
+
+      console.log(`Loaded ${this.resolvedReturnTickets.length} resolved return tickets for ${approverId}`);
     } catch (err) {
       console.error('Failed to load resolved return tickets:', err);
       this.resolvedReturnTickets = [];
@@ -372,7 +425,7 @@ export class AllocationTicketsComponent implements OnInit {
     const status = this.mapToStatus(statusStr);
 
     return {
-      taskid: returnData?.t_asset_return_approvals.temp2,
+      taskid: this.getVal(approvalObj?.temp2) ?? '-',
       approvalid: this.getVal(approvalObj?.return_approval_id) ?? '—',
       ticketId: this.getVal(returnData?.return_id) ?? this.getVal(approvalObj?.request_id) ?? '—',
       requestorName: this.getVal(userData?.name) ?? '—',
@@ -396,6 +449,7 @@ export class AllocationTicketsComponent implements OnInit {
         requestType: RequestType.RETURN_ASSET,
         status,
         currentStage: ApprovalStage.ALLOCATION,
+        justification: this.getVal(returnData?.remarks) ?? '',
         requestDate: this.getVal(returnData?.return_date) ?? '',
         lastUpdated: this.getVal(returnData?.return_date) ?? '',
         assignedAssetId: assetId && assetId !== '-' ? assetId : '',
@@ -548,10 +602,13 @@ export class AllocationTicketsComponent implements OnInit {
 
 
 
-  viewDetails(ticket: EnrichedTicket): void {
+  async viewDetails(ticket: EnrichedTicket): Promise<void> {
     this.selectedTicket = ticket;
     this.drawerOpen = true;
     this.decisionRemarks = '';
+    if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
+      await this.enrichReturnTicketWithApprovalHistory(ticket);
+    }
   }
 
   closeDetails(): void {
@@ -837,7 +894,7 @@ export class AllocationTicketsComponent implements OnInit {
           new: {
             t_asset_return_approvals: {
               status: "Approved",
-              remarks: "Allocated to Asset Manager"
+              remarks: this.decisionRemarks || ''
             }
           }
         }
@@ -868,7 +925,7 @@ export class AllocationTicketsComponent implements OnInit {
               request_id: ticket.ticketId,
               role: "Asset Manager",
               status: "Pending",
-              remarks: "Waiting for Hand-off Confirmation",
+              remarks: '',
               temp1: assetLookupId
             }
           }
@@ -909,7 +966,7 @@ export class AllocationTicketsComponent implements OnInit {
         returnId: ticket.ticketId,
         employeeName: ticket.requestorName,
         assetName: ticket.assetName,
-        remarks: "Allocated to Asset Manager",
+        remarks: this.decisionRemarks || '',
         actionByName: 'Allocation Team Member',
         nextApproverName: 'Asset Manager'
       });
@@ -934,8 +991,22 @@ export class AllocationTicketsComponent implements OnInit {
       role: this.getVal(data?.role) ?? '',
       status: this.mapToStatus(this.getVal(data?.status) ?? ''),
       remarks: this.getVal(data?.remarks) ?? '',
-      action_date: this.getVal(data?.action_date) ?? this.getVal(data?.created_at) ?? ''
+      action_date: this.getVal(data?.action_date) ?? this.getVal(data?.created_at) ?? '',
+      temp1: this.getVal(data?.temp1) ?? '',
+      temp2: this.getVal(data?.temp2) ?? ''
     };
+  }
+
+  private extractReturnApprovalsFromReturnTuple(tuple: any): any[] {
+    const returnData = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
+    const returnId = this.getVal(returnData?.return_id) ?? '';
+    const approvalObj = returnData?.t_asset_return_approvals ?? tuple?.old?.t_asset_return_approvals ?? tuple?.t_asset_return_approvals;
+    const approvalArray = approvalObj ? (Array.isArray(approvalObj) ? approvalObj : [approvalObj]) : [];
+
+    return approvalArray.map((approval: any) => ({
+      ...this.mapReturnApprovalTuple(approval),
+      request_id: this.getVal(approval?.request_id) ?? returnId
+    }));
   }
 
   private async enrichReturnTicketWithAssetDetails(ticket: EnrichedTicket): Promise<void> {
@@ -948,6 +1019,53 @@ export class AllocationTicketsComponent implements OnInit {
     ticket.assetType = asset.type_id || ticket.assetType;
     ticket.subCategory = asset.sub_category_id || ticket.subCategory;
     ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
+  }
+
+  private async enrichReturnTicketWithApprovalHistory(ticket: EnrichedTicket): Promise<void> {
+    if (!ticket.ticketId || ticket.ticketId === 'â€”') return;
+    const progress = await this.requestService.getReturnRequestProgress(ticket.ticketId);
+    ticket.rawRequest.approvalChain = this.buildReturnApprovalChain(progress);
+  }
+
+  private buildReturnApprovalChain(progress: any[]): ApprovalEntry[] {
+    if (!progress?.length) return [];
+    return [...progress]
+      .sort((a: any, b: any) => this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id))
+      .map((approval: any) => ({
+        stage: this.isAllocationReturnRole(approval.role) ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER,
+        action: this.toApprovalAction(approval.status),
+        approverId: this.getVal(approval.approver_id) ?? '',
+        timestamp: this.getVal(approval.action_date) ?? '',
+        comments: this.getVal(approval.remarks) ?? ''
+      }));
+  }
+
+  getReturnAssetManagerRemarks(ticket: EnrichedTicket): string {
+    const stage = ticket.rawRequest.approvalChain?.find(entry =>
+      entry.stage === ApprovalStage.ASSET_MANAGER &&
+      (entry.action === 'Approved' || entry.action === 'Rejected')
+    );
+    return stage ? (stage.comments || 'No remarks provided') : '';
+  }
+
+  getReturnEmployeeReason(ticket: EnrichedTicket): string {
+    return ticket.rawRequest.justification || ticket.reason || 'No reason provided';
+  }
+
+  private toApprovalAction(status: string): ApprovalEntry['action'] {
+    const normalized = this.mapToStatus(status || '');
+    if (normalized === RequestStatus.APPROVED || normalized === RequestStatus.COMPLETED) return 'Approved';
+    if (normalized === RequestStatus.REJECTED || normalized === RequestStatus.CANCELLED) return 'Rejected';
+    return 'Pending';
+  }
+
+  private isAllocationReturnRole(role: string): boolean {
+    return (role || '').toLowerCase().includes('allocation');
+  }
+
+  private getNumericApprovalId(id: string): number {
+    const numericId = String(id || '').match(/\d+/g)?.join('');
+    return numericId ? Number(numericId) : 0;
   }
 
   async rejectAssetReturn(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
@@ -983,8 +1101,7 @@ export class AllocationTicketsComponent implements OnInit {
           },
           new: {
             t_asset_returns: {
-              status: 'Rejected',
-              remarks: remarks
+              status: 'Rejected'
             }
           }
         }
