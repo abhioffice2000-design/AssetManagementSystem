@@ -739,7 +739,7 @@ export class RequestService {
       requesterEmail: this.getNullableValue(userInfo?.email || userInfo?.Email || '') || '',
       requesterDepartment: this.getNullableValue(userInfo?.department || userInfo?.Department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team || userInfo?.Team) || '',
-      assetType: this.normalizeAssetType(rawAssetType),
+      assetType: this.normalizeAssetType(rawAssetType, assetName),
       category: 'Warranty extension',
       subCategory: assetName,
       assetName: assetName,
@@ -1174,7 +1174,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
+      assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || '', reqData?.asset_name),
       assetName: this.getNullableValue(
         reqData?.temp1 ||
         parent?.temp1 ||
@@ -1292,7 +1292,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(assetInfo?.asset_name || assetInfo?.asset_type || 'Hardware'),
+      assetType: this.normalizeAssetType(assetInfo?.type_name || assetInfo?.asset_type || 'Hardware', assetInfo?.asset_name),
       category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
       assetName: this.getNullableValue(assetInfo?.asset_name),
@@ -1446,26 +1446,43 @@ export class RequestService {
     }
   }
 
-  public normalizeAssetType(type: string | undefined): string {
-    if (!type) return 'Hardware';
-    const t = type.toLowerCase().trim();
+  /**
+   * Normalizes asset type string to standard categories (Hardware, Software, etc.)
+   * Can also infer type from asset name if the type string is ambiguous (like an ID).
+   */
+  public normalizeAssetType(type: string | undefined, name?: string): string {
+    const t = (type || '').toLowerCase().trim();
+    const n = (name || '').toLowerCase().trim();
     
-    // 1. Furniture detection (prioritized)
-    if (t.includes('furn') || t.includes('chair') || t.includes('table') || t.includes('desk') || t === 'typ_05') return 'Furniture';
+    // Helper to check if either type or name contains a keyword
+    const matches = (keyword: string) => t.includes(keyword) || n.includes(keyword);
+
+    // 1. Furniture detection
+    if (matches('furn') || matches('chair') || matches('table') || matches('desk') || t === 'typ_05' || n.includes('workstation')) {
+      return 'Furniture';
+    }
     
     // 2. Software detection
-    if (t.includes('soft') || t.includes('license') || t.includes('adobe') || t.includes('office') || t === 'typ_01') return 'Software';
+    if (matches('soft') || matches('license') || matches('adobe') || matches('office') || 
+        matches('vpn') || matches('avast') || matches('ms') || matches('microsoft') ||
+        t === 'typ_01' || n.includes('subscription')) {
+      return 'Software';
+    }
     
-    // 3. Hardware detection
-    if (t.includes('laptop') || t.includes('hard') || t.includes('comp') || t.includes('dell') || t.includes('hp') || t.includes('mouse') || t === 'typ_02') return 'Hardware';
-    
-    // 4. Network detection
-    if (t.includes('network') || t.includes('wifi') || t.includes('router') || t === 'typ_03') return 'Network';
-    
-    // 5. Peripheral detection
-    if (t.includes('periph') || t.includes('keyboard') || t === 'typ_04') return 'Peripheral';
+    // 3. Network detection
+    if (matches('network') || matches('wifi') || matches('router') || matches('switch') || t === 'typ_03' || n.includes('firewall')) {
+      return 'Network';
+    }
 
-    // Default fallback to Hardware if no specific category matched
+    // 4. Hardware detection (including Peripherals like keyboard, mouse, monitor)
+    if (matches('laptop') || matches('hard') || matches('comp') || matches('dell') || matches('hp') || 
+        matches('lenovo') || matches('macbook') || matches('system') || matches('periph') || 
+        matches('keyboard') || matches('mouse') || matches('monitor') || matches('screen') ||
+        matches('printer') || matches('scanner') || t === 'typ_02' || t === 'typ_04') {
+      return 'Hardware';
+    }
+
+    // Default fallback
     return 'Hardware';
   }
 

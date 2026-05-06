@@ -1044,6 +1044,7 @@ export class MyRequestsComponent implements OnInit {
   getAssetIcon(type: string): string {
     const t = (type || '').toLowerCase();
     if (t.includes('soft')) return 'terminal';
+    if (t.includes('furn') || t.includes('chair') || t.includes('table')) return 'chair';
     if (t.includes('hard') || t.includes('comp') || t.includes('laptop')) return 'laptop';
     if (t.includes('net') || t.includes('wifi') || t.includes('router')) return 'router';
     if (t.includes('periph') || t.includes('mouse') || t.includes('key')) return 'keyboard';
