@@ -68,6 +68,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'Asset Inventory', icon: 'inventory', route: `${base}/inventory` },
           { label: 'Asset Requests', icon: 'assignment', route: `${base}/requests` },
           { label: 'Warranty Requests', icon: 'security', route: `${base}/warranty` },
+          { label: 'Service & Maintenance', icon: 'build', route: `${base}/service` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
@@ -77,6 +78,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
           { label: 'Asset Inventory', icon: 'inventory', route: `${base}/inventory` },
           { label: 'Tickets', icon: 'confirmation_number', route: `${base}/tickets` },
           { label: 'Warranty Extensions', icon: 'security', route: `${base}/warranty` },
+          { label: 'Service & Maintenance', icon: 'build', route: `${base}/service` },
           { label: 'Reports', icon: 'assessment', route: `${base}/reports` }
         ];
         break;
@@ -91,8 +93,8 @@ export class SidebarComponent implements OnInit, OnDestroy {
         this.navItems = [
           { label: 'My Assets', icon: 'devices', route: `${base}/my-assets` },
           { label: 'My Requests', icon: 'assignment', route: `${base}/my-requests` },
-
           { label: 'Return Asset', icon: 'assignment_return', route: `${base}/return-asset` },
+          { label: 'Service Asset', icon: 'build', route: `${base}/service-asset` },
           { label: 'Extend Warranty', icon: 'security', route: `${base}/extend-warranty` }
         ];
         break;
@@ -101,11 +103,11 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   isActive(route: string): boolean {
     if (!this.currentRoute || !route) return false;
-    
+
     // Normalize both routes to remove triple slashes and ensure leading slash
     const normalizedCurrent = ('/' + this.currentRoute).replace(/\/+/g, '/');
     const normalizedRoute = ('/' + route).replace(/\/+/g, '/');
-    
+
     // For exact dashboard match or sub-routes
     return normalizedCurrent === normalizedRoute || normalizedCurrent.startsWith(normalizedRoute + '/');
   }
