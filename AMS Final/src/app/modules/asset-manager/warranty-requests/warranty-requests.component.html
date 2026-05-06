@@ -33,13 +33,7 @@
     <div class="filter-group">
       <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()" *ngIf="activeTab === 'resolved'">
         <option value="">All Statuses</option>
-        <option value="Completed">Completed</option>
-        <option value="Rejected">Rejected</option>
-        <option value="Cancelled">Cancelled</option>
-      </select>
-      <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
-        <option value="">All Urgency</option>
-        <option *ngFor="let urgency of urgencies" [value]="urgency">{{ urgency }}</option>
+        <option *ngFor="let status of statuses" [value]="status">{{ status }}</option>
       </select>
     </div>
   </div>

@@ -21,8 +21,7 @@ export class WarrantyRequestsComponent implements OnInit {
   selectedUrgency = '';
 
   activeTab: 'pending' | 'resolved' = 'pending';
-  statuses = Object.values(RequestStatus);
-  urgencies = Object.values(RequestUrgency);
+  statuses = [RequestStatus.APPROVED, RequestStatus.REJECTED];
 
   allWarrantyRequests: AssetRequest[] = [];
 
@@ -70,10 +69,22 @@ export class WarrantyRequestsComponent implements OnInit {
       ]);
 
       this.warrantyRequests = pendingReqs;
-      this.allWarrantyRequests = allReqs;
       
-      console.log("warrantyReqs", pendingReqs);
-      console.log("allWarrantyRequests", allReqs);
+      // Enrich resolved requests to show 'Approved' even if main table is 'Pending'
+      this.allWarrantyRequests = await Promise.all((allReqs || []).map(async (req) => {
+        // If it's already Approved/Rejected/Completed, keep it
+        if (req.status !== RequestStatus.PENDING) return req;
+        
+        // If it's Pending in main table, check if THIS manager already approved it
+        try {
+          const progress = await this.requestService.getWarrantyProgress(req.id);
+          const myAction = progress.find(p => p.approverId === approverId && (p.status?.toLowerCase() === 'approved' || p.status?.toLowerCase() === 'rejected'));
+          if (myAction) {
+            req.status = myAction.status === 'Approved' ? RequestStatus.APPROVED : RequestStatus.REJECTED;
+          }
+        } catch (e) { /* ignore */ }
+        return req;
+      }));
 
       // Normalize team members to a flat structure
       const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
@@ -114,6 +125,7 @@ export class WarrantyRequestsComponent implements OnInit {
 
   get resolvedWarrantyRequests(): AssetRequest[] {
     return this.allWarrantyRequests.filter(req => 
+      req.status === RequestStatus.APPROVED ||
       req.status === RequestStatus.COMPLETED || 
       req.status === RequestStatus.REJECTED || 
       req.status === RequestStatus.CANCELLED
@@ -169,14 +181,21 @@ export class WarrantyRequestsComponent implements OnInit {
     this.actionComments = '';
 
     try {
-      // Fetch fresh data using user-provided SOAP request logic
+      // Fetch fresh data from the main request table
       const rawData = await this.requestService.getWarrantyRequestById(request.id);
       if (rawData) {
-        this.detailRequest.assetName = rawData.temp1 || this.detailRequest.assetName;
-        this.detailRequest.assignedSerial = rawData.temp2 || this.detailRequest.assignedSerial;
-        this.detailRequest.assignedWarrantyExpiry = rawData.temp3 || this.detailRequest.assignedWarrantyExpiry;
-        this.detailRequest.assignedAssetId = rawData.asset_id || this.detailRequest.assignedAssetId;
-        this.detailRequest.justification = rawData.reason || this.detailRequest.justification;
+        // Merge fresh data while PRESERVING critical tracking IDs from the list item
+        this.detailRequest = {
+          ...this.detailRequest,
+          assetName: rawData.temp1 || this.detailRequest.assetName,
+          assignedSerial: rawData.temp2 || this.detailRequest.assignedSerial,
+          assignedWarrantyExpiry: rawData.temp3 || this.detailRequest.assignedWarrantyExpiry,
+          assignedAssetId: rawData.asset_id || rawData.asset_type || this.detailRequest.assignedAssetId,
+          justification: rawData.reason || this.detailRequest.justification,
+          // Ensure these are NEVER lost during refresh
+          approvalId: request.approvalId || this.detailRequest.approvalId,
+          taskid: request.taskid || this.detailRequest.taskid
+        };
       }
     } catch (err) {
       console.warn('Error fetching fresh warranty details:', err);
@@ -211,14 +230,14 @@ export class WarrantyRequestsComponent implements OnInit {
         await this.requestService.updateWarrantyRequestApproval(
           this.detailRequest.approvalId as string,
           'Approved',
-          this.actionComments,
+          this.actionComments, // Correctly pass current action comments
           this.detailRequest.assignedAssetId as string
         );
 
-        // 1.1 Update the main request status to 'Approved' so it reflects in the employee's tracker/list
-        await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Approved');
+        // 1.1 [REMOVED] Main request status update moved to Allocation Team final confirmation
+        // await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Approved');
 
-        // 2. Update status of the asset in m_assets table
+        // 2. Update status of the asset in m_assets table to MoveToAllocationTeam
         const req2 = {
           tuple: {
             old: { m_assets: { asset_id: this.detailRequest.assignedAssetId } },

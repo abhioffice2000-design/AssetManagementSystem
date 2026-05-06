@@ -989,6 +989,22 @@
     }
   }
 
+  .header-icon-info {
+    width: 64px;
+    height: 64px;
+    background: #eff6ff;
+    color: #3b82f6;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    
+    .material-icons-outlined {
+      font-size: 32px;
+    }
+  }
+
   h3 {
     margin: 0;
     font-size: 1.5rem;
@@ -1029,6 +1045,48 @@
   align-items: center;
   gap: 6px;
   border-radius: 12px;
+}
+
+.asset-row {
+  cursor: pointer;
+  transition: background 0.2s;
+  
+  &:hover td {
+    background: #f8fafc;
+  }
+}
+
+.asset-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  padding: 24px 32px;
+
+  @media (max-width: 500px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.info-item {
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-bottom: 6px;
+  }
+  
+  .info-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+}
+
+.asset-id-tag {
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .locked-badge {

@@ -6,6 +6,7 @@ import { MailService } from 'src/app/core/services/mail.service';
 import { NotificationService } from 'src/app/core/services/notification.service';
 import { AuthService } from 'src/app/core/services/auth.service';
 import { AssetService } from '../../../core/services/asset.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 @Component({
   selector: 'app-warranty-tickets',
@@ -34,7 +35,8 @@ export class WarrantyTicketsComponent implements OnInit {
     private hs: HeroService,
     private mailService: MailService,
     private notificationService: NotificationService,
-    private authService: AuthService
+    private authService: AuthService,
+    private adminService: AdminDataService
   ) { }
 
   async ngOnInit(): Promise<void> {
@@ -108,8 +110,58 @@ export class WarrantyTicketsComponent implements OnInit {
         this.requestService.fetchAllWarrantyRequests()
       ]);
 
-      this.warrantyTickets = (pendingRes || []).filter(req => req.status === 'Pending' || req.status === 'In Progress');
+      let pendingWarrantyTickets = (pendingRes || []).filter(req => req.status === 'Pending' || req.status === 'In Progress');
+
+      // Robust discovery fallback
+      if (pendingWarrantyTickets.length === 0) {
+        console.log('[WarrantyTickets] Direct pending service returned 0. Trying robust discovery via asset status...');
+        const allAssets = await this.assetService.fetchAssetsFromService();
+        const allocationAssetIds = new Set(allAssets.filter(a => a.status === 'MoveToAllocationTeam').map(a => a.assetId || a.id));
+        const candidateReqs = (allRes || []).filter(req => allocationAssetIds.has(req.assignedAssetId || ''));
+        
+        const discoveredReqs: AssetRequest[] = [];
+        for (const req of candidateReqs) {
+          try {
+            const progress = await this.requestService.getWarrantyProgress(req.id);
+            if (progress && progress.length > 0) {
+              const latest = [...progress].sort((a, b) => {
+                const idA = parseInt(a.approvalId?.replace(/\D/g, '') || '0');
+                const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
+                return idB - idA;
+              })[0];
+              if (latest && latest.status === 'Pending' && latest.approverId === userId) {
+                req.approvalId = latest.approvalId;
+                req.taskid = latest.temp1;
+                req.status = 'Pending' as any;
+                discoveredReqs.push(req);
+              }
+            }
+          } catch (pErr) { console.warn('Progress check failed:', pErr); }
+        }
+        pendingWarrantyTickets = discoveredReqs;
+      }
+
+      this.warrantyTickets = pendingWarrantyTickets;
       this.allWarrantyRequests = allRes || [];
+
+      // Map employee names for both pending and resolved requests
+      try {
+        const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        if (allUsers && allUsers.length > 0) {
+          const userMap = new Map(allUsers.map((u: any) => [u.id || u.user_id, u.name]));
+          
+          const mapNames = (reqs: AssetRequest[]) => reqs.forEach(req => {
+            if (!req.requesterName || req.requesterName === 'Unknown') {
+              req.requesterName = userMap.get(req.requesterId) || req.requesterName || 'Employee';
+            }
+          });
+
+          mapNames(this.warrantyTickets);
+          mapNames(this.allWarrantyRequests);
+        }
+      } catch (userErr) {
+        console.warn('[WarrantyTickets] Failed to enrich requester names:', userErr);
+      }
       
       console.log('Pending Warranty Tickets:', this.warrantyTickets.length);
       console.log('All Warranty Requests:', this.allWarrantyRequests.length);
@@ -152,13 +204,12 @@ export class WarrantyTicketsComponent implements OnInit {
   }
 
   get managerRemarks(): string {
-    if (!this.selectedWarrantyRequest?.approvalChain) return '';
-    // Look for the most recent entry with 'Manager' in the role/stage
-    const managerApproval = [...this.selectedWarrantyRequest.approvalChain].reverse().find(a => 
-      a.stage.toString().toLowerCase().includes('manager') || 
-      a.stage.toString().toLowerCase().includes('mgr')
-    );
-    return managerApproval?.comments || '';
+    if (!this.selectedWarrantyRequest?.approvalChain) return '—';
+    const chain = [...this.selectedWarrantyRequest.approvalChain].reverse();
+    const allocationEntry = chain.find(a => (a.stage || '').toString().toLowerCase().includes('allocation') || (a.stage || '').toString().toLowerCase().includes('team'));
+    if (allocationEntry?.comments && allocationEntry.comments !== '—' && allocationEntry.comments.trim().length > 0) return allocationEntry.comments;
+    const managerEntry = chain.find(a => (a.stage || '').toString().toLowerCase().includes('manager') || (a.stage || '').toString().toLowerCase().includes('mgr'));
+    return managerEntry?.comments || '—';
   }
 
   closeWarrantyModal(): void {
