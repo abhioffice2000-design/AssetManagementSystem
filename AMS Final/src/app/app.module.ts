@@ -6,7 +6,7 @@ import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { SharedModule } from './shared/shared.module';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
-
+import { LocationStrategy, HashLocationStrategy } from '@angular/common';
 @NgModule({
   declarations: [
     AppComponent,
@@ -18,7 +18,9 @@ import { MainLayoutComponent } from './layouts/main-layout/main-layout.component
     AppRoutingModule,
     SharedModule
   ],
-  providers: [],
+  providers: [
+    { provide: LocationStrategy, useClass: HashLocationStrategy }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
