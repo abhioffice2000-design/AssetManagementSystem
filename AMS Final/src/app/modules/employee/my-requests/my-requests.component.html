@@ -209,7 +209,7 @@
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
               <p class="step-comments mt-8 italic" *ngIf="step.comments">"{{ step.comments }}"</p>
               <div class="mt-12 pt-12"
-                *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
+                *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Service / Maintenance' && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
                 style="border-top: 1px dashed var(--border-color);">
                 <button class="btn btn-primary"
                   style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;"

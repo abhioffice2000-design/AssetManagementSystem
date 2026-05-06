@@ -10,12 +10,14 @@ import { AllocationInventoryComponent } from './inventory/inventory.component';
 import { AllocationTicketsComponent } from './tickets/tickets.component';
 import { AllocationReportsComponent } from './reports/reports.component';
 import { WarrantyTicketsComponent } from './warranty-tickets/warranty-tickets.component';
+import { ServiceCollectionComponent } from './service-collection/service-collection.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: AllocationDashboardComponent },
   { path: 'inventory', component: AllocationInventoryComponent },
   { path: 'tickets', component: AllocationTicketsComponent },
   { path: 'warranty', component: WarrantyTicketsComponent },
+  { path: 'service', component: ServiceCollectionComponent },
   { path: 'reports', component: AllocationReportsComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
@@ -26,7 +28,8 @@ const routes: Routes = [
     AllocationInventoryComponent,
     AllocationTicketsComponent,
     AllocationReportsComponent,
-    WarrantyTicketsComponent
+    WarrantyTicketsComponent,
+    ServiceCollectionComponent
   ],
   imports: [
     CommonModule,

@@ -1609,6 +1609,92 @@ export class RequestService {
     });
   }
 
+  /**
+   * Inserts a service request using raw SOAP XML.
+   * Only the fields present in the 'fields' object are included in the XML,
+   * preventing Cordys BusObject from auto-generating empty tags for FK columns
+   * (allocation_id, tl_id) which would violate FK constraints (empty string != NULL).
+   */
+  createServiceRequestRaw(fields: Record<string, string>): Promise<any> {
+    // Build only the XML tags for fields that have values
+    const fieldXml = Object.entries(fields)
+      .filter(([_, val]) => val !== undefined && val !== null)
+      .map(([key, val]) => `              <${key}>${val}</${key}>`)
+      .join('\n');
+
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_service_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata">
+      <tuple>
+        <new>
+          <t_service_requests>
+${fieldXml}
+          </t_service_requests>
+        </new>
+      </tuple>
+    </UpdateT_service_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    console.log('[createServiceRequestRaw] SOAP:', soapRequest);
+    return this.hs.ajax(null, null, {}, soapRequest)
+      .then((res: any) => {
+        const tuple = this.hs.xmltojson(res, 'tuple');
+        console.log('[createServiceRequestRaw] response tuple:', tuple);
+        return tuple;
+      })
+      .catch((err: any) => {
+        console.error('[createServiceRequestRaw] failed:', err);
+        throw err;
+      });
+  }
+
+  /**
+   * Legacy object-based insert (kept for updates where all fields exist).
+   */
+  createEntryForServiceRequest(request: any) {
+    return this.hs.ajax(
+      'UpdateT_service_requests',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  createEntryForServiceApproval(request: any) {
+    return this.hs.ajax(
+      'UpdateT_service_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  callBPMForService(request: any) {
+    return this.hs.ajax(
+      'ams_serviceflow_bpm2',
+      'http://schemas.cordys.com/default',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
   callBPMForReturn(request: any) {
     return this.hs.ajax(
       'AMS_Return_Approval',
@@ -2205,5 +2291,401 @@ export class RequestService {
       console.log(err);
       return err;
     })
+  }
+
+  async resolveServiceAssetManagerId(assetId: string): Promise<string> {
+    const assetTypeResp: any = await this.getAssetTypeFromAssetId({ assetid: assetId });
+    const assetTuple = Array.isArray(assetTypeResp) ? assetTypeResp[0] : assetTypeResp;
+    const asset = assetTuple?.old?.m_assets || assetTuple?.new?.m_assets || assetTuple?.m_assets || assetTuple;
+    const assetTypeId = asset?.type_id;
+
+    if (!assetTypeId) {
+      throw new Error('Unable to find asset type for selected asset.');
+    }
+
+    const managerResp: any = await this.getAssetManagerByAssetTypeId({ Asset_type_id: assetTypeId });
+    const managerTuple = Array.isArray(managerResp) ? managerResp[0] : managerResp;
+    const manager = managerTuple?.old?.m_users || managerTuple?.new?.m_users || managerTuple?.m_users || managerTuple;
+    const managerId = manager?.user_id;
+
+    if (!managerId) {
+      throw new Error('Unable to find Asset Manager for selected asset type.');
+    }
+
+    return managerId;
+  }
+
+  // ─── SERVICE / MAINTENANCE FLOW ────────────────────────────────────────────
+
+  /**
+   * Fetches pending service approvals assigned to a given approver.
+   * Uses the custom Java method GetPendingServiceApprovalsForApprover
+   * which joins t_service_approvals + t_service_requests + m_assets + m_users.
+   */
+  async fetchPendingServiceApprovals(approverId: string): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetPendingServiceApprovalsForApprover xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </GetPendingServiceApprovalsForApprover>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapServiceApprovalTuple(tuple));
+    } catch (err) {
+      console.error('fetchPendingServiceApprovals failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches a single service approval object by approval_id.
+   */
+  async getServiceApprovalById(approvalId: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_service_approvalsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approval_id>${approvalId}</Approval_id>
+    </GetT_service_approvalsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuple = this.hs.xmltojson(response, 'tuple');
+      if (!tuple) return null;
+      const t = Array.isArray(tuple) ? tuple[0] : tuple;
+      return t?.old?.t_service_approvals || t?.t_service_approvals || t;
+    } catch (err) {
+      console.error('getServiceApprovalById failed:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Fetches all service requests using the cursor pattern.
+   */
+  async getAllServiceRequests(): Promise<any[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_service_requestsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromService_request_id: '0', toService_request_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((t: any) => {
+        const data = t?.old?.t_service_requests || t?.t_service_requests || t;
+        return {
+          service_request_id: data?.service_request_id || '',
+          allocation_id: data?.allocation_id || '',
+          asset_id: data?.asset_id || '',
+          user_id: data?.user_id || '',
+          tl_id: data?.tl_id || '',
+          issue_description: data?.issue_description || '',
+          urgency: data?.urgency || '',
+          document: data?.document || '',
+          needs_temp_asset: data?.needs_temp_asset === 'true' || data?.needs_temp_asset === true,
+          status: data?.status || '',
+          created_at: data?.created_at || '',
+          temp1: data?.temp1 || '',
+          temp2: data?.temp2 || '',
+          temp3: data?.temp3 || ''
+        };
+      });
+    } catch (err) {
+      console.error('getAllServiceRequests failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches service requests for a specific employee and maps them to AssetRequest[].
+   */
+  async fetchServiceRequestsByUser(userId: string): Promise<any[]> {
+    const allReqs = await this.getAllServiceRequests();
+    return allReqs
+      .filter((r: any) => r.user_id === userId)
+      .map((r: any) => ({
+        id: r.service_request_id,
+        requestNumber: r.service_request_id,
+        requesterId: r.user_id,
+        requesterName: '',
+        requesterDepartment: '',
+        requesterTeam: '',
+        assetType: 'Service / Maintenance',
+        category: r.asset_id || 'Service Request',
+        subCategory: '',
+        justification: r.issue_description || '',
+        urgency: r.urgency || 'Medium',
+        status: r.status || 'Pending',
+        currentStage: 'Asset Manager Approval',
+        hasEmailApproval: false,
+        requestDate: r.created_at || '',
+        lastUpdated: r.created_at || '',
+        requestType: 'Service / Maintenance',
+        assetName: r.asset_id || '',
+        assignedAssetId: r.asset_id || '',
+        approvalChain: [],
+        comments: []
+      }));
+  }
+
+  /**
+   * Fetches all service approvals using the cursor pattern.
+   */
+  async getAllServiceApprovals(): Promise<any[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_service_approvalsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromApproval_id: '0', toApproval_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((t: any) => {
+        const data = t?.old?.t_service_approvals || t?.t_service_approvals || t;
+        return {
+          approval_id: data?.approval_id || '',
+          service_request_id: data?.service_request_id || '',
+          approver_id: data?.approver_id || '',
+          role: data?.role || '',
+          stage: data?.stage || '',
+          status: data?.status || '',
+          remarks: data?.remarks || '',
+          action_date: data?.action_date || '',
+          temp1: data?.temp1 || '',
+          temp2: data?.temp2 || '',
+          temp3: data?.temp3 || '',
+          temp4: data?.temp4 || '',
+          temp5: data?.temp5 || '',
+          temp6: data?.temp6 || '',
+          temp7: data?.temp7 || ''
+        };
+      });
+    } catch (err) {
+      console.error('getAllServiceApprovals failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Gets approval chain (all approvals) for a specific service request.
+   */
+  async getServiceRequestApprovalChain(serviceRequestId: string): Promise<any[]> {
+    const allApprovals = await this.getAllServiceApprovals();
+    return allApprovals
+      .filter((a: any) => a.service_request_id === serviceRequestId)
+      .sort((a: any, b: any) => {
+        const dateA = a.action_date ? new Date(a.action_date).getTime() : 0;
+        const dateB = b.action_date ? new Date(b.action_date).getTime() : 0;
+        return dateA - dateB;
+      });
+  }
+
+  /**
+   * Maps a single tuple from GetPendingServiceApprovalsForApprover into a flat object.
+   * The Java join returns t_service_approvals + nested t_service_requests + m_assets + m_users.
+   */
+  private mapServiceApprovalTuple(tuple: any): any {
+    const parent = tuple?.old || tuple;
+    const approval = parent?.t_service_approvals || parent;
+    const request = approval?.t_service_requests || parent?.t_service_requests || {};
+    const asset = approval?.m_assets || parent?.m_assets || request?.m_assets || {};
+    const user = approval?.m_users || parent?.m_users || request?.m_users || {};
+
+    return {
+      approval_id: approval?.approval_id || '',
+      service_request_id: approval?.service_request_id || request?.service_request_id || '',
+      approver_id: approval?.approver_id || '',
+      role: approval?.role || '',
+      stage: approval?.stage || '',
+      approval_status: approval?.status || '',
+      remarks: approval?.remarks || '',
+      action_date: approval?.action_date || '',
+      temp1: approval?.temp1 || '',
+      temp2: approval?.temp2 || '',
+      temp3: approval?.temp3 || '',
+      temp4: approval?.temp4 || '',
+      temp5: approval?.temp5 || '',
+      temp6: approval?.temp6 || '',
+      temp7: approval?.temp7 || '',
+      // Service request fields
+      asset_id: request?.asset_id || asset?.asset_id || '',
+      user_id: request?.user_id || user?.user_id || '',
+      tl_id: request?.tl_id || '',
+      issue_description: request?.issue_description || '',
+      urgency: request?.urgency || '',
+      needs_temp_asset: request?.needs_temp_asset === 'true' || request?.needs_temp_asset === true,
+      request_status: request?.status || '',
+      created_at: request?.created_at || '',
+      req_temp3: request?.temp3 || request?.allocation_id || '',
+      // Asset fields
+      asset_name: asset?.asset_name || request?.temp1 || '',
+      asset_serial: asset?.serial_number || request?.temp2 || '',
+      asset_type_id: asset?.type_id || '',
+      asset_sub_category: asset?.sub_category_id || '',
+      asset_status: asset?.status || '',
+      // User fields
+      requester_name: user?.name || '',
+      requester_email: user?.email || ''
+    };
+  }
+
+  // ─── Custom Java service wrappers ────────────────────────────────────────
+
+  /**
+   * Assigns a temporary asset to the employee during service.
+   * Calls the custom Java method AssignTempAssetWithStatusUpdate.
+   */
+  assignTempAssetService(payload: {
+    service_request_id: string;
+    temp_asset_id: string;
+    assigned_to: string;
+    assigned_by: string;
+    expected_return_date: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'AssignTempAssetWithStatusUpdate',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[AssignTempAsset] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[AssignTempAsset] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Final approval by Asset Manager (Stage 3).
+   * Validates temp asset condition + updates approval/request/asset statuses.
+   */
+  finalServiceApprovalService(payload: {
+    service_request_id: string;
+    approval_id: string;
+    approver_id: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'FinalServiceApproval',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[FinalServiceApproval] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[FinalServiceApproval] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Marks service as completed by Asset Manager.
+   * Updates request/asset/maintenance_log statuses and notifies employee.
+   */
+  markServiceCompletedService(payload: {
+    service_request_id: string;
+    serviced_by: string;
+    cost: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'MarkServiceCompleted',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[MarkServiceCompleted] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[MarkServiceCompleted] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Returns the temporary asset (marks it Available again).
+   */
+  returnTempAssetService(payload: {
+    service_request_id: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'ReturnTempAsset',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[ReturnTempAsset] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[ReturnTempAsset] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Completes the handover of the original serviced asset back to the employee.
+   * Validates temp asset return condition.
+   */
+  completeServiceHandoverService(payload: {
+    service_request_id: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'CompleteServiceHandover',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[CompleteServiceHandover] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[CompleteServiceHandover] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Updates asset request status (e.g., to 'Completed' when employee confirms receipt).
+   */
+  updateRequestStatusCordys(requestId: string, status: string, remarks: string): Promise<any> {
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_asset_requests qConstraint="0">
+            <request_id>${requestId}</request_id>
+          </t_asset_requests>
+        </old>
+        <new>
+          <t_asset_requests qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <status>${status}</status>
+            <temp3><![CDATA[${remarks}]]></temp3>
+          </t_asset_requests>
+        </new>
+      </tuple>
+    </UpdateT_asset_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
+    ).then((res: any) => {
+      console.log('[UpdateRequestStatus] response:', res);
+      return res;
+    }).catch((err: any) => {
+      console.error('[UpdateRequestStatus] failed:', err);
+      throw err;
+    });
   }
 }

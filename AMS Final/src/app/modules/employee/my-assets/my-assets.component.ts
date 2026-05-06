@@ -100,12 +100,42 @@ export class MyAssetsComponent implements OnInit {
       // this.myAssets = assets;
 
       // Fetch allocated assets and requests in parallel for joining
-      const [assets, requests] = await Promise.all([
+      const [assets, requests, allServiceReqs] = await Promise.all([
         this.assetService.getAllocatedAssetsByUserId(user.id),
-        this.requestService.getRequestsByUserIdFromCordys(user.id)
+        this.requestService.getRequestsByUserIdFromCordys(user.id),
+        this.requestService.getAllServiceRequests().catch(() => [])
       ]);
 
-      this.myAssets = assets;
+      let loadedAssets = [...assets];
+
+      // Append temporarily allocated assets from service requests
+      const tempReqs = allServiceReqs.filter((r: any) => 
+        r.user_id === user.id && 
+        r.temp3 && 
+        (r.status === 'OnService' || r.status === 'Serviced')
+      );
+
+      for (const sReq of tempReqs) {
+        try {
+          const tAssetId = sReq.temp3;
+          if (!loadedAssets.some(a => a.id === tAssetId || a.assetId === tAssetId)) {
+            const tAsset = await this.assetService.getAssetDetails(tAssetId);
+            if (tAsset) {
+              loadedAssets.push({
+                ...tAsset,
+                assignedTo: user.id,
+                status: 'TempAllocated',
+                requestId: sReq.service_request_id,
+                name: `${tAsset.name} (Temp)`
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Could not load temp asset details', e);
+        }
+      }
+
+      this.myAssets = loadedAssets;
 
       // Fallback to mock data if no real data is found (for consistency with dashboard)
       if (this.myAssets.length === 0) {
