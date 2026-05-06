@@ -60,8 +60,8 @@
           <th>Request ID</th>
           <th>Type</th>
           <th>Asset Name</th>
-          <th>Reason</th>
-          <th>Urgency</th>
+          <th *ngIf="selectedType !== 'Extend Warranty'">Reason</th>
+          <th *ngIf="selectedType !== 'Extend Warranty'">Urgency</th>
           <th>Status</th>
           <th>Track Progress</th>
         </tr>
@@ -80,12 +80,12 @@
               <span class="asset-cat">{{ req.assetName || req.category }}</span>
             </div>
           </td>
-          <td>
+          <td *ngIf="selectedType !== 'Extend Warranty'">
             <span class="reason-truncate" [title]="req.justification">
               {{ (req.justification | slice:0:30) || '—' }}{{ (req.justification && req.justification.length > 30) ? '...' : '' }}
             </span>
           </td>
-          <td>
+          <td *ngIf="selectedType !== 'Extend Warranty'">
             <span class="urgency-label" [ngClass]="'urgency-' + req.urgency.toLowerCase()">
               {{ req.urgency }}
             </span>
@@ -103,7 +103,7 @@
           </td>
         </tr>
         <tr *ngIf="totalFilteredCount === 0 && !loading">
-          <td colspan="7" class="text-center text-muted p-24">No requests found matching your filters.</td>
+          <td [attr.colspan]="selectedType === 'Extend Warranty' ? 5 : 7" class="text-center text-muted p-24">No requests found matching your filters.</td>
         </tr>
       </tbody>
     </table>
@@ -225,13 +225,9 @@
             </div>
 
             <div class="step-details card-sub p-12 mt-8">
-              <div class="detail-row" *ngIf="step.timestamp">
-                <span class="material-icons-outlined" style="font-size: 16px;">schedule</span>
-                <span class="detail-text">{{ step.timestamp | date:'medium' }}</span>
-                <span class="time-ago ml-8" *ngIf="step.isCompleted">{{ step.timestamp | date:'hh:mm a' }}</span>
-              </div>
+
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
-              <p class="step-comments mt-8 italic" *ngIf="step.comments">"{{ step.comments }}"</p>
+
               <div class="mt-12 pt-12"
                 *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Service / Maintenance' && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
                 style="border-top: 1px dashed var(--border-color);">

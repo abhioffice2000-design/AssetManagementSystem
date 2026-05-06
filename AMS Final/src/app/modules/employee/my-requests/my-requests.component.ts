@@ -114,7 +114,7 @@ export class MyRequestsComponent implements OnInit {
       try {
         const [assetRequests, warrantyRequests, returnRequests, serviceRequests] = await Promise.all([
           this.requestService.getRequestsByUserIdFromCordys(user.id),
-          this.requestService.fetchWarrantyRequestsForUser(user.id),
+          this.requestService.fetchAllWarrantyRequestsForUser(user.id),
           this.requestService.fetchReturnRequestsByEmployee(user.id),
           this.requestService.fetchServiceRequestsByUser(user.id)
         ]);
@@ -122,10 +122,15 @@ export class MyRequestsComponent implements OnInit {
 
         console.log(`[MyRequests] Loaded ${assetRequests.length} asset, ${warrantyRequests.length} warranty, ${serviceRequests.length} service requests`);
 
-        // Merge all request types
+        // Merge all request types and sort by date descending
         this.requests = [...assetRequests, ...warrantyRequests, ...returnRequests, ...serviceRequests];
+        this.requests.sort((a, b) => {
+          const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
+          const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+          return dateB - dateA;
+        });
 
-        console.log(`[MyRequests] Total requests after merge: ${this.requests.length}`);
+        console.log(`[MyRequests] Total requests after merge and sort: ${this.requests.length}`);
         console.log('[MyRequests] Request Types distribution:', this.requests.reduce((acc: any, r) => {
           acc[r.requestType] = (acc[r.requestType] || 0) + 1;
           return acc;
@@ -145,8 +150,8 @@ export class MyRequestsComponent implements OnInit {
     const filtered = this.requests.filter(req => {
       // 1. Tab filtering
       const isResolved = req.status === RequestStatus.APPROVED ||
-        req.status === RequestStatus.REJECTED ||
         req.status === RequestStatus.COMPLETED ||
+        req.status === RequestStatus.REJECTED ||
         req.status === RequestStatus.CANCELLED;
 
       const tabMatch = this.activeTab === 'resolved' ? isResolved : !isResolved;
@@ -164,6 +169,22 @@ export class MyRequestsComponent implements OnInit {
 
       return matchesSearch && matchesType;
     });
+    // Sort by Date (Descending - Newest first)
+    filtered.sort((a, b) => {
+      try {
+        const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
+        const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+        
+        if (isNaN(dateA) || isNaN(dateB)) {
+          // Fallback to request number comparison if dates are unparseable
+          return b.requestNumber.localeCompare(a.requestNumber);
+        }
+        return dateB - dateA;
+      } catch (e) {
+        return 0;
+      }
+    });
+
     return filtered;
   }
 
@@ -383,6 +404,8 @@ export class MyRequestsComponent implements OnInit {
           timestamp: a.action_date,
           comments: a.remarks
         }));
+      } else if (request.requestType === RequestType.EXTEND_WARRANTY) {
+        progressData = await this.requestService.getWarrantyProgress(request.id);
       } else {
         progressData = await this.requestService.getRequestProgress(request.id);
       }
@@ -402,12 +425,20 @@ export class MyRequestsComponent implements OnInit {
 
         let foundIndex = -1;
         while (true) {
+          // Priority 1: Look for a completed record (Approved/Completed) for this stage
           foundIndex = availableProgress.findIndex(p =>
-            stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+            stage.roles.some(role => p.stage?.toLowerCase().includes(role)) &&
+            (p.status?.toLowerCase() === 'approved' || p.status?.toLowerCase() === 'completed')
           );
 
+          // Priority 2: Fallback to any record (Pending/Rejected) for this stage
+          if (foundIndex === -1) {
+            foundIndex = availableProgress.findIndex(p =>
+              stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+            );
+          }
+
           // If we found a match and it's rejected, check if there's a LATER record for the same role(s)
-          // This allows the tracker to skip historical rejections from previous resubmission cycles.
           if (foundIndex !== -1 && availableProgress[foundIndex].status === 'Rejected') {
             const hasLaterMatch = availableProgress.slice(foundIndex + 1).some(p =>
               stage.roles.some(role => p.stage?.toLowerCase().includes(role))
@@ -444,7 +475,7 @@ export class MyRequestsComponent implements OnInit {
 
         // Correctly handle 'Assigned Approver' or empty placeholders from the DB and lookups
         const dbName = data?.approverName?.trim();
-        const genericPlaceholders = ['assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
+        const genericPlaceholders = ['approver', 'assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
         const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
 
         let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[stage.name];
@@ -561,23 +592,26 @@ export class MyRequestsComponent implements OnInit {
   }
 
   calculateOverallProgress(requestStatus: string): number {
-    const status = requestStatus.toLowerCase();
-    if (status === 'completed') return 100;
+    const status = (requestStatus || '').toLowerCase();
+    if (status === 'completed' || status === 'approved') return 100;
 
     const completedCount = this.trackingSteps.filter(s => s.isCompleted && s.status !== 'Rejected').length;
     const totalSteps = this.trackingSteps.length;
 
+    if (totalSteps === 0) return 10;
+
     // For rejected requests, show how far it got before rejection
     if (status === 'rejected') {
-      if (totalSteps === 0) return 0;
       return Math.round((completedCount / totalSteps) * 100);
     }
 
     if (completedCount === 0) return 10;
-    if (completedCount === 1) return 33;
-    if (completedCount === 2) return 66;
-    if (completedCount === 3) return 90;
-    return 100;
+    
+    // Dynamic progress calculation based on steps
+    const progress = Math.round((completedCount / totalSteps) * 100);
+    
+    // Ensure we don't show 100% unless it's actually terminal
+    return Math.min(progress, 95);
   }
 
   // Confirmation Modal Variables

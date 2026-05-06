@@ -219,36 +219,44 @@
             <thead>
               <tr>
                 <th>Asset</th>
+                <th>Serial Number</th>
                 <th>Type</th>
-                <th>Sub Category</th>
+                <th>Assigned To</th>
                 <th>Status</th>
-                <th>Warranty Expiry</th>
-                <th>Purchase Date</th>
                 <th class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let asset of paginatedAssets">
+              <tr *ngFor="let asset of paginatedAssets" class="asset-row" (click)="openAssetDetails(asset)">
                 <td>
                   <div class="asset-cell">
-                    <div class="asset-avatar">{{ asset.assetTag.slice(0, 2) }}</div>
+                    <div class="asset-avatar" [style.background]="getAssetTypeColor(asset.type)">{{ asset.assetTag.slice(0, 2) }}</div>
                     <div>
                       <div class="asset-name">{{ asset.name }}</div>
+                      <div class="asset-id-tag" style="font-size: 11px; color: #64748b; font-weight: 500;">{{ asset.assetTag }}</div>
                     </div>
                   </div>
                 </td>
+                <td><span class="serial-tag" style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #334155;">{{ asset.serialNumber }}</span></td>
                 <td><span class="badge" [ngClass]="getTypeBadgeClass(asset.type)">{{ asset.type }}</span></td>
-                <td>{{ asset.subCategory }}</td>
-                <td><span class="badge" [ngClass]="getStatusBadgeClass(asset.status)">{{ formatAssetStatus(asset.status) }}</span></td>
-                <td>{{ asset.warrantyExpiry | date:'mediumDate' }}</td>
-                <td>{{ asset.purchaseDate | date:'mediumDate' }}</td>
                 <td>
-                  <div class="flex items-center justify-center gap-8" style="min-height: 40px;">
+                  <span *ngIf="asset.status?.toLowerCase() === 'allocated'" style="font-weight: 500; color: #1e293b;">
+                    {{ asset.assignedToName || asset.assignedTo || 'Assigned' }}
+                  </span>
+                  <span *ngIf="asset.status?.toLowerCase() !== 'allocated'" class="text-muted">-</span>
+                </td>
+                <td><span class="badge" [ngClass]="getStatusBadgeClass(asset.status)">{{ formatAssetStatus(asset.status) }}</span></td>
+                <td>
+                  <div class="flex items-center justify-center gap-8" style="min-height: 40px;" (click)="$event.stopPropagation()">
+                    <button *ngIf="asset.status?.toLowerCase() === 'allocated'" class="btn btn-sm btn-outline-primary" (click)="makeAssetAvailable(asset)" title="Release asset and make it available">
+                      <span class="material-icons-outlined" style="font-size: 16px;">restart_alt</span>
+                      Make Available
+                    </button>
                     <button *ngIf="canDeleteAsset(asset)" class="btn btn-sm btn-outline-danger" (click)="deleteAsset(asset.id)">
                       <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
                       Delete
                     </button>
-                    <span *ngIf="!canDeleteAsset(asset)" class="locked-badge" title="Only available or blank assets can be deleted">
+                    <span *ngIf="!canDeleteAsset(asset) && asset.status?.toLowerCase() !== 'allocated'" class="locked-badge" title="Only available or blank assets can be deleted">
                       <span class="material-icons-outlined">lock</span>
                       Locked
                     </span>
@@ -256,7 +264,7 @@
                 </td>
               </tr>
               <tr *ngIf="filteredAssets.length === 0">
-                <td colspan="7" class="empty-state">
+                <td colspan="6" class="empty-state">
                   <span class="material-icons-outlined">search_off</span>
                   No assets found
                 </td>
@@ -498,11 +506,78 @@
     </div>
   </div>
 </div>
+
+<!-- Asset Detail Modal (Drill-down) -->
+<div class="modal-overlay" *ngIf="showAssetDetailModal && selectedAssetForDetail">
+  <div class="modal-container animate-slide-up detail-modal" style="max-width: 600px;">
+    <div class="modal-header enterprise-header" [style.background]="getAssetTypeColor(selectedAssetForDetail.type)">
+      <div class="flex items-center gap-16">
+         <div class="detail-type-icon" style="background: rgba(255,255,255,0.2)">
+            <span class="material-icons-outlined text-white">{{ getAssetTypeIcon(selectedAssetForDetail.type) }}</span>
+         </div>
+         <div>
+            <h3 class="m-0 text-white">{{ selectedAssetForDetail.name }}</h3>
+            <span class="enterprise-badge" style="color: rgba(255,255,255,0.7)">Asset Intelligence</span>
+         </div>
+      </div>
+      <button class="btn-icon" (click)="closeAssetDetails()" style="background: rgba(255,255,255,0.1); color: white; border: none;">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <div class="asset-info-grid">
+        <div class="info-item">
+          <label>Asset Tag</label>
+          <div class="info-value">{{ selectedAssetForDetail.assetTag }}</div>
+        </div>
+        <div class="info-item">
+          <label>Serial Number</label>
+          <div class="info-value">{{ selectedAssetForDetail.serialNumber }}</div>
+        </div>
+        <div class="info-item">
+          <label>Type</label>
+          <div class="info-value">
+            <span class="badge" [ngClass]="getTypeBadgeClass(selectedAssetForDetail.type)">{{ selectedAssetForDetail.type }}</span>
+          </div>
+        </div>
+        <div class="info-item">
+          <label>Category</label>
+          <div class="info-value">{{ selectedAssetForDetail.category }}</div>
+        </div>
+        <div class="info-item">
+          <label>Status</label>
+          <div class="info-value">
+            <span class="badge" [ngClass]="getStatusBadgeClass(selectedAssetForDetail.status)">{{ formatAssetStatus(selectedAssetForDetail.status) }}</span>
+          </div>
+        </div>
+        <div class="info-item" *ngIf="selectedAssetForDetail.status?.toLowerCase() === 'allocated'">
+          <label>Assigned To</label>
+          <div class="info-value" style="color: #2563eb; font-weight: 600;">{{ selectedAssetForDetail.assignedToName || selectedAssetForDetail.assignedTo }}</div>
+        </div>
+        <div class="info-item">
+          <label>Purchase Date</label>
+          <div class="info-value">{{ selectedAssetForDetail.purchaseDate | date:'longDate' }}</div>
+        </div>
+        <div class="info-item">
+          <label>Warranty Expiry</label>
+          <div class="info-value" [class.text-danger]="isWarrantyExpired(selectedAssetForDetail.warrantyExpiry)">
+            {{ selectedAssetForDetail.warrantyExpiry | date:'longDate' }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-primary" (click)="closeAssetDetails()">Close</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" *ngIf="showConfirmModal">
   <div class="modal-container animate-slide-up confirmation-modal" style="max-width: 450px;">
     <div class="modal-header">
-      <div class="header-icon-danger">
-        <span class="material-icons-outlined">warning</span>
+      <div [class]="confirmIconClass">
+        <span class="material-icons-outlined">{{ confirmIcon }}</span>
       </div>
       <h3>{{ confirmTitle }}</h3>
       <button class="btn-icon" (click)="closeConfirmModal()">
@@ -514,7 +589,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeConfirmModal()">{{ showConfirmAction ? 'Cancel' : 'Close' }}</button>
-      <button class="btn btn-danger" (click)="handleConfirm()" *ngIf="showConfirmAction">
+      <button [class]="confirmIconClass === 'header-icon-info' ? 'btn btn-primary' : 'btn btn-danger'" (click)="handleConfirm()" *ngIf="showConfirmAction">
         {{ isSaving ? 'Processing...' : confirmBtnText }}
       </button>
     </div>

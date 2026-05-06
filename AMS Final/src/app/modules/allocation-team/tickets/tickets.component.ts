@@ -41,6 +41,7 @@ export class AllocationTicketsComponent implements OnInit {
   resolvedReturnTickets: EnrichedTicket[] = [];
   currentUser: any;
   returnTickets: EnrichedTicket[] = [];
+  pendingWarrantyTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
   drawerOpen = false;
 
@@ -165,8 +166,11 @@ export class AllocationTicketsComponent implements OnInit {
 
       // Sync return tickets load
       await this.loadReturnTickets();
-      // Merge return tickets into allTickets so they appear in the table
-      this.allTickets = [...this.allTickets, ...this.returnTickets];
+      // Sync warranty tickets load
+      await this.loadPendingWarrantyTickets();
+      
+      // Merge return and warranty tickets into allTickets so they appear in the table
+      this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
       // Load resolved history
       await this.loadResolvedTickets();
       // Load resolved return history
@@ -223,6 +227,73 @@ export class AllocationTicketsComponent implements OnInit {
     } catch (err) {
       console.error('Failed to load return tickets:', err);
       this.returnTickets = [];
+    }
+  }
+
+  async loadPendingWarrantyTickets(): Promise<void> {
+    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const userId = currentUser?.id;
+    if (!userId) {
+      this.pendingWarrantyTickets = [];
+      return;
+    }
+
+    try {
+      // 1. Try the direct service first
+      let warrantyRequests = await this.requestService.fetchPendingWarrantyApprovalsFromService(userId);
+      
+      // 2. If direct service returns nothing (likely due to role restrictions on the backend), 
+      // use a more robust discovery approach
+      if (!warrantyRequests || warrantyRequests.length === 0) {
+        console.log('[AllocationTickets] Direct pending service returned 0. Trying robust discovery...');
+        const allWarrantyReqs = await this.requestService.fetchAllWarrantyRequests();
+        const allAssets = await this.assetService.fetchAssetsFromService();
+        
+        // Find assets that are in "MoveToAllocationTeam" status
+        const allocationAssetIds = new Set(
+          allAssets
+            .filter(a => a.status === 'MoveToAllocationTeam')
+            .map(a => a.assetId || a.id)
+        );
+
+        // Find warranty requests linked to these assets
+        const candidateReqs = allWarrantyReqs.filter(req => allocationAssetIds.has(req.assignedAssetId || ''));
+        console.log(`[AllocationTickets] Found ${candidateReqs.length} candidate warranty requests based on asset status`);
+
+        const discoveredReqs: AssetRequest[] = [];
+        for (const req of candidateReqs) {
+          try {
+            const progress = await this.requestService.getWarrantyProgress(req.id);
+            // Check if the latest approval is Pending and assigned to the current user
+            if (progress && progress.length > 0) {
+              const latest = [...progress].sort((a, b) => {
+                const idA = parseInt(a.approvalId?.replace(/\D/g, '') || '0');
+                const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
+                return idB - idA;
+              })[0];
+
+              if (latest && latest.status === 'Pending' && latest.approverId === userId) {
+                req.approvalId = latest.approvalId;
+                req.taskid = latest.temp1;
+                req.status = RequestStatus.PENDING;
+                discoveredReqs.push(req);
+              }
+            }
+          } catch (pErr) {
+            console.warn(`Failed to check progress for candidate req ${req.id}:`, pErr);
+          }
+        }
+        warrantyRequests = discoveredReqs;
+      }
+
+      this.pendingWarrantyTickets = (warrantyRequests || [])
+        .filter(req => req.status === RequestStatus.PENDING || req.status === RequestStatus.IN_PROGRESS)
+        .map(req => this.mapWarrantyToEnrichedTicket(req));
+      
+      console.log(`[AllocationTickets] Loaded ${this.pendingWarrantyTickets.length} pending warranty tickets`);
+    } catch (err) {
+      console.error('Failed to load pending warranty tickets:', err);
+      this.pendingWarrantyTickets = [];
     }
   }
 
@@ -748,6 +819,24 @@ export class AllocationTicketsComponent implements OnInit {
     }
     console.log("First request is", req1)
     await this.requestService.updateEntryForAllocationTeamMember(req1 as any)
+
+    // Handle Warranty Extension specific final approval
+    if (ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY) {
+      await this.requestService.updateExtendAssetRequest(ticket.rawRequest.id, 'Approved');
+      
+      // For warranty, we just complete the BPM task and notify
+      if (ticket.taskid && ticket.taskid !== '—') {
+        await this.requestService.completeUserTask({
+          TaskId: ticket.taskid,
+          Action: 'COMPLETE'
+        } as any);
+      }
+
+      this.notificationService.showToast('Warranty extension confirmed successfully.', 'success');
+      this.loadTickets();
+      return;
+    }
+
     var req2 = {
       tuple: {
         old: {
@@ -759,7 +848,7 @@ export class AllocationTicketsComponent implements OnInit {
           m_assets: {
             status: "Allocated",
             temp1: ticket.rawRequest.requesterId,
-            temp2: ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate'
+            temp2: 'Allocate'
           }
         }
       }

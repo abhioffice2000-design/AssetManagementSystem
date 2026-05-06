@@ -89,6 +89,8 @@ export class MasterDataComponent implements OnInit {
   filteredEnrichedSubcategories: EnrichedSubcategory[] = [];
   selectedSubForDetail: EnrichedSubcategory | null = null;
   showSubDetailModal = false;
+  selectedAssetForDetail: Asset | null = null;
+  showAssetDetailModal = false;
   assetsInSelectedSub: Asset[] = [];
   subDetailsCurrentPage = 1;
   subDetailsPageSize = 5;
@@ -388,8 +390,8 @@ export class MasterDataComponent implements OnInit {
 
   downloadTemplate(): void {
     const wsData = [
-      ['Type', 'Category', 'Name', 'Serial Number', 'Purchase Date', 'Warranty Expiry'],
-      ['Hardware', 'Laptops', 'Dell Latitude 7420', 'DL-7420-ABCD', '2023-01-15', '2026-01-15']
+      ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry'],
+      ['Hardware', 'Laptops', 'Dell Latitude 7420', '2023-01-15', '2026-01-15']
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -431,11 +433,10 @@ export class MasterDataComponent implements OnInit {
         const typeIdx = headers.findIndex(h => h.includes('type'));
         const catIdx = headers.findIndex(h => h.includes('category'));
         const nameIdx = headers.findIndex(h => h.includes('name'));
-        const serialIdx = headers.findIndex(h => h.includes('serial'));
         const purchaseIdx = headers.findIndex(h => h.includes('purchase'));
         const warrantyIdx = headers.findIndex(h => h.includes('warranty'));
 
-        if (typeIdx === -1 || catIdx === -1 || nameIdx === -1 || serialIdx === -1 || purchaseIdx === -1 || warrantyIdx === -1) {
+        if (typeIdx === -1 || catIdx === -1 || nameIdx === -1 || purchaseIdx === -1 || warrantyIdx === -1) {
           this.notificationService.showToast('Invalid template format. Please use the provided template.', 'error');
           return;
         }
@@ -445,6 +446,8 @@ export class MasterDataComponent implements OnInit {
 
         let successCount = 0;
         let failCount = 0;
+        const duplicateNames: string[] = [];
+        const missingFieldRows: number[] = [];
 
         for (let i = 1; i < data.length; i++) {
           const row = data[i];
@@ -453,15 +456,20 @@ export class MasterDataComponent implements OnInit {
           const type = row[typeIdx]?.trim();
           const category = row[catIdx]?.trim();
           const name = row[nameIdx]?.trim();
-          const serial = row[serialIdx]?.trim();
           let purchaseDate = row[purchaseIdx]?.trim();
           let warrantyExpiry = row[warrantyIdx]?.trim();
 
-          if (!type || !category || !name || !serial || !purchaseDate || !warrantyExpiry) {
+          if (!type || !category || !name || !purchaseDate || !warrantyExpiry) {
             console.warn(`Row ${i + 1} skipped due to missing fields.`);
+            missingFieldRows.push(i + 1);
             failCount++;
             continue;
           }
+
+          // Generate Serial Number automatically for bulk upload
+          const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
+          const sanitizedName = name.replace(/\s+/g, '').toUpperCase();
+          const serial = `${sanitizedName}-${uniqueSuffix}`;
 
           // Basic string date cleanup (if it's M/D/YY we should ideally convert to YYYY-MM-DD for consistency)
           const formatDate = (dateStr: string) => {
@@ -480,15 +488,6 @@ export class MasterDataComponent implements OnInit {
           
           if (purchaseDate.includes('/')) purchaseDate = formatDate(purchaseDate);
           if (warrantyExpiry.includes('/')) warrantyExpiry = formatDate(warrantyExpiry);
-
-          const isDuplicate = this.assets.some(a => a.name.toLowerCase() === name.toLowerCase());
-          const isSerialDuplicate = this.assets.some(a => (a.serialNumber || '').toLowerCase() === serial.toLowerCase());
-
-          if (isDuplicate || isSerialDuplicate) {
-             console.warn(`Row ${i + 1} skipped. Duplicate name or serial.`);
-             failCount++;
-             continue;
-          }
 
           const matchedType = dbTypes.find(t => (t.type_name === type || t.TYPE_NAME === type || t.name === type));
           const realTypeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.TYPE_ID || matchedType.id) : `typ_${type.toLowerCase().slice(0, 3)}`;
@@ -534,11 +533,21 @@ export class MasterDataComponent implements OnInit {
         }
 
         if (successCount > 0) {
-           this.notificationService.showToast(`Successfully imported ${successCount} assets. ${failCount > 0 ? (failCount + ' failed.') : ''}`, 'success');
+           let msg = `Successfully imported ${successCount} assets.`;
+           if (missingFieldRows.length > 0) {
+             msg += ` Skipped ${missingFieldRows.length} rows with missing data.`;
+           }
+           this.notificationService.showToast(msg, missingFieldRows.length > 0 ? 'warning' : 'success');
            await this.loadData();
            this.activeTab = 'assets';
         } else {
-           this.notificationService.showToast(`Import failed. ${failCount} rows invalid or errored.`, 'error');
+           let errorMsg = 'Import failed.';
+           if (missingFieldRows.length > 0) {
+             errorMsg = `Missing required fields on rows: ${missingFieldRows.join(', ')}.`;
+           } else {
+             errorMsg = 'Import failed due to system error or invalid file format.';
+           }
+           this.notificationService.showToast(errorMsg, 'error');
         }
 
       } catch (err) {
@@ -820,11 +829,64 @@ export class MasterDataComponent implements OnInit {
     );
   }
 
-  openConfirmModal(title: string, message: string, callback: () => void, isWarning: boolean = false) {
+  async makeAssetAvailable(asset: Asset): Promise<void> {
+    this.openConfirmModal(
+      'Make Asset Available',
+      `Are you sure you want to release '${asset.name}'? This will remove it from ${asset.assignedToName || 'the current user'}'s holding and make it Available for new allocations.`,
+      async () => {
+        this.isSaving = true;
+        try {
+          // Resolve raw IDs for the service call
+          const dbTypes = await this.assetService.getAllAssetTypesCordys();
+          const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
+          
+          const matchedType = dbTypes.find(t => (t.type_name === asset.type || t.TYPE_NAME === asset.type || t.name === asset.type));
+          const typeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.id) : '';
+          
+          const matchedSubCat = dbSubCats.find(c => (c.name === asset.category || c.sub_category_name === asset.category));
+          const subCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : '';
+
+          const rawAsset = {
+            asset_id: asset.id,
+            asset_name: asset.name,
+            type_id: typeId,
+            sub_category_id: subCatId,
+            serial_number: asset.serialNumber,
+            purchase_date: asset.purchaseDate,
+            warranty_expiry: asset.warrantyExpiry,
+            status: asset.status,
+            temp1: asset.assignedTo,
+            temp2: asset.requestId || '',
+            temp3: asset.reminderDays || 30
+          };
+
+          await this.assetService.releaseAsset(rawAsset);
+          this.notificationService.showToast('Asset released successfully and is now Available.', 'success');
+          await this.loadData();
+        } catch (e) {
+          console.error('Error releasing asset:', e);
+          this.notificationService.showToast('Failed to release asset. Please try again.', 'error');
+        } finally {
+          this.isSaving = false;
+        }
+      },
+      false,
+      'Confirm Release',
+      'info'
+    );
+  }
+
+  confirmIcon = 'warning';
+  confirmIconClass = 'header-icon-danger';
+
+  openConfirmModal(title: string, message: string, callback: () => void, isWarning: boolean = false, btnText: string = 'Delete', iconType: 'warning' | 'info' | 'danger' = 'warning') {
     this.confirmTitle = title;
     this.confirmMessage = message;
     this.onConfirmCallback = callback;
     this.showConfirmAction = !isWarning;
+    this.confirmBtnText = btnText;
+    this.confirmIcon = iconType === 'info' ? 'info' : 'warning';
+    this.confirmIconClass = iconType === 'info' ? 'header-icon-info' : 'header-icon-danger';
     this.showConfirmModal = true;
   }
 
@@ -1124,6 +1186,24 @@ export class MasterDataComponent implements OnInit {
     this.showSubDetailModal = false;
     this.selectedSubForDetail = null;
     this.assetsInSelectedSub = [];
+  }
+
+  openAssetDetails(asset: Asset) {
+    this.selectedAssetForDetail = asset;
+    this.showAssetDetailModal = true;
+  }
+
+  closeAssetDetails() {
+    this.showAssetDetailModal = false;
+    this.selectedAssetForDetail = null;
+  }
+
+  isWarrantyExpired(dateStr: string | undefined): boolean {
+    if (!dateStr) return false;
+    const expiry = new Date(dateStr);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return expiry < now;
   }
 
   private createEmptyAsset(): AddAssetForm {
