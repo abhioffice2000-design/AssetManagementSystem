@@ -31,10 +31,23 @@
         Assets ({{ assets.length }})
       </button>
     </div>
-    <button class="btn btn-primary add-asset-btn" (click)="openAddModal()">
-      <span class="material-icons-outlined">add</span>
-      {{ addButtonText }}
-    </button>
+    <div class="flex gap-8 items-center">
+      <ng-container *ngIf="activeTab === 'assets'">
+        <button class="btn btn-outline" style="display: flex; align-items: center; gap: 4px;" (click)="downloadTemplate()" title="Download Excel Template for Bulk Upload">
+          <span class="material-icons-outlined" style="font-size: 18px;">download</span>
+          Template
+        </button>
+        <button class="btn btn-outline" style="display: flex; align-items: center; gap: 4px;" (click)="triggerBulkUpload()" title="Upload Bulk Assets via Excel">
+          <span class="material-icons-outlined" style="font-size: 18px;">upload</span>
+          Bulk Upload
+        </button>
+        <input type="file" #fileInput hidden accept=".xlsx, .xls" (change)="onFileChange($event)">
+      </ng-container>
+      <button class="btn btn-primary add-asset-btn" style="display: flex; align-items: center; gap: 4px;" (click)="openAddModal()">
+        <span class="material-icons-outlined" style="font-size: 18px;">add</span>
+        {{ addButtonText }}
+      </button>
+    </div>
   </div>
 
   <div *ngIf="activeTab === 'types'" class="animate-slide-up">

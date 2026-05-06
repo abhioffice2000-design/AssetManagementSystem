@@ -75,3 +75,25 @@
     }
   }
 }
+
+.action-buttons-group {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}

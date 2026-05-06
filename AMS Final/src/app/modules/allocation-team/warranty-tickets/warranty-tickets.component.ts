@@ -200,6 +200,15 @@ export class WarrantyTicketsComponent implements OnInit {
       // 3. Update m_assets with the new warranty date
       if (assetId) {
         await this.requestService.updateAssetWarrantyDate(assetId, newDate);
+
+        // 3.1 Reset asset status back to 'Allocated' so it appears in Employee list
+        const resetStatusReq = {
+          tuple: {
+            old: { m_assets: { asset_id: assetId } },
+            new: { m_assets: { status: 'Allocated' } }
+          }
+        };
+        await this.requestService.updateAssetStatus(resetStatusReq as any);
       }
 
       // 4. Send email to employee

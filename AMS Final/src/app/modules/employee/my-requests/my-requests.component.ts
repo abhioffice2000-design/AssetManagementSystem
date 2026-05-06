@@ -28,6 +28,7 @@ export class MyRequestsComponent implements OnInit {
   selectedRequest: AssetRequest | null = null;
   loadingProgress = false;
   trackingSteps: any[] = [];
+  activeTab: 'pending' | 'resolved' = 'pending';
   overallProgress = 0;
   rejectionInfo: { stage: string, reason: string, approver: string } | null = null;
 
@@ -142,16 +143,33 @@ export class MyRequestsComponent implements OnInit {
 
   get filteredRequests(): AssetRequest[] {
     const filtered = this.requests.filter(req => {
-      //   const matchesSearch = !this.searchTerm ||
+      // 1. Tab filtering
+      const isResolved = req.status === RequestStatus.APPROVED ||
+        req.status === RequestStatus.REJECTED ||
+        req.status === RequestStatus.COMPLETED ||
+        req.status === RequestStatus.CANCELLED;
+
+      const tabMatch = this.activeTab === 'resolved' ? isResolved : !isResolved;
+      if (!tabMatch) return false;
+
+      // 2. Search filtering
       const matchesSearch = !this.searchTerm ||
         req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         (req.assetName || '').toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.searchTerm.toLowerCase());
+
+      // 3. Type filtering
       const matchesType = !this.selectedType || req.requestType === this.selectedType;
+
       return matchesSearch && matchesType;
     });
     return filtered;
+  }
+
+  setTab(tab: 'pending' | 'resolved') {
+    this.activeTab = tab;
+    this.currentPage = 1;
   }
 
   get paginatedRequests(): AssetRequest[] {
@@ -908,7 +926,7 @@ export class MyRequestsComponent implements OnInit {
       }
 
       await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
-      
+
       // 2. API: UpdateT_request_approvals
       // This adds a new entry (column/row) for the same request ID to restart approval flow
       // Resolve dynamic approver IDs

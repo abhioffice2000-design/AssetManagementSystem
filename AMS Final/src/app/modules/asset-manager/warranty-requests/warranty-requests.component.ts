@@ -30,9 +30,7 @@ export class WarrantyRequestsComponent implements OnInit {
   selectedAllocationMemberId = '';
 
   showDetailModal = false;
-  showActionModal = false;
   detailRequest: AssetRequest | null = null;
-  actionType: 'approve' | 'reject' | null = null;
   actionComments = '';
 
   isLoading = true;
@@ -192,39 +190,16 @@ export class WarrantyRequestsComponent implements OnInit {
     this.detailRequest = null;
   }
 
-  openActionModal(request: AssetRequest, action: 'approve' | 'reject'): void {
-    this.detailRequest = request;
-    this.actionType = action;
-    this.actionComments = '';
-    this.showActionModal = true;
-  }
-
-  closeActionModal(): void {
-    this.showActionModal = false;
-    this.actionType = null;
-    this.actionComments = '';
-  }
-
-  async directConfirmAction(request: AssetRequest | null, action: 'approve' | 'reject' | null): Promise<void> {
-    if (!request || !action) return;
-
-    if (!this.actionComments || this.actionComments.trim() === '') {
-      const actionText = action === 'approve' ? 'Approval' : 'Rejection';
-      alert(`${actionText} remarks are mandatory.`);
-      return;
-    }
-
-    if (action === 'approve' && !this.selectedAllocationMemberId) {
-      alert('Please assign an Allocation Team Member before approving.');
-      return;
-    }
-
-    this.detailRequest = request;
-    await this.confirmAction(action);
-  }
 
   async confirmAction(action: 'approve' | 'reject'): Promise<void> {
     if (!this.detailRequest) return;
+
+    if (!this.actionComments || this.actionComments.trim() === '') {
+      const actionText = action === 'approve' ? 'Approval' : 'Rejection';
+      this.notificationService.showToast(`${actionText} remarks are mandatory.`, 'warning');
+      return;
+    }
+
     const currentUser = this.authService.getCurrentUser();
     if (!currentUser) return;
 
@@ -240,6 +215,9 @@ export class WarrantyRequestsComponent implements OnInit {
           this.detailRequest.assignedAssetId as string
         );
 
+        // 1.1 Update the main request status to 'Approved' so it reflects in the employee's tracker/list
+        await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Approved');
+
         // 2. Update status of the asset in m_assets table
         const req2 = {
           tuple: {
@@ -250,7 +228,7 @@ export class WarrantyRequestsComponent implements OnInit {
         await this.requestService.updateAssetStatus(req2 as any);
 
         // 3. Create new entry in t_extend_request_approvals for the Allocation Team
-        await this.requestService.createNewWarrantyApprovalEntry(
+        const newApprovalResp = await this.requestService.createNewWarrantyApprovalEntry(
           this.detailRequest.id,
           this.selectedAllocationMemberId,
           "Asset Allocation Team",
@@ -258,9 +236,21 @@ export class WarrantyRequestsComponent implements OnInit {
           this.detailRequest.assignedAssetId as string
         );
 
+        // Extract the new approval ID to pass it to the BPM
+        const newapprovalid = newApprovalResp?.tuple?.new?.t_extend_request_approvals?.approval_id || 
+                             newApprovalResp?.t_extend_request_approvals?.approval_id;
+        
+        console.log('New Approval Record Created:', newapprovalid);
+
         // 4. Complete BPM task
         if (this.detailRequest.taskid) {
-          await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
+          // Pass the new approval_id as part of the task completion payload
+          // This allows the BPM to update its internal variable and correctly link to the new record
+          await this.requestService.completeUserTask({ 
+            TaskId: this.detailRequest.taskid, 
+            Action: 'COMPLETE',
+            approval_id: newapprovalid 
+          } as any);
         }
 
         const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
@@ -305,7 +295,6 @@ export class WarrantyRequestsComponent implements OnInit {
         this.notificationService.showToast(`Warranty request rejected and employee notified.`, 'info');
       }
 
-      this.closeActionModal();
       this.closeDetailModal();
       this.loadData();
     } catch (error) {

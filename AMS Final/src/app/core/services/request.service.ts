@@ -464,6 +464,37 @@ export class RequestService {
   }
 
   /**
+   * Fetches ALL warranty extension requests for a specific user (Pending + Resolved).
+   */
+  async fetchAllWarrantyRequestsForUser(userId: string): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllExtendWarrantyRequestsForUser xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <userId>${userId}</userId>
+    </GetAllExtendWarrantyRequestsForUser>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn(`[RequestService] No warranty requests found for user: ${userId}`);
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+    } catch (err) {
+      console.error('Failed to fetch all warranty requests for user:', err);
+      // Fallback to the pending-only service if the "All" service fails
+      return this.fetchWarrantyRequestsForUser(userId);
+    }
+  }
+
+  /**
    * Fetches the full object for a specific warranty extension request.
    * Based on USER provided SOAP request structure.
    */
@@ -492,7 +523,7 @@ export class RequestService {
    * Updates an existing warranty extension approval record.
    * Uses UpdateT_extend_request_approvals SOAP service.
    */
-  async updateWarrantyRequestApproval(approvalId: string, status: string, remarks: string, temp1?: string): Promise<any> {
+  async updateWarrantyRequestApproval(approvalId: string, status: string, remarks: string, assetId?: string): Promise<any> {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -508,7 +539,7 @@ export class RequestService {
             <status>${status}</status>
             <remarks>${remarks}</remarks>
             <action_date>${new Date().toISOString()}</action_date>
-            <temp1>${temp1 || ''}</temp1>
+            <temp4>${assetId || ''}</temp4>
           </t_extend_request_approvals>
         </new>
       </tuple>
@@ -542,7 +573,8 @@ export class RequestService {
             <status>Pending</status>
             <remarks>${remarks}</remarks>
             <action_date>${new Date().toISOString()}</action_date>
-            <temp1>${assetId}</temp1>
+            <temp1></temp1>
+            <temp4>${assetId}</temp4>
           </t_extend_request_approvals>
         </new>
       </tuple>
@@ -650,7 +682,7 @@ export class RequestService {
       {};
 
     // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
-    const assetName = this.getNullableValue(reqData?.temp1 || parent?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
+    const assetName = this.getNullableValue(reqData?.temp1 || assetInfo?.asset_name || parent?.temp1 || assetInfo?.name) || 'Unknown Asset';
     const serialNumber = this.getNullableValue(
       reqData?.temp2 ||
       parent?.temp2 ||
@@ -663,7 +695,7 @@ export class RequestService {
       parent?.serial_number
     ) || 'N/A';
     const expiryDate = this.getNullableValue(reqData?.temp3 || assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
-    const assetId = this.getNullableValue(reqData?.asset_id || assetInfo?.asset_id || reqData?.asset_type) || 'N/A';
+    const assetId = this.getNullableValue(reqData?.asset_id || assetInfo?.asset_id || approvalData?.temp4 || reqData?.asset_type) || 'N/A';
 
     const status = this.mapToStatus(approvalData?.status || reqData?.status || '');
     const currentStage = ApprovalStage.ASSET_MANAGER;
@@ -686,7 +718,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.getNullableValue(assetInfo?.type_id || assetInfo?.asset_type) || this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      assetType: this.normalizeAssetType(assetName || this.getNullableValue(assetInfo?.type_id || assetInfo?.asset_type) || 'Hardware'),
       category: 'Warranty extension',
       subCategory: assetName,
       assetName: assetName,
@@ -883,7 +915,7 @@ export class RequestService {
       if (!data) return [];
       const tupleArray = Array.isArray(data) ? data : [data];
 
-      return tupleArray.map((tuple: any) => {
+      const results = tupleArray.map((tuple: any) => {
         const approvalData = tuple?.old?.t_extend_request_approvals || tuple?.t_extend_request_approvals || tuple;
         return {
           stage: approvalData?.role || 'Asset Manager',
@@ -894,6 +926,9 @@ export class RequestService {
           comments: approvalData?.remarks || ''
         };
       });
+
+      // Sort by timestamp to ensure chronological order for the tracker
+      return results.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     } catch (err) {
       console.error('Error fetching warranty progress:', err);
       return [];
@@ -950,11 +985,11 @@ export class RequestService {
         for (let i = tupleArray.length - 1; i >= 0; i--) {
           const tuple = tupleArray[i];
           if (!assetId) {
-            const foundAsset = findValue(tuple, ['temp1', 'asset_id', 'assetid']);
+            const foundAsset = findValue(tuple, ['temp4', 'temp1', 'asset_id', 'assetid']);
             if (foundAsset) assetId = foundAsset;
           }
           if (!taskId) {
-            const foundTask = findValue(tuple, ['temp2', 'taskid', 'task_id', 'instance_id']);
+            const foundTask = findValue(tuple, ['temp1', 'temp2', 'taskid', 'task_id', 'instance_id']);
             if (foundTask) taskId = foundTask;
           }
           if (assetId && taskId) break;
@@ -1097,7 +1132,7 @@ export class RequestService {
     const requestDate = createdAt;
 
     return {
-      taskid: parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
+      taskid: parent?.t_request_approvals?.temp1 || reqData?.t_request_approvals?.temp1 || parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
       approvalId: parent?.t_request_approvals?.approval_id || reqData?.t_request_approvals?.approval_id || '',
       id: reqData?.request_id || '',
       requestNumber: reqData?.request_id || '',
@@ -1106,7 +1141,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
+      assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
       assetName: this.getNullableValue(
         reqData?.temp1 ||
         parent?.temp1 ||
@@ -1176,8 +1211,8 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: reqData?.temp1 || parent?.t_request_approvals?.temp1 || '',
-      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp1 || '',
+      allocatedAssetId: reqData?.temp4 || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
+      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
       assignedTypeId: assetInfo?.type_id || '',
       assignedSubCategoryId: assetInfo?.sub_category_id || '',
       assignedSerial: assetInfo?.serial_number || '',
@@ -1215,7 +1250,7 @@ export class RequestService {
     const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
 
     return {
-      taskid: approvalData.temp2,
+      taskid: approvalData.temp1 || approvalData.temp2 || '',
       returnapprovalId: approvalData?.return_approval_id || '',
       id: data?.return_id || '',
       requestNumber: data?.return_id || '',
@@ -1224,11 +1259,11 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      assetType: this.normalizeAssetType(assetInfo?.asset_name || assetInfo?.asset_type || 'Hardware'),
       category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
       assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id || approvalData?.temp1),
+      assignedAssetId: this.getNullableValue(data?.temp4 || assetInfo?.asset_id || approvalData?.temp4),
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
@@ -1379,15 +1414,26 @@ export class RequestService {
   }
 
   public normalizeAssetType(type: string | undefined): string {
-    if (!type) return 'N/A';
+    if (!type) return 'Hardware';
     const t = type.toLowerCase().trim();
-    if (t === 'typ_01' || t === 'software' || t.includes('license') || t.includes('anti') || t.includes('security')) return 'Software';
-    if (t === 'typ_02' || t === 'hardware' || t.includes('laptop') || t.includes('hard') || t.includes('comp')) return 'Hardware';
-    if (t === 'typ_03' || t === 'network' || t.includes('wifi') || t.includes('router')) return 'Network';
-    if (t === 'typ_04' || t === 'peripheral') return 'Peripheral';
+    
+    // 1. Furniture detection (prioritized)
+    if (t.includes('furn') || t.includes('chair') || t.includes('table') || t.includes('desk') || t === 'typ_05') return 'Furniture';
+    
+    // 2. Software detection
+    if (t.includes('soft') || t.includes('license') || t.includes('adobe') || t.includes('office') || t === 'typ_01') return 'Software';
+    
+    // 3. Hardware detection
+    if (t.includes('laptop') || t.includes('hard') || t.includes('comp') || t.includes('dell') || t.includes('hp') || t.includes('mouse') || t === 'typ_02') return 'Hardware';
+    
+    // 4. Network detection
+    if (t.includes('network') || t.includes('wifi') || t.includes('router') || t === 'typ_03') return 'Network';
+    
+    // 5. Peripheral detection
+    if (t.includes('periph') || t.includes('keyboard') || t === 'typ_04') return 'Peripheral';
 
-    // Default: capitalize first letter
-    return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    // Default fallback to Hardware if no specific category matched
+    return 'Hardware';
   }
 
   public normalizeCategory(value: string | undefined): string {
