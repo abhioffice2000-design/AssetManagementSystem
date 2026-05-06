@@ -109,9 +109,9 @@ export class MyAssetsComponent implements OnInit {
       let loadedAssets = [...assets];
 
       // Append temporarily allocated assets from service requests
-      const tempReqs = allServiceReqs.filter((r: any) => 
-        r.user_id === user.id && 
-        r.temp3 && 
+      const tempReqs = allServiceReqs.filter((r: any) =>
+        r.user_id === user.id &&
+        r.temp3 &&
         (r.status === 'OnService' || r.status === 'Serviced')
       );
 
@@ -146,7 +146,6 @@ export class MyAssetsComponent implements OnInit {
       this.myAssets = this.myAssets.map(asset => {
         // Try to find a matching request if requestId is missing from the asset record itself
         if (!asset.requestId || asset.requestId === 'N/A' || asset.requestId === '') {
-          // Normalize asset identifiers for matching
           const aId = (asset.id || '').toLowerCase().trim();
           const aTag = (asset.assetTag || '').toLowerCase().trim();
           const aSerial = (asset.serialNumber || '').toLowerCase().trim();
@@ -155,17 +154,12 @@ export class MyAssetsComponent implements OnInit {
             const rAllocId = (r.allocatedAssetId || '').toLowerCase().trim();
             const rAssignedId = ((r as any).assignedAssetId || '').toLowerCase().trim();
 
-
-            // Look into raw request data too if available (sometimes hidden in temp fields)
             const raw = (r as any).rawRequest || {};
             const rTemp1 = (raw.temp1 || '').toLowerCase().trim();
             const rTemp2 = (raw.temp2 || '').toLowerCase().trim();
 
             return (rAllocId && (rAllocId === aId || rAllocId === aTag || rAllocId === aSerial)) ||
               (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
-              (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
-              (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
-            (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
               (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
               (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
           });

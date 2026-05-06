@@ -204,10 +204,10 @@ export class ExtendWarrantyComponent implements OnInit {
                 status: 'Pending',
                 remarks: formVal.justification,
                 action_date: new Date().toISOString(),
-                temp1: this.selectedAsset?.id || '',
+                temp1: '',
                 temp2: '',
                 temp3: '',
-                temp4: '',
+                temp4: this.selectedAsset?.id || '',
                 temp5: '',
                 temp6: '',
                 temp7: ''

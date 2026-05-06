@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
+import * as XLSX from 'xlsx';
 import { Asset, AssetCategory, AssetCondition, AssetStatus, AssetType } from '../../../core/models/asset.model';
 import { AdminDataService, Project } from '../../../core/services/admin-data.service';
 import { AssetService } from '../../../core/services/asset.service';
@@ -42,6 +43,7 @@ export interface EnrichedSubcategory {
   styleUrls: ['./master-data.component.scss']
 })
 export class MasterDataComponent implements OnInit {
+  @ViewChild('fileInput') fileInput!: ElementRef;
   activeTab: MasterTab = 'types';
 
   assetTypes: Array<{ type: AssetType | string; count: number; value: number; id?: string }> = [];
@@ -382,6 +384,174 @@ export class MasterDataComponent implements OnInit {
     } else {
       this.newAsset.serialNumber = '';
     }
+  }
+
+  downloadTemplate(): void {
+    const wsData = [
+      ['Type', 'Category', 'Name', 'Serial Number', 'Purchase Date', 'Warranty Expiry'],
+      ['Hardware', 'Laptops', 'Dell Latitude 7420', 'DL-7420-ABCD', '2023-01-15', '2026-01-15']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'AssetTemplate');
+    XLSX.writeFile(wb, 'Asset_Bulk_Upload_Template.xlsx');
+  }
+
+  triggerBulkUpload(): void {
+    if (this.fileInput) {
+      this.fileInput.nativeElement.click();
+    }
+  }
+
+  async onFileChange(event: any): Promise<void> {
+    const target: DataTransfer = <DataTransfer>(event.target);
+    if (target.files.length !== 1) {
+      this.notificationService.showToast('Cannot use multiple files', 'error');
+      return;
+    }
+
+    this.isSaving = true;
+    const reader: FileReader = new FileReader();
+
+    reader.onload = async (e: any) => {
+      try {
+        const bstr: string = e.target.result;
+        const wb: XLSX.WorkBook = XLSX.read(bstr, { type: 'binary' });
+        const wsname: string = wb.SheetNames[0];
+        const ws: XLSX.WorkSheet = wb.Sheets[wsname];
+        
+        // Use raw: false so dates are returned as formatted strings instead of Excel numbers
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
+        if (data.length < 2) {
+          this.notificationService.showToast('No data found in the template', 'error');
+          return;
+        }
+
+        const headers = data[0].map(h => h ? String(h).trim().toLowerCase() : '');
+        const typeIdx = headers.findIndex(h => h.includes('type'));
+        const catIdx = headers.findIndex(h => h.includes('category'));
+        const nameIdx = headers.findIndex(h => h.includes('name'));
+        const serialIdx = headers.findIndex(h => h.includes('serial'));
+        const purchaseIdx = headers.findIndex(h => h.includes('purchase'));
+        const warrantyIdx = headers.findIndex(h => h.includes('warranty'));
+
+        if (typeIdx === -1 || catIdx === -1 || nameIdx === -1 || serialIdx === -1 || purchaseIdx === -1 || warrantyIdx === -1) {
+          this.notificationService.showToast('Invalid template format. Please use the provided template.', 'error');
+          return;
+        }
+
+        const dbTypes = await this.assetService.getAllAssetTypesCordys();
+        const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          if (!row || !row.length || !row.some(cell => !!cell)) continue;
+
+          const type = row[typeIdx]?.trim();
+          const category = row[catIdx]?.trim();
+          const name = row[nameIdx]?.trim();
+          const serial = row[serialIdx]?.trim();
+          let purchaseDate = row[purchaseIdx]?.trim();
+          let warrantyExpiry = row[warrantyIdx]?.trim();
+
+          if (!type || !category || !name || !serial || !purchaseDate || !warrantyExpiry) {
+            console.warn(`Row ${i + 1} skipped due to missing fields.`);
+            failCount++;
+            continue;
+          }
+
+          // Basic string date cleanup (if it's M/D/YY we should ideally convert to YYYY-MM-DD for consistency)
+          const formatDate = (dateStr: string) => {
+            if (!dateStr) return '';
+            const parts = dateStr.split(/[-/]/);
+            if (parts.length === 3) {
+              // If it's MM/DD/YYYY or MM/DD/YY
+              if (parts[2].length === 2 || parts[2].length === 4) {
+                let year = parts[2];
+                if (year.length === 2) year = '20' + year;
+                return `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+              }
+            }
+            return dateStr; // fallback to original
+          };
+          
+          if (purchaseDate.includes('/')) purchaseDate = formatDate(purchaseDate);
+          if (warrantyExpiry.includes('/')) warrantyExpiry = formatDate(warrantyExpiry);
+
+          const isDuplicate = this.assets.some(a => a.name.toLowerCase() === name.toLowerCase());
+          const isSerialDuplicate = this.assets.some(a => (a.serialNumber || '').toLowerCase() === serial.toLowerCase());
+
+          if (isDuplicate || isSerialDuplicate) {
+             console.warn(`Row ${i + 1} skipped. Duplicate name or serial.`);
+             failCount++;
+             continue;
+          }
+
+          const matchedType = dbTypes.find(t => (t.type_name === type || t.TYPE_NAME === type || t.name === type));
+          const realTypeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.TYPE_ID || matchedType.id) : `typ_${type.toLowerCase().slice(0, 3)}`;
+
+          const matchedSubCat = dbSubCats.find(c => (c.name === category || c.sub_category_name === category || c.SUB_CATEGORY_NAME === category));
+          const realSubCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : `cat_999`;
+
+          const assetNumericIds = this.assets.map(a => {
+            const match = (a.id || '').match(/\d+/);
+            return match ? parseInt(match[0], 10) : 0;
+          });
+          const maxAssetId = assetNumericIds.length > 0 ? Math.max(...assetNumericIds) : 0;
+          
+          const newIdNum = maxAssetId + 1 + successCount;
+          const nextId = `asset_${String(newIdNum).padStart(3, '0')}`;
+          const nextTag = `${type.slice(0, 2).toUpperCase()}-${name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(newIdNum).padStart(3, '0')}`;
+
+          const asset: Asset = {
+            id: nextId,
+            assetTag: nextTag,
+            name: name,
+            type: type as any,
+            category: category,
+            subCategory: category,
+            status: 'Available',
+            location: 'To Be Assigned',
+            purchaseDate: purchaseDate,
+            warrantyExpiry: warrantyExpiry,
+            vendor: 'Internal',
+            serialNumber: serial,
+            cost: 0,
+            condition: AssetCondition.GOOD
+          };
+
+          try {
+            await this.assetService.addAssetCordys(asset, realTypeId, realSubCatId);
+            this.assets.push(asset);
+            successCount++;
+          } catch (e) {
+             console.error(`Failed to add asset on row ${i + 1}`, e);
+             failCount++;
+          }
+        }
+
+        if (successCount > 0) {
+           this.notificationService.showToast(`Successfully imported ${successCount} assets. ${failCount > 0 ? (failCount + ' failed.') : ''}`, 'success');
+           await this.loadData();
+           this.activeTab = 'assets';
+        } else {
+           this.notificationService.showToast(`Import failed. ${failCount} rows invalid or errored.`, 'error');
+        }
+
+      } catch (err) {
+        console.error('File parsing error', err);
+        this.notificationService.showToast('Error parsing the file.', 'error');
+      } finally {
+        this.isSaving = false;
+        if (this.fileInput) {
+          this.fileInput.nativeElement.value = '';
+        }
+      }
+    };
+    reader.readAsBinaryString(target.files[0]);
   }
 
   async saveAssetType(): Promise<void> {
