@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 
 declare var $: any;
-
+// $.cordys.baseURL = '/home/training2025';
 @Injectable({
   providedIn: 'root',
 })
@@ -29,7 +29,9 @@ export class HeroService {
    * @param data Optional raw XML string (overrides parameters if provided).
    * @returns A Promise that resolves with the response or rejects with the error details.
    */
-  ajax(method: any, namespace: any, parameters: any, data?: string) {
+
+  ajax(method: any, namespace: any, parameters: any, data?: any) {
+
     return new Promise((rev, rej) => {
       // Check if $.cordys.ajax is available
       if (typeof $.cordys === 'undefined' || typeof $.cordys.ajax === 'undefined') {
@@ -47,6 +49,7 @@ export class HeroService {
         dataType: '* json', // Implemented exactly as per your requirement
         parameters: parameters,
         data: data,
+        url: '/home/training2025/com.eibus.web.soap.Gateway.wcp',
         success: function success(resp: any) {
           rev(resp); // Resolve the Promise on success
         },

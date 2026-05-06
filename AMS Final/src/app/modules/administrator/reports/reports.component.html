@@ -43,7 +43,11 @@
             <h4>{{ getSelectedReportTitle() }}</h4>
           </div>
           <div class="viewer-actions">
-            <button class="btn btn-outline btn-sm" (click)="downloadCSV()" [disabled]="loadingReport || reportData.length === 0">
+            <button class="btn btn-ghost btn-sm mr-8" (click)="clearFilters()" *ngIf="hasFilters()">
+              <span class="material-icons-outlined">filter_alt_off</span>
+              Clear Filters
+            </button>
+            <button class="btn btn-outline btn-sm" (click)="downloadCSV()" [disabled]="loadingReport || filteredData.length === 0">
               <span class="material-icons-outlined">download</span>
               Export CSV
             </button>
@@ -56,24 +60,79 @@
             <p>Generating report data...</p>
           </div>
 
-          <div class="table-container" *ngIf="!loadingReport && reportData.length > 0">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th *ngFor="let header of getHeaders()">{{ header }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let row of reportData">
-                  <td *ngFor="let header of getHeaders()">{{ row[header] }}</td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="table-wrapper" *ngIf="!loadingReport && reportData.length > 0">
+            <!-- New Toolbar Filters -->
+            <div class="table-filters-toolbar mb-16">
+              <div class="filter-item" *ngFor="let fHeader of filterableHeaders">
+                <ng-container *ngIf="getHeaders().includes(fHeader)">
+                  <label class="filter-label">{{ fHeader }}</label>
+                  <div class="filter-select-box">
+                    <span class="material-icons-outlined">filter_list</span>
+                    <select (change)="onFilterChange(fHeader, $any($event.target).value)"
+                            [value]="filters[fHeader] || ''">
+                      <option value="">All {{ fHeader }}s</option>
+                      <option *ngFor="let option of getFilterOptions(fHeader)" [value]="option">
+                        {{ option }}
+                      </option>
+                    </select>
+                  </div>
+                </ng-container>
+              </div>
+              <button class="btn btn-ghost btn-sm reset-btn" (click)="clearFilters()" *ngIf="hasFilters()">
+                <span class="material-icons-outlined">refresh</span>
+                Reset Filters
+              </button>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th *ngFor="let header of getHeaders()">{{ header }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let row of paginatedData">
+                    <td *ngFor="let header of getHeaders()">
+                      <span [title]="row[header]">{{ row[header] }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Controls -->
+            <div class="pagination-container mt-16">
+              <div class="pagination-info">
+                Showing <b>{{ getRangeStart() }}</b> to <b>{{ getRangeEnd() }}</b> of <b>{{ filteredData.length }}</b> entries
+              </div>
+              <div class="pagination-actions">
+                <button class="pagination-btn" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+                  <span class="material-icons-outlined">chevron_left</span>
+                </button>
+                <div class="pagination-pages">
+                  <ng-container *ngFor="let p of [].constructor(totalPages); let i = index">
+                    <button class="page-btn" 
+                            [class.active]="currentPage === i + 1"
+                            (click)="goToPage(i + 1)"
+                            *ngIf="i + 1 >= currentPage - 2 && i + 1 <= currentPage + 2">
+                      {{ i + 1 }}
+                    </button>
+                  </ng-container>
+                </div>
+                <button class="pagination-btn" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+                  <span class="material-icons-outlined">chevron_right</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div class="empty-report" *ngIf="!loadingReport && reportData.length === 0">
-            <span class="material-icons-outlined">find_in_page</span>
-            <p>No data found for this report period.</p>
+          <div class="empty-report" *ngIf="!loadingReport && (reportData.length === 0 || filteredData.length === 0)">
+            <span class="material-icons-outlined">{{ reportData.length === 0 ? 'find_in_page' : 'filter_list_off' }}</span>
+            <p>{{ reportData.length === 0 ? 'No data found for this report period.' : 'No results match your filters.' }}</p>
+            <button class="btn btn-outline btn-sm mt-12" (click)="clearFilters()" *ngIf="filteredData.length === 0 && reportData.length > 0">
+              Clear All Filters
+            </button>
           </div>
         </div>
       </div>
