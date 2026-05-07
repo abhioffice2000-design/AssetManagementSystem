@@ -83,7 +83,7 @@ export class MasterDataComponent implements OnInit {
   onConfirmCallback: (() => void) | null = null;
 
   summaryCards: Array<{ label: string; value: number | string; icon: string; color: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'teal' }> = [];
-  
+
   // Enriched Subcategories for the new dashboard view
   enrichedSubcategories: EnrichedSubcategory[] = [];
   filteredEnrichedSubcategories: EnrichedSubcategory[] = [];
@@ -166,7 +166,7 @@ export class MasterDataComponent implements OnInit {
     private assetService: AssetService,
     private adminDataService: AdminDataService,
     private notificationService: NotificationService
-  ) {}
+  ) { }
 
   async ngOnInit(): Promise<void> {
     await this.loadData();
@@ -174,7 +174,7 @@ export class MasterDataComponent implements OnInit {
 
   async loadData(): Promise<void> {
     await this.loadAssetsFromService();
-    
+
     // Load users to map names properly
     let usersMap = new Map<string, string>();
     try {
@@ -193,7 +193,7 @@ export class MasterDataComponent implements OnInit {
     });
     const dbTypes = await this.assetService.getAllAssetTypesCordys();
     const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
-    
+
     const assetStats = this.assetService.getAssetStats();
 
     // Map stats by type name for quick lookup
@@ -220,14 +220,14 @@ export class MasterDataComponent implements OnInit {
 
     const serviceCategories = this.assetService.getCategories();
     this.assetCategories = [...serviceCategories];
-    
+
     // Augment assetCategories with IDs from DB
     dbSubCats.forEach(dbCat => {
       const catName = dbCat.name || dbCat.sub_category_name || dbCat.SUB_CATEGORY_NAME || '';
       const dbCatTypeId = dbCat.type_id || dbCat.Type_id || dbCat.TYPE_ID || '';
-      const typeObj = dbTypes.find(t => 
-        (t.type_id === dbCatTypeId) || 
-        (t.Type_id === dbCatTypeId) || 
+      const typeObj = dbTypes.find(t =>
+        (t.type_id === dbCatTypeId) ||
+        (t.Type_id === dbCatTypeId) ||
         (t.TYPE_ID === dbCatTypeId) ||
         (dbCatTypeId && (t.type_name || t.TYPE_NAME) && dbCatTypeId === 'typ_' + (t.type_name || t.TYPE_NAME).toLowerCase().slice(0, 3)) ||
         (dbCatTypeId && t.name && dbCatTypeId === 'typ_' + t.name.toLowerCase().slice(0, 3))
@@ -239,13 +239,13 @@ export class MasterDataComponent implements OnInit {
         // Sync the actual DB ID to avoid collision during next generation
         existingCategory.id = dbCat.sub_category_id || existingCategory.id;
       } else {
-         this.assetCategories.push({
-           id: dbCat.sub_category_id || `cat_db_${Math.random()}`,
-           name: catName,
-           type: typeName as any,
-           subCategories: [catName],
-           icon: 'category'
-         });
+        this.assetCategories.push({
+          id: dbCat.sub_category_id || `cat_db_${Math.random()}`,
+          name: catName,
+          type: typeName as any,
+          subCategories: [catName],
+          icon: 'category'
+        });
       }
     });
 
@@ -391,7 +391,7 @@ export class MasterDataComponent implements OnInit {
   downloadTemplate(): void {
     const wsData = [
       ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry'],
-      ['Hardware', 'Laptops', 'Dell Latitude 7420', '2023-01-15', '2026-01-15']
+      ['Hardware', 'Laptops', 'Dell Latitude 7420', '15-01-2023', '15-01-2026']
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -408,7 +408,7 @@ export class MasterDataComponent implements OnInit {
   async onFileChange(event: any): Promise<void> {
     const target: DataTransfer = <DataTransfer>(event.target);
     if (target.files.length !== 1) {
-      this.notificationService.showToast('Cannot use multiple files', 'error');
+      this.notificationService.showToast('Please select a single file.', 'error');
       return;
     }
 
@@ -421,89 +421,150 @@ export class MasterDataComponent implements OnInit {
         const wb: XLSX.WorkBook = XLSX.read(bstr, { type: 'binary' });
         const wsname: string = wb.SheetNames[0];
         const ws: XLSX.WorkSheet = wb.Sheets[wsname];
-        
-        // Use raw: false so dates are returned as formatted strings instead of Excel numbers
+
+        // Use raw: false to get formatted strings
         const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as string[][];
-        if (data.length < 2) {
-          this.notificationService.showToast('No data found in the template', 'error');
+
+        if (!data || data.length < 2) {
+          this.notificationService.showToast('The file is empty or missing data rows.', 'error');
           return;
         }
 
-        const headers = data[0].map(h => h ? String(h).trim().toLowerCase() : '');
-        const typeIdx = headers.findIndex(h => h.includes('type'));
-        const catIdx = headers.findIndex(h => h.includes('category'));
-        const nameIdx = headers.findIndex(h => h.includes('name'));
-        const purchaseIdx = headers.findIndex(h => h.includes('purchase'));
-        const warrantyIdx = headers.findIndex(h => h.includes('warranty'));
+        // 1. Header Validation
+        const expectedHeaders = ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry'];
+        const actualHeaders = data[0].map(h => String(h || '').trim());
 
-        if (typeIdx === -1 || catIdx === -1 || nameIdx === -1 || purchaseIdx === -1 || warrantyIdx === -1) {
-          this.notificationService.showToast('Invalid template format. Please use the provided template.', 'error');
+        const headersMatch = expectedHeaders.length === actualHeaders.length &&
+          expectedHeaders.every((val, index) => val.toLowerCase() === actualHeaders[index].toLowerCase());
+
+        if (!headersMatch) {
+          this.notificationService.showToast('Invalid template format. Column names must not be changed.', 'error');
+          console.error('Expected:', expectedHeaders, 'Actual:', actualHeaders);
           return;
         }
 
+        // 2. Fetch system data for validation
         const dbTypes = await this.assetService.getAllAssetTypesCordys();
         const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
 
-        let successCount = 0;
-        let failCount = 0;
-        const duplicateNames: string[] = [];
-        const missingFieldRows: number[] = [];
+        // 3. Validation Pass (Pass 1)
+        const errors: string[] = [];
+        const dateRegex = /^(0[1-9]|[12][0-9]|3[01])-(0[1-9]|1[0-2])-\d{4}$/;
 
         for (let i = 1; i < data.length; i++) {
           const row = data[i];
-          if (!row || !row.length || !row.some(cell => !!cell)) continue;
+          // Skip truly empty rows
+          if (!row || row.length === 0 || !row.some(cell => String(cell || '').trim() !== '')) continue;
 
-          const type = row[typeIdx]?.trim();
-          const category = row[catIdx]?.trim();
-          const name = row[nameIdx]?.trim();
-          let purchaseDate = row[purchaseIdx]?.trim();
-          let warrantyExpiry = row[warrantyIdx]?.trim();
+          const rowNum = i + 1;
+          const type = String(row[0] || '').trim();
+          const category = String(row[1] || '').trim();
+          const name = String(row[2] || '').trim();
+          const purchaseDate = String(row[3] || '').trim();
+          const warrantyExpiry = String(row[4] || '').trim();
 
-          if (!type || !category || !name || !purchaseDate || !warrantyExpiry) {
-            console.warn(`Row ${i + 1} skipped due to missing fields.`);
-            missingFieldRows.push(i + 1);
-            failCount++;
-            continue;
+          // Check for missing data
+          if (!type) errors.push(`Row ${rowNum}: 'Type' is missing.`);
+          if (!category) errors.push(`Row ${rowNum}: 'Category' is missing.`);
+          if (!name) errors.push(`Row ${rowNum}: 'Name' is missing.`);
+          if (!purchaseDate) errors.push(`Row ${rowNum}: 'Purchase Date' is missing.`);
+          if (!warrantyExpiry) errors.push(`Row ${rowNum}: 'Warranty Expiry' is missing.`);
+
+          // Skip further checks for this row if mandatory fields are missing
+          if (!type || !category || !name || !purchaseDate || !warrantyExpiry) continue;
+
+          // Validate existence of Type
+          const matchedType = dbTypes.find(t =>
+          (t.type_name?.toLowerCase() === type.toLowerCase() ||
+            t.TYPE_NAME?.toLowerCase() === type.toLowerCase() ||
+            t.name?.toLowerCase() === type.toLowerCase())
+          );
+          if (!matchedType) {
+            errors.push(`Row ${rowNum}: Asset Type '${type}' does not exist in the system.`);
           }
 
-          // Generate Serial Number automatically for bulk upload
+          // Validate existence of Category
+          const matchedSubCat = dbSubCats.find(c =>
+          (c.name?.toLowerCase() === category.toLowerCase() ||
+            c.sub_category_name?.toLowerCase() === category.toLowerCase() ||
+            c.SUB_CATEGORY_NAME?.toLowerCase() === category.toLowerCase())
+          );
+          if (!matchedSubCat) {
+            errors.push(`Row ${rowNum}: Category '${category}' does not exist in the system.`);
+          }
+
+          // Date format validation (DD-MM-YYYY)
+          if (!dateRegex.test(purchaseDate)) {
+            errors.push(`Row ${rowNum}: Invalid Purchase Date format ('${purchaseDate}'). Use DD-MM-YYYY.`);
+          }
+          if (!dateRegex.test(warrantyExpiry)) {
+            errors.push(`Row ${rowNum}: Invalid Warranty Expiry format ('${warrantyExpiry}'). Use DD-MM-YYYY.`);
+          }
+
+          if (errors.length > 20) {
+            errors.push('...and more errors found. Please check your file.');
+            break;
+          }
+        }
+
+        // 4. Error Reporting
+        if (errors.length > 0) {
+          // Log full error list for admin
+          console.error('Bulk Upload Validation Errors:', errors);
+
+          // Show the first few errors in the toast
+          this.notificationService.showToast(`Validation Failed (Row ${errors[0].split(':')[0].replace('Row ', '')}): ${errors.length} error(s) found. Check console for details.`, 'error');
+          return;
+        }
+
+        // 5. Execution Pass (Pass 2) - Only if no errors
+        let successCount = 0;
+
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          if (!row || row.length === 0 || !row.some(cell => String(cell || '').trim() !== '')) continue;
+
+          const type = String(row[0]).trim();
+          const category = String(row[1]).trim();
+          const name = String(row[2]).trim();
+          const purchaseDateRaw = String(row[3]).trim();
+          const warrantyExpiryRaw = String(row[4]).trim();
+
+          // Convert DD-MM-YYYY to YYYY-MM-DD
+          const convertDate = (d: string) => {
+            const [day, month, year] = d.split('-');
+            return `${year}-${month}-${day}`;
+          };
+          const purchaseDate = convertDate(purchaseDateRaw);
+          const warrantyExpiry = convertDate(warrantyExpiryRaw);
+
+          const matchedType = dbTypes.find(t =>
+          (t.type_name?.toLowerCase() === type.toLowerCase() ||
+            t.TYPE_NAME?.toLowerCase() === type.toLowerCase() ||
+            t.name?.toLowerCase() === type.toLowerCase())
+          );
+          const realTypeId = matchedType.type_id || matchedType.Type_id || matchedType.id;
+
+          const matchedSubCat = dbSubCats.find(c =>
+          (c.name?.toLowerCase() === category.toLowerCase() ||
+            c.sub_category_name?.toLowerCase() === category.toLowerCase() ||
+            c.SUB_CATEGORY_NAME?.toLowerCase() === category.toLowerCase())
+          );
+          const realSubCatId = matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id;
+
+          // Unique Serial Number Generation
           const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
           const sanitizedName = name.replace(/\s+/g, '').toUpperCase();
           const serial = `${sanitizedName}-${uniqueSuffix}`;
 
-          // Basic string date cleanup (if it's M/D/YY we should ideally convert to YYYY-MM-DD for consistency)
-          const formatDate = (dateStr: string) => {
-            if (!dateStr) return '';
-            const parts = dateStr.split(/[-/]/);
-            if (parts.length === 3) {
-              // If it's MM/DD/YYYY or MM/DD/YY
-              if (parts[2].length === 2 || parts[2].length === 4) {
-                let year = parts[2];
-                if (year.length === 2) year = '20' + year;
-                return `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
-              }
-            }
-            return dateStr; // fallback to original
-          };
-          
-          if (purchaseDate.includes('/')) purchaseDate = formatDate(purchaseDate);
-          if (warrantyExpiry.includes('/')) warrantyExpiry = formatDate(warrantyExpiry);
-
-          const matchedType = dbTypes.find(t => (t.type_name === type || t.TYPE_NAME === type || t.name === type));
-          const realTypeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.TYPE_ID || matchedType.id) : `typ_${type.toLowerCase().slice(0, 3)}`;
-
-          const matchedSubCat = dbSubCats.find(c => (c.name === category || c.sub_category_name === category || c.SUB_CATEGORY_NAME === category));
-          const realSubCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : `cat_999`;
-
+          // ID and Tag generation
           const assetNumericIds = this.assets.map(a => {
             const match = (a.id || '').match(/\d+/);
             return match ? parseInt(match[0], 10) : 0;
           });
           const maxAssetId = assetNumericIds.length > 0 ? Math.max(...assetNumericIds) : 0;
-          
-          const newIdNum = maxAssetId + 1 + successCount;
-          const nextId = `asset_${String(newIdNum).padStart(3, '0')}`;
-          const nextTag = `${type.slice(0, 2).toUpperCase()}-${name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(newIdNum).padStart(3, '0')}`;
+          const nextId = `asset_${String(maxAssetId + 1 + successCount).padStart(3, '0')}`;
+          const nextTag = `${type.slice(0, 2).toUpperCase()}-${name.replace(/\s+/g, '-').slice(0, 8).toUpperCase()}-${String(maxAssetId + 1 + successCount).padStart(3, '0')}`;
 
           const asset: Asset = {
             id: nextId,
@@ -522,37 +583,17 @@ export class MasterDataComponent implements OnInit {
             condition: AssetCondition.GOOD
           };
 
-          try {
-            await this.assetService.addAssetCordys(asset, realTypeId, realSubCatId);
-            this.assets.push(asset);
-            successCount++;
-          } catch (e) {
-             console.error(`Failed to add asset on row ${i + 1}`, e);
-             failCount++;
-          }
+          await this.assetService.addAssetCordys(asset, realTypeId, realSubCatId);
+          successCount++;
         }
 
-        if (successCount > 0) {
-           let msg = `Successfully imported ${successCount} assets.`;
-           if (missingFieldRows.length > 0) {
-             msg += ` Skipped ${missingFieldRows.length} rows with missing data.`;
-           }
-           this.notificationService.showToast(msg, missingFieldRows.length > 0 ? 'warning' : 'success');
-           await this.loadData();
-           this.activeTab = 'assets';
-        } else {
-           let errorMsg = 'Import failed.';
-           if (missingFieldRows.length > 0) {
-             errorMsg = `Missing required fields on rows: ${missingFieldRows.join(', ')}.`;
-           } else {
-             errorMsg = 'Import failed due to system error or invalid file format.';
-           }
-           this.notificationService.showToast(errorMsg, 'error');
-        }
+        this.notificationService.showToast(`Successfully imported ${successCount} assets.`, 'success');
+        await this.loadData();
+        this.activeTab = 'assets';
 
       } catch (err) {
-        console.error('File parsing error', err);
-        this.notificationService.showToast('Error parsing the file.', 'error');
+        console.error('File parsing/upload error', err);
+        this.notificationService.showToast('Error processing file. Please ensure it is a valid Excel file.', 'error');
       } finally {
         this.isSaving = false;
         if (this.fileInput) {
@@ -573,12 +614,12 @@ export class MasterDataComponent implements OnInit {
       this.notificationService.showToast(`Asset Type '${trimmed}' already exists.`, 'error');
       return;
     }
-    
+
     this.isSaving = true;
     try {
       // Use timestamp-based unique ID to avoid any PK collision
       const nextId = `typ_${Date.now().toString().slice(-5)}`;
-      
+
       await this.assetService.addAssetType(nextId, this.newTypeName.trim());
       this.notificationService.showToast(`Asset Type '${this.newTypeName}' created successfully!`, 'success');
       this.closeAddTypeModal();
@@ -620,11 +661,11 @@ export class MasterDataComponent implements OnInit {
 
   async saveAsset(): Promise<void> {
     this.submittedAssetForm = true;
-    
+
     // Check for unique asset name
     const trimmedName = (this.newAsset.name || '').trim();
     const isDuplicate = this.assets.some(a => a.name.toLowerCase() === trimmedName.toLowerCase());
-    
+
     if (isDuplicate) {
       this.notificationService.showToast(`An asset with the name '${trimmedName}' already exists. Asset names must be unique.`, 'error');
       return;
@@ -687,7 +728,7 @@ export class MasterDataComponent implements OnInit {
       // Securely fetch exact IDs from DB based on mapped name
       const dbTypes = await this.assetService.getAllAssetTypesCordys();
       const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
-      
+
       const matchedType = dbTypes.find(t => (t.type_name === this.newAsset.type || t.TYPE_NAME === this.newAsset.type || t.name === this.newAsset.type));
       const realTypeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.TYPE_ID || matchedType.id) : `typ_${this.newAsset.type.toLowerCase().slice(0, 3)}`;
 
@@ -710,7 +751,7 @@ export class MasterDataComponent implements OnInit {
 
   async deleteAssetType(typeId: string | undefined): Promise<void> {
     if (!typeId) return;
-    
+
     // Find the type object to get its name
     const typeObj = this.assetTypes.find(t => t.id === typeId);
     if (typeObj) {
@@ -720,7 +761,7 @@ export class MasterDataComponent implements OnInit {
         this.openConfirmModal(
           'Cannot Delete Type',
           `This Asset Type ('${typeObj.type}') has active Subcategories mapped to it. Please delete all related subcategories first.`,
-          () => {},
+          () => { },
           true // isWarning only
         );
         return;
@@ -754,8 +795,8 @@ export class MasterDataComponent implements OnInit {
     const subCat = this.assetCategories.find(c => c.id === subCatId);
     if (subCat) {
       // Check if any assets belong to this subcategory (matches name and type)
-      const hasAssets = this.assets.some(a => 
-        (String(a.category || a.subCategory).toLowerCase() === subCat.name.toLowerCase()) && 
+      const hasAssets = this.assets.some(a =>
+        (String(a.category || a.subCategory).toLowerCase() === subCat.name.toLowerCase()) &&
         a.type === subCat.type
       );
 
@@ -763,7 +804,7 @@ export class MasterDataComponent implements OnInit {
         this.openConfirmModal(
           'Cannot Delete Subcategory',
           `The subcategory '${subCat.name}' contains active Assets. Please delete or re-assign all assets belonging to this category first.`,
-          () => {},
+          () => { },
           true // isWarning only
         );
         return;
@@ -795,7 +836,7 @@ export class MasterDataComponent implements OnInit {
 
   async deleteAsset(assetId: string): Promise<void> {
     const asset = this.assets.find(a => a.id === assetId);
-    
+
     // Allow deletion for 'Available' or blank statuses
     const status = (asset?.status || '').toLowerCase().trim();
     const canDelete = status === 'available' || status === '';
@@ -804,7 +845,7 @@ export class MasterDataComponent implements OnInit {
       this.openConfirmModal(
         'Cannot Delete Asset',
         `This asset ('${asset?.name || 'Asset'}') is currently in '${asset?.status || 'Unknown'}' status. Only assets with 'Available' or blank status can be deleted.`,
-        () => {},
+        () => { },
         true // isWarning only (hides the Confirm button)
       );
       return;
@@ -839,10 +880,10 @@ export class MasterDataComponent implements OnInit {
           // Resolve raw IDs for the service call
           const dbTypes = await this.assetService.getAllAssetTypesCordys();
           const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
-          
+
           const matchedType = dbTypes.find(t => (t.type_name === asset.type || t.TYPE_NAME === asset.type || t.name === asset.type));
           const typeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.id) : '';
-          
+
           const matchedSubCat = dbSubCats.find(c => (c.name === asset.category || c.sub_category_name === asset.category));
           const subCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : '';
 
@@ -1109,16 +1150,16 @@ export class MasterDataComponent implements OnInit {
         const catSearchName = String(cat.name || '').trim().toLowerCase();
         const assetTypeName = String(a.type || '').trim().toLowerCase();
         const catTypeName = String(cat.type || '').trim().toLowerCase();
-        
+
         return assetCatName === catSearchName && assetTypeName === catTypeName;
       });
-      
+
       const total = subAssets.length;
       const assigned = subAssets.filter(a => String(a.status).toLowerCase() === 'allocated').length;
       const available = total - assigned;
       const utilization = total > 0 ? Math.round((assigned / total) * 100) : 0;
       const value = subAssets.reduce((sum, a) => sum + (Number(a.cost) || 0), 0);
-      
+
       // Calculate warranty health (active vs expired)
       const now = new Date();
       const healthy = subAssets.filter(a => {
@@ -1147,7 +1188,7 @@ export class MasterDataComponent implements OnInit {
     if (!this.selectedSubCategoryTypeFilter) {
       this.filteredEnrichedSubcategories = [...this.enrichedSubcategories];
     } else {
-      this.filteredEnrichedSubcategories = this.enrichedSubcategories.filter(sub => 
+      this.filteredEnrichedSubcategories = this.enrichedSubcategories.filter(sub =>
         String(sub.type).trim().toLowerCase() === String(this.selectedSubCategoryTypeFilter).trim().toLowerCase()
       );
     }
@@ -1175,8 +1216,8 @@ export class MasterDataComponent implements OnInit {
   openSubDetails(sub: EnrichedSubcategory) {
     this.selectedSubForDetail = sub;
     this.subDetailsCurrentPage = 1;
-    this.assetsInSelectedSub = this.assets.filter(a => 
-      String(a.category || a.subCategory).toLowerCase() === String(sub.name).toLowerCase() && 
+    this.assetsInSelectedSub = this.assets.filter(a =>
+      String(a.category || a.subCategory).toLowerCase() === String(sub.name).toLowerCase() &&
       a.type === sub.type
     ).sort((a, b) => b.id.localeCompare(a.id));
     this.showSubDetailModal = true;
