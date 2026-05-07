@@ -1283,7 +1283,7 @@ export class RequestService {
     const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
 
     return {
-      taskid: approvalData.temp1 || approvalData.temp2 || '',
+      taskid: approvalData.temp2 || approvalData.temp1 || '',
       returnapprovalId: approvalData?.return_approval_id || '',
       id: data?.return_id || '',
       requestNumber: data?.return_id || '',
@@ -1296,7 +1296,7 @@ export class RequestService {
       category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
       subCategory: 'N/A',
       assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.temp4 || assetInfo?.asset_id || approvalData?.temp4),
+      assignedAssetId: this.getNullableValue(data?.temp1 || data?.temp4 || assetInfo?.asset_id || approvalData?.temp1 || approvalData?.temp4),
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
       justification: data?.remarks || '',
       urgency: RequestUrgency.MEDIUM,
@@ -2446,6 +2446,23 @@ ${fieldXml}
       console.error('getServiceApprovalById failed:', err);
       return null;
     }
+  }
+
+  async getServiceApprovalTaskId(approvalId: string): Promise<string> {
+    if (!approvalId) return '';
+
+    const approval = await this.getServiceApprovalById(approvalId);
+    const taskId = this.getNullableValue(
+      approval?.temp7 ||
+      approval?.Temp7 ||
+      approval?.TEMP7
+    );
+
+    if (taskId) return taskId;
+
+    const approvals = await this.getAllServiceApprovals();
+    const matchingApproval = approvals.find((item: any) => item.approval_id === approvalId);
+    return this.getNullableValue(matchingApproval?.temp7) || '';
   }
 
   /**
