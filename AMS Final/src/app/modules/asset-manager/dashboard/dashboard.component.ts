@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
+import { AuthService } from '../../../core/services/auth.service';
+
 
 @Component({
   selector: 'app-manager-dashboard',
@@ -15,8 +17,12 @@ export class ManagerDashboardComponent implements OnInit {
   availableAssets = 0;
   pendingRequestsCount = 0;
 
-  // Recent data
-  recentPendingRequests: any[] = [];
+  // Categorized Pending Counts
+  newRequestsPendingCount = 0;
+  returnRequestsPendingCount = 0;
+  extendRequestsPendingCount = 0;
+  maintenanceRequestsPendingCount = 0;
+
 
   // Type breakdown
   typeBreakdown: TypeBreakdown[] = [];
@@ -62,8 +68,10 @@ export class ManagerDashboardComponent implements OnInit {
 
   constructor(
     private assetService: AssetService,
-    private requestService: RequestService
+    private requestService: RequestService,
+    private authService: AuthService
   ) {}
+
 
   ngOnInit(): void {
     this.loadDashboardData();
@@ -74,6 +82,9 @@ export class ManagerDashboardComponent implements OnInit {
     this.loadError = '';
 
     try {
+      const currentUser = this.authService.getCurrentUser();
+      const managerId = currentUser?.id || 'usr_004';
+
       // Fetch everything we need in parallel for efficiency
       const [
         typeCounts, 
@@ -83,17 +94,20 @@ export class ManagerDashboardComponent implements OnInit {
         pendingReqs,
         confirmReqs,
         returnReqs,
-        warrantyReqs
+        warrantyReqs,
+        maintenanceReqs
       ] = await Promise.all([
         this.assetService.fetchAssetTypeWiseCount(),
         this.assetService.fetchAssetsFromService(),
         this.assetService.fetchAllocatedAssetsFromService(),
         this.assetService.fetchAllocationTeamAssetsFromService(),
-        this.requestService.fetchPendingRequestsFromService('usr_004'),
-        this.requestService.fetchConfirmationRequestsFromService('usr_004'),
-        this.requestService.fetchPendingReturnApprovalsFromService('usr_004'),
-        this.requestService.fetchPendingWarrantyApprovalsFromService('usr_004')
+        this.requestService.fetchPendingRequestsFromService(managerId),
+        this.requestService.fetchConfirmationRequestsFromService(managerId),
+        this.requestService.fetchPendingReturnApprovalsFromService(managerId),
+        this.requestService.fetchPendingWarrantyApprovalsFromService(managerId),
+        this.requestService.fetchPendingServiceApprovals(managerId)
       ]);
+
 
       // 1. Calculate Top-Level Stat Cards
       this.totalInventory = allAssets.length;
@@ -114,9 +128,12 @@ export class ManagerDashboardComponent implements OnInit {
       ];
 
       this.pendingRequestsCount = allPending.length;
-      this.recentPendingRequests = allPending
-        .sort((a, b) => new Date(b.requestDate || 0).getTime() - new Date(a.requestDate || 0).getTime())
-        .slice(0, 5);
+      
+      // Assign individual counts
+      this.newRequestsPendingCount = pendingReqs.length + confirmReqs.length; // New Asset + Confirmation are both "New" requests
+      this.returnRequestsPendingCount = returnReqs.length;
+      this.extendRequestsPendingCount = warrantyReqs.length;
+      this.maintenanceRequestsPendingCount = maintenanceReqs.length;
 
       // 2. Build the Breakdown Data
       // Group assets by type and then by subcategory for the breakdown section
