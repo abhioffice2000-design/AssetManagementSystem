@@ -175,11 +175,14 @@ export class MyRequestsComponent implements OnInit {
         const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
         const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
         
-        if (isNaN(dateA) || isNaN(dateB)) {
-          // Fallback to request number comparison if dates are unparseable
-          return b.requestNumber.localeCompare(a.requestNumber);
+        // If dates are different, sort by date descending
+        if (dateA !== dateB && !isNaN(dateA) && !isNaN(dateB)) {
+          return dateB - dateA;
         }
-        return dateB - dateA;
+        
+        // Fallback to request number comparison (numeric descending)
+        // This ensures ex_141 appears before ex_136
+        return (b.requestNumber || '').localeCompare(a.requestNumber || '', undefined, { numeric: true, sensitivity: 'base' });
       } catch (e) {
         return 0;
       }
