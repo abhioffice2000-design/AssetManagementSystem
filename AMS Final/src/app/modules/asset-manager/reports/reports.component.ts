@@ -20,11 +20,14 @@ export class ReportsComponent implements OnInit {
   loading = false;
   selectedReport: string | null = null;
   reportData: any[] = [];
+  filteredData: any[] = [];
+  filters: { [key: string]: string } = {};
   
-  // Filters
-  startDate: string = '';
-  endDate: string = '';
-  categoryFilter: string = '';
+  // Pagination
+  currentPage = 1;
+  pageSize = 10;
+  
+  filterableHeaders = ['Name', 'Category', 'Type', 'Status', 'Asset Type', 'Asset Name'];
 
   reports: ReportConfig[] = [
     { id: 'inventory', title: 'Current Inventory Snap-Shot', description: 'Live status of all managed assets including availability.', icon: 'inventory_2' },
@@ -45,6 +48,9 @@ export class ReportsComponent implements OnInit {
     this.selectedReport = type;
     this.loading = true;
     this.reportData = [];
+    this.filteredData = [];
+    this.filters = {};
+    this.currentPage = 1;
 
     try {
       if (type === 'inventory') {
@@ -113,10 +119,6 @@ export class ReportsComponent implements OnInit {
       }
       else if (type === 'warranty') {
         const assets = await this.assetService.fetchAssetsFromService();
-        const now = new Date();
-        const thirtyDaysLater = new Date();
-        thirtyDaysLater.setDate(now.getDate() + 30);
-
         this.reportData = assets
           .filter(a => a.warrantyExpiry)
           .map(a => ({
@@ -129,6 +131,7 @@ export class ReportsComponent implements OnInit {
           .sort((a,b) => new Date(a['Warranty Expiry']).getTime() - new Date(b['Warranty Expiry']).getTime());
       }
 
+      this.applyFilters();
       this.notification.showToast(`${this.reports.find(r => r.id === type)?.title} Generated`, 'success');
     } catch (err) {
       console.error('Report Generation Error:', err);
@@ -138,14 +141,85 @@ export class ReportsComponent implements OnInit {
     }
   }
 
-  downloadCSV(): void {
-    if (this.reportData.length === 0) return;
+  // --- Filtering Logic ---
+  onFilterChange(header: string, value: string): void {
+    if (value) {
+      this.filters[header] = value;
+    } else {
+      delete this.filters[header];
+    }
+    this.applyFilters();
+  }
 
-    const headers = Object.keys(this.reportData[0]);
+  isFilterable(header: string): boolean {
+    return this.filterableHeaders.includes(header);
+  }
+
+  getFilterOptions(header: string): string[] {
+    const options = new Set<string>();
+    this.reportData.forEach(row => {
+      if (row[header]) options.add(String(row[header]));
+    });
+    return Array.from(options).sort();
+  }
+
+  applyFilters(): void {
+    this.filteredData = this.reportData.filter(row => {
+      return Object.keys(this.filters).every(header => {
+        const filterValue = this.filters[header];
+        const cellValue = String(row[header] || '');
+        return cellValue.toLowerCase().includes(filterValue.toLowerCase());
+      });
+    });
+    this.currentPage = 1;
+  }
+
+  clearFilters(): void {
+    this.filters = {};
+    this.applyFilters();
+  }
+
+  hasFilters(): boolean {
+    return Object.keys(this.filters).length > 0;
+  }
+
+  // --- Pagination Methods ---
+  get totalPages(): number {
+    return Math.ceil(this.filteredData.length / this.pageSize) || 1;
+  }
+
+  get paginatedData(): any[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredData.slice(start, start + this.pageSize);
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
+  }
+
+  getRangeStart(): number {
+    return this.filteredData.length === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1;
+  }
+
+  getRangeEnd(): number {
+    return Math.min(this.currentPage * this.pageSize, this.filteredData.length);
+  }
+
+  downloadCSV(): void {
+    if (this.filteredData.length === 0) return;
+    const headers = Object.keys(this.filteredData[0]);
+    
     const csvRows = [
-      headers.join(','), // Header row
-      ...this.reportData.map(row => 
-        headers.map(header => JSON.stringify(row[header])).join(',')
+      headers.join(','),
+      ...this.filteredData.map(row => 
+        headers.map(header => {
+          let val = row[header];
+          if (val === null || val === undefined) val = '';
+          const stringVal = String(val).replace(/"/g, '""');
+          return `"${stringVal}"`;
+        }).join(',')
       )
     ];
 

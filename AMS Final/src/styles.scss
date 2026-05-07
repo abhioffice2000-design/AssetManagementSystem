@@ -777,6 +777,10 @@ textarea.form-control {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.grid-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 .mt-8 {
   margin-top: 8px;
 }
@@ -850,6 +854,7 @@ textarea.form-control {
     grid-template-columns: 1fr;
   }
 
+  .grid-5,
   .grid-4 {
     grid-template-columns: 1fr;
   }
