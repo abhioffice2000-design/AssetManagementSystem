@@ -1270,48 +1270,62 @@ export class RequestService {
    * Specialized mapping for return requests (t_asset_returns).
    */
   private mapReturnTupleToRequest(tuple: any): AssetRequest {
-    const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
+    const parent = tuple?.old || tuple;
+    const data = parent?.t_asset_returns || tuple?.t_asset_returns || tuple;
     const userInfo = data?.m_users || {};
-    let approvalData = data?.t_asset_return_approvals || {};
+    let approvalData = data?.t_asset_return_approvals || parent?.t_asset_return_approvals || tuple?.t_asset_return_approvals || {};
     if (Array.isArray(approvalData)) {
-      approvalData = approvalData.find((approval: any) => this.getNullableValue(approval?.status) === 'Pending') || approvalData[0] || {};
+      approvalData = approvalData.find((approval: any) => this.mapToStatus(this.getReturnValue(approval?.status) || '') === RequestStatus.PENDING) || approvalData[0] || {};
     }
 
-    const assetInfo = data?.m_assets || tuple?.old?.m_assets || tuple?.m_assets || {};
+    const assetInfo = data?.m_assets || parent?.m_assets || tuple?.m_assets || {};
+    const returnId = this.getReturnValue(data?.return_id) || '';
+    const assetId = this.getReturnValue(data?.temp1) ||
+      this.getReturnValue(data?.asset_id) ||
+      this.getReturnValue(assetInfo?.asset_id) ||
+      this.getReturnValue(approvalData?.temp1) ||
+      '';
+    const rawAssetType = this.getReturnValue(assetInfo?.type_id) ||
+      this.getReturnValue(assetInfo?.asset_type) ||
+      this.getReturnValue(assetInfo?.type_name) ||
+      'Hardware';
+    const assetName = this.getReturnValue(assetInfo?.asset_name);
 
-    const status = this.mapToStatus(data?.status || approvalData?.status || '');
-    const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
+    const status = this.mapToStatus(this.getReturnValue(data?.status) || this.getReturnValue(approvalData?.status) || '');
+    const currentStage = this.getReturnValue(approvalData?.role)?.toLowerCase().includes('allocation')
+      ? ApprovalStage.ALLOCATION
+      : ApprovalStage.ASSET_MANAGER;
 
     return {
-      taskid: approvalData.temp2 || approvalData.temp1 || '',
-      returnapprovalId: approvalData?.return_approval_id || '',
-      id: data?.return_id || '',
-      requestNumber: data?.return_id || '',
-      requesterId: data?.requested_by || userInfo?.user_id || '',
-      requesterName: userInfo?.name || '',
-      requesterEmail: userInfo?.email || '',
+      taskid: this.getReturnValue(approvalData?.temp2) || '',
+      returnapprovalId: this.getReturnValue(approvalData?.return_approval_id) || '',
+      id: returnId,
+      requestNumber: returnId,
+      requesterId: this.getReturnValue(data?.requested_by) || this.getReturnValue(userInfo?.user_id) || '',
+      requesterName: this.getReturnValue(userInfo?.name) || '',
+      requesterEmail: this.getReturnValue(userInfo?.email) || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(assetInfo?.asset_name || assetInfo?.asset_type || 'Hardware'),
-      category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
+      assetType: this.normalizeAssetType(rawAssetType),
+      category: this.normalizeCategory(assetName || this.getReturnValue(assetInfo?.sub_category_id) || 'Asset Return'),
       subCategory: 'N/A',
-      assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.temp1 || data?.temp4 || assetInfo?.asset_id || approvalData?.temp1 || approvalData?.temp4),
+      assetName,
+      assignedAssetId: assetId,
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
-      justification: data?.remarks || '',
+      justification: this.getReturnValue(data?.remarks) || '',
       urgency: RequestUrgency.MEDIUM,
       status: status,
       currentStage: currentStage,
       hasEmailApproval: false,
-      requestDate: data?.return_date || '',
-      lastUpdated: data?.return_date || '',
+      requestDate: this.getReturnValue(data?.return_date) || '',
+      lastUpdated: this.getReturnValue(approvalData?.action_date) || this.getReturnValue(data?.return_date) || '',
       requestType: RequestType.RETURN_ASSET,
       approvalChain: [
         {
-          stage: ApprovalStage.ASSET_MANAGER,
-          action: 'Pending',
-          approverId: approvalData?.approver_id,
-          comments: approvalData?.remarks
+          stage: currentStage,
+          action: status === RequestStatus.REJECTED ? 'Rejected' : status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending',
+          approverId: this.getReturnValue(approvalData?.approver_id),
+          comments: this.getReturnValue(approvalData?.remarks)
         }
       ],
       comments: [],
@@ -1391,6 +1405,18 @@ export class RequestService {
     }
     if (typeof value === 'string' && value.trim() === '') return undefined;
     return String(value);
+  }
+
+  private getReturnValue(value: any): string | undefined {
+    const text = this.getNullableValue(value)?.trim();
+    if (!text) return undefined;
+
+    const normalized = text.toLowerCase();
+    if (['-', 'n/a', 'na', 'null', 'undefined', 'nan'].includes(normalized)) return undefined;
+    if (text === '\u2014' || text === '\u2013') return undefined;
+    if (normalized.includes('\u00e2') || normalized.includes('\ufffd')) return undefined;
+
+    return text;
   }
 
   private mapToUrgency(urgency: string): RequestUrgency {
@@ -2275,15 +2301,15 @@ ${fieldXml}
       return tupleArray.map((tuple: any) => {
         const data = tuple?.old?.t_asset_return_approvals || tuple?.t_asset_return_approvals || tuple;
         return {
-          return_approval_id: data?.return_approval_id || '',
-          request_id: data?.request_id || '',
-          approver_id: data?.approver_id || '',
-          role: data?.role || '',
-          status: data?.status || '',
-          remarks: data?.remarks || '',
-          action_date: data?.action_date || '',
-          temp1: data?.temp1 || '',
-          temp2: data?.temp2 || ''
+          return_approval_id: this.getReturnValue(data?.return_approval_id) || '',
+          request_id: this.getReturnValue(data?.request_id) || '',
+          approver_id: this.getReturnValue(data?.approver_id) || '',
+          role: this.getReturnValue(data?.role) || '',
+          status: this.getReturnValue(data?.status) || '',
+          remarks: this.getReturnValue(data?.remarks) || '',
+          action_date: this.getReturnValue(data?.action_date) || '',
+          temp1: this.getReturnValue(data?.temp1) || '',
+          temp2: this.getReturnValue(data?.temp2) || ''
         };
       });
     } catch (err) {
@@ -2325,15 +2351,15 @@ ${fieldXml}
         .map((tuple: any) => {
           const data = tuple?.old?.t_asset_return_approvals || tuple?.t_asset_return_approvals || tuple;
           return {
-            return_approval_id: data?.return_approval_id || '',
-            request_id: data?.request_id || '',
-            approver_id: data?.approver_id || '',
-            role: data?.role || '',
-            status: data?.status || '',
-            remarks: data?.remarks || '',
-            action_date: data?.action_date || '',
-            temp1: data?.temp1 || '',
-            temp2: data?.temp2 || ''
+            return_approval_id: this.getReturnValue(data?.return_approval_id) || '',
+            request_id: this.getReturnValue(data?.request_id) || '',
+            approver_id: this.getReturnValue(data?.approver_id) || '',
+            role: this.getReturnValue(data?.role) || '',
+            status: this.getReturnValue(data?.status) || '',
+            remarks: this.getReturnValue(data?.remarks) || '',
+            action_date: this.getReturnValue(data?.action_date) || '',
+            temp1: this.getReturnValue(data?.temp1) || '',
+            temp2: this.getReturnValue(data?.temp2) || ''
           };
         })
         .filter((r: any) => r.request_id === requestId);

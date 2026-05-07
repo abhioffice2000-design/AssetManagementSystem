@@ -486,46 +486,52 @@ export class AllocationTicketsComponent implements OnInit {
     let approvalObj = returnData?.t_asset_return_approvals ?? tuple?.old?.t_asset_return_approvals ?? tuple?.t_asset_return_approvals ?? {};
 
     if (Array.isArray(approvalObj)) {
-      approvalObj = approvalObj.find((a: any) => this.getVal(a.status) === 'Pending') ?? approvalObj[0] ?? {};
+      approvalObj = approvalObj.find((a: any) => this.mapToStatus(this.getSafeVal(a.status) || '') === RequestStatus.PENDING) ?? approvalObj[0] ?? {};
     }
 
     const userData = returnData?.m_users ?? {};
     const assetData = returnData?.m_assets ?? tuple?.old?.m_assets ?? tuple?.m_assets ?? {};
     const assetId = this.getVal(returnData?.temp1) ?? this.getVal(assetData?.asset_id) ?? this.getVal(approvalObj?.temp1) ?? 'â€”';
-    const statusStr = this.getVal(returnData?.status) ?? this.getVal(approvalObj?.status) ?? 'Pending';
+    const statusStr = this.getSafeVal(returnData?.status) ?? this.getSafeVal(approvalObj?.status) ?? 'Pending';
     const status = this.mapToStatus(statusStr);
+    const safeAssetId = this.getSafeVal(assetId) || '';
+    const returnId = this.getSafeVal(returnData?.return_id) ?? this.getSafeVal(approvalObj?.request_id) ?? '';
+    const requestorName = this.getSafeVal(userData?.name) ?? 'Unknown';
+    const assetType = this.getSafeVal(assetData?.type_id) ?? this.getSafeVal(assetData?.asset_type) ?? 'Hardware';
+    const assetName = this.getSafeVal(assetData?.asset_name) ?? 'Asset Return';
+    const reason = this.getSafeVal(returnData?.remarks) ?? '';
 
     return {
-      taskid: this.getVal(approvalObj?.temp2) ?? '-',
-      approvalid: this.getVal(approvalObj?.return_approval_id) ?? '—',
-      ticketId: this.getVal(returnData?.return_id) ?? this.getVal(approvalObj?.request_id) ?? '—',
-      requestorName: this.getVal(userData?.name) ?? '—',
-      assetType: this.getVal(assetData?.type_id) ?? this.getVal(assetData?.asset_type) ?? 'Hardware',
+      taskid: this.getSafeVal(approvalObj?.temp2) ?? '',
+      approvalid: this.getSafeVal(approvalObj?.return_approval_id) ?? '',
+      ticketId: returnId,
+      requestorName,
+      assetType,
       subCategory: this.getVal(assetData?.sub_category_id) ?? 'N/A',
-      assetName: this.getVal(assetData?.asset_name) ?? 'Asset Return',
-      assetId,
+      assetName,
+      assetId: safeAssetId,
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '-',
       availabilityStatus: 'N/A',
-      assignedDate: this.getVal(returnData?.return_date) ?? '',
+      assignedDate: this.getSafeVal(approvalObj?.action_date) ?? this.getSafeVal(returnData?.return_date) ?? '',
       assetManagerName: '—',
       teamLeadName: '—',
       urgency: 'Medium',
-      reason: this.getVal(returnData?.remarks) ?? '—',
+      reason,
       status,
       rawRequest: {
-        id: this.getVal(returnData?.return_id) ?? '',
-        requestNumber: this.getVal(returnData?.return_id) ?? '',
-        requesterId: this.getVal(returnData?.requested_by) ?? '',
-        requesterName: this.getVal(userData?.name) ?? '',
+        id: returnId,
+        requestNumber: returnId,
+        requesterId: this.getSafeVal(returnData?.requested_by) ?? '',
+        requesterName: requestorName,
         requestType: RequestType.RETURN_ASSET,
         status,
         currentStage: ApprovalStage.ALLOCATION,
-        justification: this.getVal(returnData?.remarks) ?? '',
-        requestDate: this.getVal(returnData?.return_date) ?? '',
-        lastUpdated: this.getVal(returnData?.return_date) ?? '',
-        assignedAssetId: assetId && assetId !== '-' ? assetId : '',
-        assetType: this.getVal(assetData?.type_id) ?? this.getVal(assetData?.asset_type) ?? '',
-        assetName: this.getVal(assetData?.asset_name) ?? '',
+        justification: reason,
+        requestDate: this.getSafeVal(returnData?.return_date) ?? '',
+        lastUpdated: this.getSafeVal(approvalObj?.action_date) ?? this.getSafeVal(returnData?.return_date) ?? '',
+        assignedAssetId: safeAssetId,
+        assetType,
+        assetName,
         approvalChain: [{ stage: ApprovalStage.ALLOCATION, action: 'Pending' }],
         comments: []
       } as any
@@ -649,6 +655,18 @@ export class AllocationTicketsComponent implements OnInit {
     }
     const str = String(value).trim();
     return str === '' ? undefined : str;
+  }
+
+  private getSafeVal(value: any): string | undefined {
+    const text = this.getVal(value)?.trim();
+    if (!text) return undefined;
+
+    const normalized = text.toLowerCase();
+    if (['-', 'n/a', 'na', 'null', 'undefined', 'nan'].includes(normalized)) return undefined;
+    if (text === '\u2014' || text === '\u2013') return undefined;
+    if (normalized.includes('\u00e2') || normalized.includes('\ufffd')) return undefined;
+
+    return text;
   }
 
   private mapToStatus(status: string): RequestStatus {
@@ -1235,19 +1253,10 @@ export class AllocationTicketsComponent implements OnInit {
   // ─── Reject Methods ───────────────────────────────────────────────────
 
   private getReturnAssetLookupId(ticket: EnrichedTicket): string {
-    if (ticket.assetId && ticket.assetId !== 'â€”' && ticket.assetId !== '-' && ticket.assetId !== 'N/A') {
-      return ticket.assetId;
-    }
-
-    if (ticket.rawRequest?.assignedAssetId) {
-      return ticket.rawRequest.assignedAssetId;
-    }
-
-    if (ticket.assetType && ticket.assetType.startsWith('typ_')) {
-      return ticket.assetType;
-    }
-
-    return '';
+    return this.getSafeVal(ticket.assetId) ||
+      this.getSafeVal(ticket.rawRequest?.assignedAssetId) ||
+      (ticket.assetType?.startsWith('typ_') ? ticket.assetType : '') ||
+      '';
   }
 
   async handleRejectClick(ticket: EnrichedTicket): Promise<void> {
