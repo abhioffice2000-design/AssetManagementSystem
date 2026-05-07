@@ -3,16 +3,19 @@
     <div class="logo">
       <h1 class="logo-text">ADNATE<span>AMS</span></h1>
     </div>
-    <div class="nav-links">
+    <!-- <div class="nav-links">
       <a href="javascript:void(0)" class="nav-link">Home</a>
       <a href="javascript:void(0)" class="nav-link">Features</a>
       <a href="javascript:void(0)" class="nav-link">Solutions</a>
       <a href="javascript:void(0)" class="nav-link">Resources</a>
       <a href="javascript:void(0)" class="nav-link">Contact</a>
-    </div>
+    </div> -->
     <div class="nav-actions">
-      <button class="btn btn-outline" (click)="navigateToLogin()">Log In</button>
-      <button class="btn btn-accent btn-signup" (click)="navigateToRegister()">Sign Up</button>
+      <button class="btn btn-login-nav" (click)="navigateToLogin()">
+        <span class="material-icons-outlined">login</span>
+        Log In
+      </button>
+      <!-- <button class="btn btn-accent btn-signup" (click)="navigateToRegister()">Sign Up</button> -->
     </div>
   </div>
 </nav>
@@ -24,18 +27,19 @@
         The smartest way to manage <span>enterprise assets</span>
       </h1>
       <p class="hero-subtitle">
-        Empower your organization with real-time tracking, seamless allocation, and lifecycle management of your hardare and software resources.
+        Empower your organization with real-time tracking, seamless allocation, and lifecycle management of your hardare
+        and software resources.
       </p>
       <div class="hero-ctas">
         <button class="btn btn-primary btn-lg" (click)="navigateToLogin()">Get Started</button>
-        <button class="btn btn-outline btn-lg" (click)="navigateToRegister()">Request Access</button>
+        <!-- <button class="btn btn-outline btn-lg" (click)="navigateToRegister()">Request Access</button> -->
       </div>
     </div>
 
     <div class="hero-visual-side animate-scale-in">
       <div class="image-wrapper">
         <img src="assets/images/hero-home.png" alt="Asset Management Dashboard" class="hero-img">
-        
+
         <!-- Floating Status Cards -->
         <div class="status-card card-tl animate-pulse" style="animation-delay: 0.2s">
           <div class="icon-wrap blue">
@@ -74,7 +78,7 @@
 <section class="features-preview container">
   <div class="section-badge">CORE FEATURES</div>
   <h2 class="section-title">Everything you need in one place</h2>
-  
+
   <div class="features-grid grid-3 mt-24">
     <div class="feature-card animate-slide-up" style="animation-delay: 0.1s">
       <span class="material-icons-outlined feat-icon color-blue">account_tree</span>
@@ -93,39 +97,3 @@
     </div>
   </div>
 </section>
-
-<footer class="landing-footer">
-  <div class="container footer-content">
-    <div class="footer-brand">
-      <h2 class="logo-text">ADNATE<span>AMS</span></h2>
-      <p>Simplifying Enterprise Resource Planning since 2018.</p>
-    </div>
-    <div class="footer-links">
-      <div class="link-col">
-        <h4>Product</h4>
-        <a href="javascript:void(0)">Inventory</a>
-        <a href="javascript:void(0)">Security</a>
-        <a href="javascript:void(0)">Governance</a>
-      </div>
-      <div class="link-col">
-        <h4>Company</h4>
-        <a href="javascript:void(0)">About Us</a>
-        <a href="javascript:void(0)">Careers</a>
-        <a href="javascript:void(0)">Blog</a>
-      </div>
-      <div class="link-col">
-        <h4>Support</h4>
-        <a href="javascript:void(0)">Help Center</a>
-        <a href="javascript:void(0)">API Docs</a>
-        <a href="javascript:void(0)">Status</a>
-      </div>
-    </div>
-  </div>
-  <div class="footer-bottom container">
-    <p>&copy; 2024 Adnate IT Solutions. All rights reserved.</p>
-    <div class="legal-links">
-      <a href="javascript:void(0)">Privacy Policy</a>
-      <a href="javascript:void(0)">Terms of Service</a>
-    </div>
-  </div>
-</footer>
