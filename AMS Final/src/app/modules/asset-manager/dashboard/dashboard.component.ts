@@ -13,6 +13,10 @@ export class ManagerDashboardComponent implements OnInit {
   allocatedAssets = 0;
   allocationTeamAssets = 0;
   availableAssets = 0;
+  pendingRequestsCount = 0;
+
+  // Recent data
+  recentPendingRequests: any[] = [];
 
   // Type breakdown
   typeBreakdown: TypeBreakdown[] = [];
@@ -71,11 +75,24 @@ export class ManagerDashboardComponent implements OnInit {
 
     try {
       // Fetch everything we need in parallel for efficiency
-      const [typeCounts, allAssets, allocatedAssets, allocationTeamAssets] = await Promise.all([
+      const [
+        typeCounts, 
+        allAssets, 
+        allocatedAssets, 
+        allocationTeamAssets,
+        pendingReqs,
+        confirmReqs,
+        returnReqs,
+        warrantyReqs
+      ] = await Promise.all([
         this.assetService.fetchAssetTypeWiseCount(),
         this.assetService.fetchAssetsFromService(),
         this.assetService.fetchAllocatedAssetsFromService(),
-        this.assetService.fetchAllocationTeamAssetsFromService()
+        this.assetService.fetchAllocationTeamAssetsFromService(),
+        this.requestService.fetchPendingRequestsFromService('usr_004'),
+        this.requestService.fetchConfirmationRequestsFromService('usr_004'),
+        this.requestService.fetchPendingReturnApprovalsFromService('usr_004'),
+        this.requestService.fetchPendingWarrantyApprovalsFromService('usr_004')
       ]);
 
       // 1. Calculate Top-Level Stat Cards
@@ -87,6 +104,19 @@ export class ManagerDashboardComponent implements OnInit {
       this.availableAssets = allAssets.filter(
         a => a.status && a.status.toLowerCase() === 'available'
       ).length;
+
+      // Combine all pending categories
+      const allPending = [
+        ...pendingReqs.map(r => ({ ...r, displayType: 'New Asset' })),
+        ...confirmReqs.map(r => ({ ...r, displayType: 'Confirmation' })),
+        ...returnReqs.map(r => ({ ...r, displayType: 'Return' })),
+        ...warrantyReqs.map(r => ({ ...r, displayType: 'Warranty' }))
+      ];
+
+      this.pendingRequestsCount = allPending.length;
+      this.recentPendingRequests = allPending
+        .sort((a, b) => new Date(b.requestDate || 0).getTime() - new Date(a.requestDate || 0).getTime())
+        .slice(0, 5);
 
       // 2. Build the Breakdown Data
       // Group assets by type and then by subcategory for the breakdown section

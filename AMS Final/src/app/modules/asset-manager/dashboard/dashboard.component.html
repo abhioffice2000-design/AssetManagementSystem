@@ -35,11 +35,64 @@
   <!-- Main Content -->
   <ng-container *ngIf="!isLoading && !loadError">
     <!-- Top Stat Cards -->
-    <div class="grid grid-4 gap-24 mb-24 animate-slide-up">
+    <div class="grid grid-5 gap-24 mb-24 animate-slide-up">
       <app-stat-card label="Total Inventory" [value]="totalInventory" icon="inventory_2" color="blue"></app-stat-card>
       <app-stat-card label="Allocated Assets" [value]="allocatedAssets" icon="assignment_ind" color="green"></app-stat-card>
-      <app-stat-card label="Move to Allocation Team" [value]="allocationTeamAssets" icon="hub" color="purple"></app-stat-card>
+      <app-stat-card label="Pending Requests" [value]="pendingRequestsCount" icon="pending_actions" color="amber"></app-stat-card>
+      <app-stat-card label="Allocation Team" [value]="allocationTeamAssets" icon="hub" color="purple"></app-stat-card>
       <app-stat-card label="Available Assets" [value]="availableAssets" icon="check_circle" color="teal"></app-stat-card>
+    </div>
+
+    <!-- Recent Pending Requests Section -->
+    <div class="card section-card animate-slide-up mb-24" *ngIf="recentPendingRequests.length > 0">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="material-icons-outlined">assignment_late</span>
+          <h3>Pending Requests requiring Attention</h3>
+        </div>
+        <span class="badge badge-pending">{{ pendingRequestsCount }} Total Pending</span>
+      </div>
+      <div class="section-body" style="padding: 0;">
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Request ID</th>
+                <th>Requester</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let req of recentPendingRequests">
+                <td><span class="req-id">{{ req.id }}</span></td>
+                <td>
+                  <div class="user-info">
+                    <span class="user-name">{{ req.requesterName }}</span>
+                    <span class="user-dept">{{ req.requesterDepartment }}</span>
+                  </div>
+                </td>
+                <td><span class="badge" [class.badge-info]="req.displayType === 'New Asset'" [class.badge-purple]="req.displayType === 'Return'" [class.badge-warning]="req.displayType === 'Warranty'">{{ req.displayType }}</span></td>
+                <td>{{ req.assetType || req.category }}</td>
+                <td>{{ req.requestDate | date:'mediumDate' }}</td>
+                <td>
+                  <button class="btn-action" [routerLink]="['/asset-manager/requests']">
+                    Handle
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer" *ngIf="pendingRequestsCount > 5">
+          <a [routerLink]="['/asset-manager/requests']" class="view-all-link">
+            View All Pending Requests
+            <span class="material-icons-outlined">arrow_forward</span>
+          </a>
+        </div>
+      </div>
     </div>
 
     <!-- Assets by Type — Overview Bar Chart -->
