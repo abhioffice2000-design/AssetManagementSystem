@@ -2,7 +2,6 @@ import { Component, HostListener, OnInit } from '@angular/core';
 import { NotificationService } from '../../../core/services/notification.service';
 import { WarrantySchedulerService } from '../../../core/services/warranty-scheduler.service';
 import { AssetService } from '../../../core/services/asset.service';
-import { AdminDataService, AssignedAsset } from '../../../core/services/admin-data.service';
 
 @Component({
   selector: 'app-warranty-scheduler',
@@ -29,17 +28,13 @@ export class WarrantySchedulerComponent implements OnInit {
   selectedTypeId: string = '';
   selectedSubCatId: string = '';
 
-  allocatedAssets: AssignedAsset[] = [];
-
   manualDaysToExtend = 7;
   lastInstanceId: string = '';
-  isLoadingResults = false;
 
   constructor(
     private notificationService: NotificationService,
     private schedulerService: WarrantySchedulerService,
-    private assetService: AssetService,
-    private adminDataService: AdminDataService
+    private assetService: AssetService
   ) {
     this.generateTimeOptions();
   }
@@ -132,41 +127,11 @@ export class WarrantySchedulerComponent implements OnInit {
       ? this.subCategories.filter(sc => sc.typeId === this.selectedTypeId)
       : [];
 
-    this.allocatedAssets = [];
     this.lastInstanceId = '';
   }
 
   async onSelectionChange() {
     this.lastInstanceId = '';
-
-    if (!this.selectedTypeId || !this.selectedSubCatId) {
-      this.allocatedAssets = [];
-      return;
-    }
-
-    this.isLoadingResults = true;
-    try {
-      // 1) Find allocated assets (joined users+assets)
-      const assigned = await this.adminDataService.GetAllAssetsAssignedToAllUsers();
-
-      const typeName = this.assetTypes.find(t => t.id === this.selectedTypeId)?.name || '';
-      const subCatName = this.subCategories.find(s => s.id === this.selectedSubCatId)?.name || '';
-
-      // NOTE: the current join service returns names (not IDs), so we filter by resolved names.
-      // This keeps the UI consistent with the ID-driven dropdowns while still finding allocations.
-      this.allocatedAssets = (assigned || []).filter((a: any) => {
-        const aType = String(a.assetType || '').trim().toLowerCase();
-        const aSub = String(a.subCategory || '').trim().toLowerCase();
-        return (!!typeName && aType === typeName.trim().toLowerCase()) &&
-               (!!subCatName && aSub === subCatName.trim().toLowerCase());
-      });
-    } catch (e) {
-      console.error('[WarrantyScheduler] Failed to load allocations/services:', e);
-      this.notificationService.showToast('Failed to load allocated assets', 'error');
-      this.allocatedAssets = [];
-    } finally {
-      this.isLoadingResults = false;
-    }
   }
 
   async saveSchedule() {

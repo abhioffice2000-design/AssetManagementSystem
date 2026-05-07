@@ -10,24 +10,15 @@
   <div class="filter-bar">
     <div class="search-wrapper">
       <span class="material-icons-outlined search-icon">search</span>
-      <input
-        type="text"
-        class="search-input"
-        placeholder="Search by name, type, or asset tag..."
-        [(ngModel)]="searchText"
-        (ngModelChange)="onSearchChange()"
-      />
+      <input type="text" class="search-input" placeholder="Search by name, type, or asset tag..."
+        [(ngModel)]="searchText" (ngModelChange)="onSearchChange()" />
       <button class="clear-search-btn" *ngIf="searchText" (click)="searchText = ''; onSearchChange()">
         <span class="material-icons-outlined">close</span>
       </button>
     </div>
     <div class="type-filter-wrapper">
       <span class="material-icons-outlined filter-icon">filter_list</span>
-      <select
-        class="type-filter-select"
-        [(ngModel)]="selectedTypeFilter"
-        (ngModelChange)="onTypeFilterChange()"
-      >
+      <select class="type-filter-select" [(ngModel)]="selectedTypeFilter" (ngModelChange)="onTypeFilterChange()">
         <option value="">All Types</option>
         <option *ngFor="let type of assetTypes" [value]="type.type_name">{{ type.type_name }}</option>
       </select>
@@ -48,7 +39,7 @@
           <th>Type</th>
           <th>Subcategory Name</th>
           <!-- <th class="text-center">Request ID</th> -->
-          <th>Assigned Date</th>
+          <th>Purchased Date</th>
           <th>Warranty Expiry</th>
         </tr>
       </thead>
@@ -67,6 +58,22 @@
             <span [class.text-danger]="isExpiringSoon(asset.warrantyExpiry)">
               {{ asset.warrantyExpiry | date }}
             </span>
+          </td>
+          <td>
+            <div class="action-buttons justify-center">
+              <ng-container *ngIf="asset.status !== 'TempAllocated'">
+                <button class="btn btn-sm btn-outline-danger" (click)="openReturnModal(asset)">
+                  <span class="material-icons-outlined">assignment_return</span>
+                  Return Asset
+                </button>
+                <button class="btn btn-sm btn-outline-primary" (click)="openWarrantyModal(asset)">
+                  <span class="material-icons-outlined">security</span>
+                  Extend Warranty
+                </button>
+              </ng-container>
+              <span class="text-muted" *ngIf="asset.status === 'TempAllocated'" style="font-size: 12px;">Temporary
+                Asset</span>
+            </div>
           </td>
         </tr>
         <tr *ngIf="totalFilteredCount === 0 && myAssets.length > 0">
@@ -87,13 +94,15 @@
     <!-- Pagination Footer -->
     <div class="pagination-footer" *ngIf="totalFilteredCount > 0">
       <div class="pagination-info">
-        Showing {{ totalFilteredCount === 0 ? 0 : (currentPage - 1) * pageSize + 1 }} to {{ Math.min(currentPage * pageSize, totalFilteredCount) }} of {{ totalFilteredCount }} assets
+        Showing {{ totalFilteredCount === 0 ? 0 : (currentPage - 1) * pageSize + 1 }} to {{ Math.min(currentPage *
+        pageSize, totalFilteredCount) }} of {{ totalFilteredCount }} assets
       </div>
       <div class="pagination-controls">
         <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(1)" title="First page">
           <span class="material-icons-outlined">first_page</span>
         </button>
-        <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)" title="Previous page">
+        <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)"
+          title="Previous page">
           <span class="material-icons-outlined">chevron_left</span>
         </button>
 
@@ -104,10 +113,12 @@
           </button>
         </ng-container>
 
-        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)" title="Next page">
+        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)"
+          title="Next page">
           <span class="material-icons-outlined">chevron_right</span>
         </button>
-        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)" title="Last page">
+        <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)"
+          title="Last page">
           <span class="material-icons-outlined">last_page</span>
         </button>
       </div>
@@ -131,9 +142,10 @@
 
     <div class="form-group">
       <label class="form-label required">Reason for Return</label>
-      <textarea class="form-control" formControlName="justification" rows="4" 
-                placeholder="Please provide a valid reason or justification for returning this asset..."></textarea>
-      <div class="error-msg" *ngIf="actionForm.get('justification')?.touched && actionForm.get('justification')?.invalid">
+      <textarea class="form-control" formControlName="justification" rows="4"
+        placeholder="Please provide a valid reason or justification for returning this asset..."></textarea>
+      <div class="error-msg"
+        *ngIf="actionForm.get('justification')?.touched && actionForm.get('justification')?.invalid">
         Justification is mandatory (min 5 characters).
       </div>
     </div>
@@ -158,9 +170,10 @@
 
     <div class="form-group">
       <label class="form-label required">Reason for Extension</label>
-      <textarea class="form-control" formControlName="justification" rows="4" 
-                placeholder="Please provide a reason or justification for extending the warranty..."></textarea>
-      <div class="error-msg" *ngIf="actionForm.get('justification')?.touched && actionForm.get('justification')?.invalid">
+      <textarea class="form-control" formControlName="justification" rows="4"
+        placeholder="Please provide a reason or justification for extending the warranty..."></textarea>
+      <div class="error-msg"
+        *ngIf="actionForm.get('justification')?.touched && actionForm.get('justification')?.invalid">
         Justification is mandatory (min 5 characters).
       </div>
     </div>

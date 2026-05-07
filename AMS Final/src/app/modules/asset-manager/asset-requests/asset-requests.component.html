@@ -13,12 +13,12 @@
   <!-- Stats Cards -->
   <div class="grid grid-3 gap-16 mb-24 animate-slide-up">
     <div class="mini-stat-card">
-      <div class="mini-stat-icon bg-amber">
-        <span class="material-icons-outlined">pending_actions</span>
+      <div class="mini-stat-icon bg-blue">
+        <span class="material-icons-outlined">fact_check</span>
       </div>
       <div class="mini-stat-info">
-        <span class="mini-stat-value">{{ requestStats.pending }}</span>
-        <span class="mini-stat-label">Awaiting Action</span>
+        <span class="mini-stat-value">{{ requestStats.approved + requestStats.completed + requestStats.rejected }}</span>
+        <span class="mini-stat-label">Total Action</span>
       </div>
     </div>
     <div class="mini-stat-card">
