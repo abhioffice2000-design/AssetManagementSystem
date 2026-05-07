@@ -8,10 +8,8 @@
 
   <!-- Report Type Selector -->
   <div class="reports-grid mb-32">
-    <div class="report-card" 
-         *ngFor="let report of reports" 
-         [class.active]="selectedReport === report.id"
-         (click)="generateReport(report.id)">
+    <div class="report-card" *ngFor="let report of reports" [class.active]="selectedReport === report.id"
+      (click)="generateReport(report.id)">
       <div class="r-icon">
         <span class="material-icons">{{ report.icon }}</span>
       </div>
@@ -30,7 +28,7 @@
     <div class="ws-header">
       <div class="h-text">
         <h2>{{ getSelectedReportTitle() }}</h2>
-        <p *ngIf="reportData.length > 0">Showing {{ reportData.length }} records retrieved from system</p>
+        <!-- <p *ngIf="reportData.length > 0">Showing {{ reportData.length }} records retrieved from system</p> -->
       </div>
       <div class="ws-actions" *ngIf="reportData.length > 0">
         <button class="btn btn-ghost btn-sm mr-8" (click)="clearFilters()" *ngIf="hasFilters()">
@@ -60,8 +58,7 @@
               <label class="filter-label">{{ fHeader }}</label>
               <div class="filter-select-box">
                 <span class="material-icons-outlined">filter_list</span>
-                <select (change)="onFilterChange(fHeader, $any($event.target).value)"
-                        [value]="filters[fHeader] || ''">
+                <select (change)="onFilterChange(fHeader, $any($event.target).value)" [value]="filters[fHeader] || ''">
                   <option value="">All {{ fHeader }}s</option>
                   <option *ngFor="let option of getFilterOptions(fHeader)" [value]="option">
                     {{ option }}
@@ -90,7 +87,8 @@
         <!-- Pagination Controls -->
         <div class="pagination-container mt-16">
           <div class="pagination-info">
-            Showing <b>{{ getRangeStart() }}</b> to <b>{{ getRangeEnd() }}</b> of <b>{{ filteredData.length }}</b> entries
+            Showing <b>{{ getRangeStart() }}</b> to <b>{{ getRangeEnd() }}</b> of <b>{{ filteredData.length }}</b>
+            entries
           </div>
           <div class="pagination-actions">
             <button class="pagination-btn" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
@@ -98,10 +96,8 @@
             </button>
             <div class="pagination-pages">
               <ng-container *ngFor="let p of [].constructor(totalPages); let i = index">
-                <button class="page-btn" 
-                        [class.active]="currentPage === i + 1"
-                        (click)="goToPage(i + 1)"
-                        *ngIf="i + 1 >= currentPage - 2 && i + 1 <= currentPage + 2">
+                <button class="page-btn" [class.active]="currentPage === i + 1" (click)="goToPage(i + 1)"
+                  *ngIf="i + 1 >= currentPage - 2 && i + 1 <= currentPage + 2">
                   {{ i + 1 }}
                 </button>
               </ng-container>
@@ -116,8 +112,10 @@
       <!-- No Data State -->
       <div class="empty-state" *ngIf="!loading && (reportData.length === 0 || filteredData.length === 0)">
         <span class="material-icons">{{ reportData.length === 0 ? 'search_off' : 'filter_list_off' }}</span>
-        <p>{{ reportData.length === 0 ? 'No records found for this report type.' : 'No records match your filters.' }}</p>
-        <button class="btn btn-outline btn-sm mt-12" (click)="clearFilters()" *ngIf="filteredData.length === 0 && reportData.length > 0">
+        <p>{{ reportData.length === 0 ? 'No records found for this report type.' : 'No records match your filters.' }}
+        </p>
+        <button class="btn btn-outline btn-sm mt-12" (click)="clearFilters()"
+          *ngIf="filteredData.length === 0 && reportData.length > 0">
           Clear All Filters
         </button>
       </div>

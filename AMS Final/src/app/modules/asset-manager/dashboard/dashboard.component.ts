@@ -124,7 +124,8 @@ export class ManagerDashboardComponent implements OnInit {
         ...pendingReqs.map(r => ({ ...r, displayType: 'New Asset' })),
         ...confirmReqs.map(r => ({ ...r, displayType: 'Confirmation' })),
         ...returnReqs.map(r => ({ ...r, displayType: 'Return' })),
-        ...warrantyReqs.map(r => ({ ...r, displayType: 'Warranty' }))
+        ...warrantyReqs.map(r => ({ ...r, displayType: 'Warranty' })),
+        ...maintenanceReqs.map(r => ({ ...r, displayType: 'Maintenance' }))
       ];
 
       this.pendingRequestsCount = allPending.length;

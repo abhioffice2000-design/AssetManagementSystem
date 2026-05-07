@@ -40,7 +40,6 @@
                 <option *ngFor="let sc of filteredSubCategories" [value]="sc.id">{{ sc.name }}</option>
               </select>
             </div>
-            <p class="form-hint">System finds allocated assets for the selected Type + Subcategory.</p>
           </div>
         </div>
 
@@ -49,45 +48,10 @@
             <span class="material-icons-outlined">info</span>
             <p>
               Manual run will extend warranty by <strong>{{ manualDaysToExtend }} days</strong>.
-              Found <strong>{{ allocatedAssets.length }}</strong> allocated asset(s).
             </p>
           </div>
         </div>
 
-        <div class="results mt-24" *ngIf="selectedTypeId && selectedSubCatId">
-          <div class="results-header">
-            <h4 class="m-0">Allocated Assets (with user + email + attached services)</h4>
-            <span class="text-muted" *ngIf="isLoadingResults">Loading...</span>
-          </div>
-
-          <div class="empty-state" *ngIf="!isLoadingResults && allocatedAssets.length === 0">
-            <span class="material-icons-outlined">inventory_2</span>
-            No allocated assets found for this filter.
-          </div>
-
-          <div class="table-responsive" *ngIf="allocatedAssets.length > 0">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Email</th>
-                  <th>Asset</th>
-                  <th>Type</th>
-                  <th>Subcategory</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let a of allocatedAssets">
-                  <td><strong>{{ a.userName }}</strong></td>
-                  <td>{{ a.email }}</td>
-                  <td>{{ a.assetName }} <span class="text-muted">({{ a.assetId }})</span></td>
-                  <td>{{ a.assetType }}</td>
-                  <td>{{ a.subCategory }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
 
         <hr class="divider mt-32 mb-32" />
 

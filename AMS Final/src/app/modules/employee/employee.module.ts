@@ -20,7 +20,7 @@ const routes: Routes = [
   { path: 'return-asset', component: ReturnAssetComponent },
   { path: 'service-asset', component: ServiceAssetComponent },
   { path: 'extend-warranty', component: ExtendWarrantyComponent },
-  { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
+  { path: '', redirectTo: 'my-assets', pathMatch: 'full' }
 ];
 
 @NgModule({
