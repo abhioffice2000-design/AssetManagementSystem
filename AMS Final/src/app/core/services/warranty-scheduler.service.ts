@@ -108,6 +108,74 @@ export class WarrantySchedulerService {
     }
   }
 
+  /**
+   * Admin manual trigger for extending warranty on allocated assets
+   * filtered by asset type + subcategory.
+   *
+   * SOAP method: ExtendWarranty_BPM_final_scheduler
+   */
+  async extendWarrantyFinalScheduler(payload: { days: number; typeId: string; subCatId: string }): Promise<{
+    instanceId: string;
+    rawResponse: any;
+  }> {
+    const days = Number(payload?.days) || 0;
+    const typeId = String(payload?.typeId || '').trim();
+    const subCatId = String(payload?.subCatId || '').trim();
+
+    if (!days || !typeId || !subCatId) {
+      throw new Error('days, typeId, and subCatId are required.');
+    }
+
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <ExtendWarranty_BPM_final_scheduler xmlns="http://schemas.cordys.com/default">
+      <days>${days}</days>
+      <typeid>${typeId}</typeid>
+      <subcatid>${subCatId}</subcatid>
+    </ExtendWarranty_BPM_final_scheduler>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        if (typeof $ !== 'undefined' && $.cordys?.authentication?.sso) {
+          $.cordys.authentication.sso.authenticate('sourabhs', 'sourabhs')
+            .done(() => resolve())
+            .fail((err: any) => reject(err));
+        } else {
+          resolve();
+        }
+      });
+
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+
+      const fault = this.hs.xmltojson(response, 'Fault');
+      if (fault) {
+        const fs = fault.faultstring || JSON.stringify(fault);
+        throw new Error(`Cordys SOAP Fault: ${fs}`);
+      }
+
+      const dataNode =
+        this.hs.xmltojson(response, 'data') ||
+        this.hs.xmltojson(response, 'ExtendWarranty_BPM_final_schedulerResponse') ||
+        this.hs.xmltojson(response, 'ExtendWarranty_BPM_final_scheduler') ||
+        {};
+
+      const instanceId =
+        (dataNode as any)?.instance_id ||
+        (dataNode as any)?.data?.instance_id ||
+        (dataNode as any)?.ExtendWarranty_BPM_final_schedulerResponse?.data?.instance_id ||
+        (dataNode as any)?.ExtendWarranty_BPM_final_schedulerResponse?.instance_id ||
+        '';
+
+      return { instanceId: String(instanceId || ''), rawResponse: response };
+    } catch (err) {
+      console.error('[WarrantyScheduler] FAILED ExtendWarranty_BPM_final_scheduler:', err);
+      throw err;
+    }
+  }
+
   async getConfiguration(): Promise<{ days: number, time: string } | null> {
     try {
       const savedDays = localStorage.getItem('warranty_scheduler_days');

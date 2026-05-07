@@ -1,6 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit } from '@angular/core';
 import { NotificationService } from '../../../core/services/notification.service';
 import { WarrantySchedulerService } from '../../../core/services/warranty-scheduler.service';
+import { AssetService } from '../../../core/services/asset.service';
+import { AdminDataService, AssignedAsset } from '../../../core/services/admin-data.service';
 
 @Component({
   selector: 'app-warranty-scheduler',
@@ -8,6 +10,7 @@ import { WarrantySchedulerService } from '../../../core/services/warranty-schedu
   styleUrls: ['./warranty-scheduler.component.scss']
 })
 export class WarrantySchedulerComponent implements OnInit {
+  // Existing scheduler config (kept for backwards compatibility)
   selectedDays: number = 7;
   selectedTime: string = '09:00';
   isSaving: boolean = false;
@@ -15,11 +18,40 @@ export class WarrantySchedulerComponent implements OnInit {
   dayOptions = [7, 15, 30];
   timeOptions: string[] = [];
 
+  // UI state
+  isTimeDropdownOpen = false;
+
+  // New admin manual workflow state
+  assetTypes: Array<{ id: string; name: string }> = [];
+  subCategories: Array<{ id: string; name: string; typeId: string }> = [];
+  filteredSubCategories: Array<{ id: string; name: string; typeId: string }> = [];
+
+  selectedTypeId: string = '';
+  selectedSubCatId: string = '';
+
+  allocatedAssets: AssignedAsset[] = [];
+
+  manualDaysToExtend = 7;
+  lastInstanceId: string = '';
+  isLoadingResults = false;
+
   constructor(
     private notificationService: NotificationService,
-    private schedulerService: WarrantySchedulerService
+    private schedulerService: WarrantySchedulerService,
+    private assetService: AssetService,
+    private adminDataService: AdminDataService
   ) {
     this.generateTimeOptions();
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    // close when clicking outside of our dropdown container
+    if (!target.closest('.time-dropdown')) {
+      this.isTimeDropdownOpen = false;
+    }
   }
 
   async ngOnInit(): Promise<void> {
@@ -30,6 +62,7 @@ export class WarrantySchedulerComponent implements OnInit {
         this.selectedDays = config.days;
         this.selectedTime = config.time;
       }
+      await this.loadTypeAndSubCategoryOptions();
     } catch (error) {
       console.error('Failed to load scheduler configuration:', error);
       // Fallback to local storage if DB fails
@@ -37,8 +70,40 @@ export class WarrantySchedulerComponent implements OnInit {
       const savedTime = localStorage.getItem('warranty_scheduler_time');
       if (savedDays) this.selectedDays = parseInt(savedDays, 10);
       if (savedTime) this.selectedTime = savedTime;
+      await this.loadTypeAndSubCategoryOptions();
     } finally {
       this.isSaving = false;
+    }
+  }
+
+  private async loadTypeAndSubCategoryOptions(): Promise<void> {
+    try {
+      const dbTypes = await this.assetService.getAllAssetTypesCordys();
+      const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
+
+      this.assetTypes = (dbTypes || [])
+        .map((t: any) => ({
+          id: String(t.type_id || t.Type_id || t.TYPE_ID || t.id || '').trim(),
+          name: String(t.type_name || t.TYPE_NAME || t.name || '').trim()
+        }))
+        .filter(t => t.id && t.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      this.subCategories = (dbSubCats || [])
+        .map((c: any) => ({
+          id: String(c.sub_category_id || c.SUB_CATEGORY_ID || c.id || '').trim(),
+          name: String(c.name || c.sub_category_name || c.SUB_CATEGORY_NAME || '').trim(),
+          typeId: String(c.type_id || c.Type_id || c.TYPE_ID || '').trim()
+        }))
+        .filter(c => c.id && c.name && c.typeId)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      this.filteredSubCategories = [];
+    } catch (e) {
+      console.warn('[WarrantyScheduler] Failed to load type/subcategory options:', e);
+      this.assetTypes = [];
+      this.subCategories = [];
+      this.filteredSubCategories = [];
     }
   }
 
@@ -49,6 +114,58 @@ export class WarrantySchedulerComponent implements OnInit {
         const min = m.toString().padStart(2, '0');
         this.timeOptions.push(`${hour}:${min}`);
       }
+    }
+  }
+
+  toggleTimeDropdown() {
+    this.isTimeDropdownOpen = !this.isTimeDropdownOpen;
+  }
+
+  selectTime(time: string) {
+    this.selectedTime = time;
+    this.isTimeDropdownOpen = false;
+  }
+
+  onTypeChange() {
+    this.selectedSubCatId = '';
+    this.filteredSubCategories = this.selectedTypeId
+      ? this.subCategories.filter(sc => sc.typeId === this.selectedTypeId)
+      : [];
+
+    this.allocatedAssets = [];
+    this.lastInstanceId = '';
+  }
+
+  async onSelectionChange() {
+    this.lastInstanceId = '';
+
+    if (!this.selectedTypeId || !this.selectedSubCatId) {
+      this.allocatedAssets = [];
+      return;
+    }
+
+    this.isLoadingResults = true;
+    try {
+      // 1) Find allocated assets (joined users+assets)
+      const assigned = await this.adminDataService.GetAllAssetsAssignedToAllUsers();
+
+      const typeName = this.assetTypes.find(t => t.id === this.selectedTypeId)?.name || '';
+      const subCatName = this.subCategories.find(s => s.id === this.selectedSubCatId)?.name || '';
+
+      // NOTE: the current join service returns names (not IDs), so we filter by resolved names.
+      // This keeps the UI consistent with the ID-driven dropdowns while still finding allocations.
+      this.allocatedAssets = (assigned || []).filter((a: any) => {
+        const aType = String(a.assetType || '').trim().toLowerCase();
+        const aSub = String(a.subCategory || '').trim().toLowerCase();
+        return (!!typeName && aType === typeName.trim().toLowerCase()) &&
+               (!!subCatName && aSub === subCatName.trim().toLowerCase());
+      });
+    } catch (e) {
+      console.error('[WarrantyScheduler] Failed to load allocations/services:', e);
+      this.notificationService.showToast('Failed to load allocated assets', 'error');
+      this.allocatedAssets = [];
+    } finally {
+      this.isLoadingResults = false;
     }
   }
 
@@ -73,12 +190,28 @@ export class WarrantySchedulerComponent implements OnInit {
   }
 
   async runNow() {
+    // New behavior: manual extend warranty by 7 days using Type + Subcategory
+    if (!this.selectedTypeId || !this.selectedSubCatId) {
+      this.notificationService.showToast('Please select Type and Subcategory first.', 'warning');
+      return;
+    }
+
     this.isSaving = true;
     try {
-      await this.schedulerService.runNow();
-      this.notificationService.showToast('Warranty check BPM triggered successfully!', 'success');
+      const resp = await this.schedulerService.extendWarrantyFinalScheduler({
+        days: this.manualDaysToExtend,
+        typeId: this.selectedTypeId,
+        subCatId: this.selectedSubCatId
+      });
+      this.lastInstanceId = resp?.instanceId || '';
+      this.notificationService.showToast(
+        this.lastInstanceId
+          ? `Warranty extend triggered. Instance: ${this.lastInstanceId}`
+          : 'Warranty extend triggered successfully!',
+        'success'
+      );
     } catch (error) {
-      this.notificationService.showToast('Failed to trigger BPM. Please check console.', 'error');
+      this.notificationService.showToast('Failed to trigger warranty extend BPM. Please check console.', 'error');
     } finally {
       this.isSaving = false;
     }

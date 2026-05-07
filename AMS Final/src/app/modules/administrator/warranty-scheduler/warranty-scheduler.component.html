@@ -2,7 +2,7 @@
   <div class="page-header mb-24">
     <div>
       <h2 class="page-title">Warranty Extension Scheduler</h2>
-      <p class="page-subtitle">Configure automated reminder schedules for asset warranty extensions</p>
+      <p class="page-subtitle">Warranty scheduler and manual extension</p>
     </div>
   </div>
 
@@ -12,13 +12,86 @@
         <span class="material-icons-outlined">alarm</span>
       </div>
       <div>
-        <h3>Automation Settings</h3>
-        <p class="text-muted">Set the frequency and time for automated warranty notifications</p>
+        <h3>Manual Warranty Extension</h3>
       </div>
     </div>
 
     <div class="card-body">
       <div class="scheduler-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Asset Type</label>
+            <div class="select-wrapper">
+              <span class="material-icons-outlined select-icon">category</span>
+              <select class="form-control" [(ngModel)]="selectedTypeId" (ngModelChange)="onTypeChange()">
+                <option value="">Select type</option>
+                <option *ngFor="let t of assetTypes" [value]="t.id">{{ t.name }}</option>
+              </select>
+            </div>
+            <p class="form-hint">Choose the asset type to filter subcategories.</p>
+          </div>
+
+          <div class="form-group">
+            <label>Subcategory</label>
+            <div class="select-wrapper">
+              <span class="material-icons-outlined select-icon">dashboard</span>
+              <select class="form-control" [(ngModel)]="selectedSubCatId" (ngModelChange)="onSelectionChange()" [disabled]="!selectedTypeId">
+                <option value="">{{ selectedTypeId ? 'Select subcategory' : 'Select type first' }}</option>
+                <option *ngFor="let sc of filteredSubCategories" [value]="sc.id">{{ sc.name }}</option>
+              </select>
+            </div>
+            <p class="form-hint">System finds allocated assets for the selected Type + Subcategory.</p>
+          </div>
+        </div>
+
+        <div class="scheduler-preview mt-32" *ngIf="selectedTypeId && selectedSubCatId">
+          <div class="preview-info">
+            <span class="material-icons-outlined">info</span>
+            <p>
+              Manual run will extend warranty by <strong>{{ manualDaysToExtend }} days</strong>.
+              Found <strong>{{ allocatedAssets.length }}</strong> allocated asset(s).
+            </p>
+          </div>
+        </div>
+
+        <div class="results mt-24" *ngIf="selectedTypeId && selectedSubCatId">
+          <div class="results-header">
+            <h4 class="m-0">Allocated Assets (with user + email + attached services)</h4>
+            <span class="text-muted" *ngIf="isLoadingResults">Loading...</span>
+          </div>
+
+          <div class="empty-state" *ngIf="!isLoadingResults && allocatedAssets.length === 0">
+            <span class="material-icons-outlined">inventory_2</span>
+            No allocated assets found for this filter.
+          </div>
+
+          <div class="table-responsive" *ngIf="allocatedAssets.length > 0">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Asset</th>
+                  <th>Type</th>
+                  <th>Subcategory</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let a of allocatedAssets">
+                  <td><strong>{{ a.userName }}</strong></td>
+                  <td>{{ a.email }}</td>
+                  <td>{{ a.assetName }} <span class="text-muted">({{ a.assetId }})</span></td>
+                  <td>{{ a.assetType }}</td>
+                  <td>{{ a.subCategory }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <hr class="divider mt-32 mb-32" />
+
+        <!-- Existing automation config kept below -->
         <div class="form-row">
           <div class="form-group">
             <label>Reminder Frequency (Days Before)</label>
@@ -33,11 +106,23 @@
 
           <div class="form-group">
             <label>Execution Time</label>
-            <div class="select-wrapper">
+            <div class="select-wrapper time-dropdown" [class.open]="isTimeDropdownOpen">
               <span class="material-icons-outlined select-icon">schedule</span>
-              <select class="form-control" [(ngModel)]="selectedTime">
-                <option *ngFor="let time of timeOptions" [value]="time">{{ time }}</option>
-              </select>
+              <button type="button" class="form-control dropdown-trigger" (click)="toggleTimeDropdown()">
+                <span>{{ selectedTime }}</span>
+                <span class="material-icons-outlined chevron">expand_more</span>
+              </button>
+
+              <div class="dropdown-menu" *ngIf="isTimeDropdownOpen">
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  *ngFor="let time of timeOptions"
+                  [class.active]="time === selectedTime"
+                  (click)="selectTime(time)">
+                  {{ time }}
+                </button>
+              </div>
             </div>
             <p class="form-hint">Preferred time for the automation job to run daily.</p>
           </div>
@@ -61,7 +146,7 @@
 
       <button class="btn btn-outline" [disabled]="isSaving" (click)="runNow()">
         <span class="material-icons-outlined">play_arrow</span>
-        Run Now (Manual)
+        Run Manual
       </button>
     </div>
   </div>
