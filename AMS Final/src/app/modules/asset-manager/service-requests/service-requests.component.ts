@@ -363,10 +363,7 @@ export class ServiceRequestsComponent implements OnInit {
         remarks: this.actionRemarks || 'Final approval granted'
       });
 
-      // Complete BPM task
-      if (item.temp7) {
-        await this.requestService.completeUserTask({ TaskId: item.temp7, Action: 'COMPLETE' } as any);
-      }
+      await this.completeWorkflowTaskForApproval(item);
 
       this.notificationService.showToast(`Service request ${item.service_request_id} final approval granted. Asset is now On Service.`, 'success');
       this.closeDrawer();
@@ -408,10 +405,7 @@ export class ServiceRequestsComponent implements OnInit {
       };
       await this.requestService.createEntryForServiceRequest(updateRequest);
 
-      // Complete BPM task
-      if (item.temp7) {
-        await this.requestService.completeUserTask({ TaskId: item.temp7, Action: 'COMPLETE' } as any);
-      }
+      await this.completeWorkflowTaskForApproval(item);
 
       this.notificationService.showToast(`Service request ${item.service_request_id} rejected.`, 'success');
       this.closeDrawer();
@@ -425,6 +419,17 @@ export class ServiceRequestsComponent implements OnInit {
   }
 
   // ─── Temp Asset Assignment ─────────────────────────────────────────────
+
+  private async completeWorkflowTaskForApproval(item: any): Promise<void> {
+    const taskId = item?.temp7 || await this.requestService.getServiceApprovalTaskId(item?.approval_id);
+
+    if (!taskId) {
+      console.warn(`[ServiceRequests] No workflow task id found for approval ${item?.approval_id}. PerformTaskAction skipped.`);
+      return;
+    }
+
+    await this.requestService.completeUserTask({ TaskId: taskId, Action: 'COMPLETE' } as any);
+  }
 
   openTempAssetModal(item: any): void {
     this.selectedItem = item;

@@ -1,100 +1,211 @@
-<div class="task-console animate-fade-in">
-  <!-- Top Critical Badges -->
-  <header class="console-header mb-32">
-    <div class="badge-card amber">
-      <div class="b-icon"><span class="material-icons">schedule</span></div>
-      <div class="b-text">
-        <span class="b-val">{{ stats.totalPending }}</span>
-        <span class="b-lbl">Pending Actions</span>
+<div class="dashboard-container animate-fade-in">
+  <div class="header-section">
+    <div class="title-block">
+      <span class="title-icon material-icons">dashboard</span>
+      <div>
+        <h2>Allocation Dashboard</h2>
+        <p>{{ inventoryTypeName || 'Assigned' }} inventory and pending work for your allocation team role</p>
       </div>
     </div>
-    <div class="badge-card purple">
-      <div class="b-icon"><span class="material-icons">event</span></div>
-      <div class="b-text">
-        <span class="b-val">{{ stats.warrantyAlerts }}</span>
-        <span class="b-lbl">Warranty Alerts</span>
-      </div>
-    </div>
-  </header>
-
-  <div class="console-grid">
-    <!-- Asset Distribution Donut Chart -->
-    <section class="console-section">
-      <div class="section-header">
-        <div class="h-main">
-          <h3>Asset Distribution</h3>
-          <p>Fleet breakdown by asset category</p>
-        </div>
-      </div>
-      <div class="section-body chart-container">
-        <canvas baseChart
-          [data]="assetTypeChartData"
-          [options]="assetTypeChartOptions"
-          [type]="'doughnut'">
-        </canvas>
-      </div>
-    </section>
-
-    <!-- Warranty Expiry (KEEP AND MAKE CLICKABLE) -->
-    <section class="console-section">
-      <div class="section-header">
-        <div class="h-main">
-          <h3>Warranty Expiry (Next 30 Days)</h3>
-          <p>Select an asset to view assignment details</p>
-        </div>
-      </div>
-      <div class="section-body">
-        <div class="expiry-list">
-          <div class="expiry-item clickable" *ngFor="let a of expiringAssets" (click)="openAssetDetails(a)">
-            <div class="e-icon"><span class="material-icons">verified</span></div>
-            <div class="e-info">
-              <span class="e-name">{{ a.name }}</span>
-              <span class="e-tag">{{ a.tag }}</span>
-            </div>
-            <div class="e-days" [class.critical]="a.days <= 5">{{ a.days }} Days Left</div>
-          </div>
-          <div *ngIf="expiringAssets.length === 0" class="empty-list">
-            No warranties expiring soon.
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Stock Gap Alerts -->
-    <section class="console-section" *ngIf="stockAlerts.length > 0">
-      <div class="section-header">
-        <div class="h-main">
-          <h3>Critical Stock Gaps</h3>
-          <p>Demand exceeds available inventory</p>
-        </div>
-      </div>
-      <div class="section-body">
-        <div class="alert-list">
-          <div class="alert-item" *ngFor="let s of stockAlerts">
-            <div class="a-info">
-              <span class="a-cat">{{ s.category }}</span>
-              <span class="a-stock">{{ s.available }} Available / {{ s.waiting }} Waiting</span>
-            </div>
-            <div class="a-status" [class.critical]="s.available === 0">
-              {{ s.available === 0 ? 'Out of Stock' : 'Low Stock' }}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
   </div>
 
-  <!-- Extend Warranty Pending Requests Section -->
-  <section class="console-section full-width mt-24">
-    <div class="section-header">
-      <div class="h-main">
-        <h3>Extend Warranty Pending Requests</h3>
-        <p>Review and extend warranty for employee assets</p>
+  <div class="loading-state" *ngIf="loading">
+    <div class="spinner"></div>
+    <p>Loading dashboard...</p>
+  </div>
+
+  <ng-container *ngIf="!loading">
+    <section class="summary-stats">
+      <div class="summary-stat">
+        <span class="material-icons">inventory_2</span>
+        <div>
+          <span class="label">Total Assets</span>
+          <span class="value">{{ stats.totalAssets }}</span>
+        </div>
       </div>
+      <div class="summary-stat available">
+        <span class="material-icons">check_circle</span>
+        <div>
+          <span class="label">Available</span>
+          <span class="value">{{ stats.available }}</span>
+        </div>
+      </div>
+      <div class="summary-stat move-to-allocation">
+        <span class="material-icons">assignment_turned_in</span>
+        <div>
+          <span class="label">Ready for Allocation</span>
+          <span class="value">{{ stats.readyForAllocation }}</span>
+        </div>
+      </div>
+      <div class="summary-stat allocated">
+        <span class="material-icons">person_pin_circle</span>
+        <div>
+          <span class="label">Allocated</span>
+          <span class="value">{{ stats.allocated }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="work-strip">
+      <div class="work-item">
+        <span class="material-icons">pending_actions</span>
+        <div>
+          <strong>{{ stats.totalPending }}</strong>
+          <span>Pending actions</span>
+        </div>
+      </div>
+      <div class="work-item warranty">
+        <span class="material-icons">event</span>
+        <div>
+          <strong>{{ stats.warrantyAlerts }}</strong>
+          <span>Warranties within 30 days</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>Category Breakdown</h3>
+            <p>Counts match the allocation inventory page.</p>
+          </div>
+        </div>
+        <div class="chart-container" *ngIf="inventoryRows.length > 0">
+          <canvas baseChart
+            [data]="assetTypeChartData"
+            [options]="assetTypeChartOptions"
+            [type]="'doughnut'">
+          </canvas>
+        </div>
+        <div *ngIf="inventoryRows.length === 0" class="empty-state">
+          <span class="material-icons">inventory_2</span>
+          <h4>No inventory assigned</h4>
+          <p>No assets are linked to your allocation team asset type.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>Ready For Allocation</h3>
+            <p>Assets currently in Move To Allocation Team status.</p>
+          </div>
+        </div>
+        <div class="asset-list" *ngIf="readyAssets.length > 0">
+          <div class="asset-row" *ngFor="let asset of readyAssets">
+            <div class="asset-main">
+              <span class="asset-name">{{ asset.name }}</span>
+              <span class="asset-meta">{{ asset.assetTag }} &middot; {{ asset.category }}</span>
+            </div>
+            <span class="status-badge" [ngClass]="getStatusClass(asset.status)">
+              {{ getStatusLabel(asset.status) }}
+            </span>
+          </div>
+        </div>
+        <div *ngIf="readyAssets.length === 0" class="empty-state compact">
+          <span class="material-icons">assignment_turned_in</span>
+          <h4>No assets waiting</h4>
+          <p>There are no ready-for-allocation assets right now.</p>
+        </div>
+      </section>
     </div>
-    <div class="section-body">
+
+    <section class="panel full-width">
+      <div class="panel-header">
+        <div>
+          <h3>Inventory Summary</h3>
+          <p>Category totals from your allocation inventory.</p>
+        </div>
+      </div>
       <div class="table-responsive">
-        <table class="modern-table">
+        <table class="dashboard-table">
+          <thead>
+            <tr>
+              <th>Asset Type</th>
+              <th>Category</th>
+              <th>Total</th>
+              <th>Available</th>
+              <th>Ready</th>
+              <th>Allocated</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of inventoryRows">
+              <td>{{ row.typeName }}</td>
+              <td>{{ row.categoryName }}</td>
+              <td><strong>{{ row.total }}</strong></td>
+              <td class="count-available">{{ row.available }}</td>
+              <td class="count-ready">{{ row.moveToAllocation }}</td>
+              <td class="count-allocated">{{ row.assigned }}</td>
+            </tr>
+            <tr *ngIf="inventoryRows.length === 0">
+              <td colspan="6">
+                <div class="empty-state compact">
+                  <span class="material-icons">inventory_2</span>
+                  <h4>No inventory assigned</h4>
+                  <p>No category data is available for this user.</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>Warranty Expiry</h3>
+            <p>Assets expiring in the next 30 days.</p>
+          </div>
+        </div>
+        <div class="expiry-list" *ngIf="expiringAssets.length > 0">
+          <div class="expiry-item" *ngFor="let a of expiringAssets" (click)="openAssetDetails(a)">
+            <div class="expiry-icon"><span class="material-icons">verified</span></div>
+            <div class="expiry-info">
+              <span class="expiry-name">{{ a.name }}</span>
+              <span class="expiry-tag">{{ a.tag }}</span>
+            </div>
+            <span class="expiry-days" [class.critical]="a.days <= 5">{{ a.days }} days</span>
+          </div>
+        </div>
+        <div *ngIf="expiringAssets.length === 0" class="empty-state compact">
+          <span class="material-icons">verified_user</span>
+          <h4>No warranty alerts</h4>
+          <p>No assigned inventory expires in the next 30 days.</p>
+        </div>
+      </section>
+
+      <section class="panel" *ngIf="stockAlerts.length > 0">
+        <div class="panel-header">
+          <div>
+            <h3>Stock Gaps</h3>
+            <p>Pending demand is higher than available inventory.</p>
+          </div>
+        </div>
+        <div class="alert-list">
+          <div class="alert-item" *ngFor="let s of stockAlerts">
+            <div>
+              <span class="alert-title">{{ s.category }}</span>
+              <span class="alert-meta">{{ s.available }} available / {{ s.waiting }} waiting</span>
+            </div>
+            <span class="alert-status">{{ s.available === 0 ? 'Out of Stock' : 'Low Stock' }}</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel full-width">
+      <div class="panel-header">
+        <div>
+          <h3>Extend Warranty Pending Requests</h3>
+          <p>Review and extend warranty for employee assets.</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="dashboard-table">
           <thead>
             <tr>
               <th>Request ID</th>
@@ -107,8 +218,8 @@
           <tbody>
             <tr *ngFor="let req of pendingWarrantyRequests">
               <td class="req-id">{{ req.id }}</td>
-              <td>{{ req.requesterName }}</td>
-              <td>{{ req.assetName }}</td>
+              <td>{{ req.requesterName || 'Employee' }}</td>
+              <td>{{ req.assetName || req.assignedAssetId }}</td>
               <td>{{ req.assignedWarrantyExpiry | date:'mediumDate' }}</td>
               <td>
                 <button class="btn-action" (click)="openWarrantyModal(req)">
@@ -118,16 +229,21 @@
               </td>
             </tr>
             <tr *ngIf="pendingWarrantyRequests.length === 0">
-              <td colspan="5" class="empty-state">No pending warranty extension requests found.</td>
+              <td colspan="5">
+                <div class="empty-state compact">
+                  <span class="material-icons">event_available</span>
+                  <h4>No pending warranty requests</h4>
+                  <p>There are no warranty extension requests waiting for you.</p>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
-    </div>
-  </section>
+    </section>
+  </ng-container>
 </div>
 
-<!-- Warranty Details Modal -->
 <div class="modal-overlay" *ngIf="isModalOpen" (click)="$event.stopPropagation(); closeModal()">
   <div class="modal-content animate-slide-up" (click)="$event.stopPropagation()">
     <div class="modal-header">
@@ -138,25 +254,25 @@
     </div>
     <div class="modal-body" *ngIf="selectedAsset">
       <div class="detail-row">
-        <span class="d-label">Asset Name:</span>
+        <span class="d-label">Asset Name</span>
         <span class="d-value">{{ selectedAsset.name }}</span>
       </div>
       <div class="detail-row">
-        <span class="d-label">Asset Tag:</span>
+        <span class="d-label">Asset Tag</span>
         <span class="d-value">{{ selectedAsset.tag }}</span>
       </div>
       <div class="detail-row highlight">
-        <span class="d-label">Assigned To:</span>
+        <span class="d-label">Assigned To</span>
         <span class="d-value">{{ selectedAsset.assignedTo }}</span>
       </div>
       <div class="detail-row highlight">
-        <span class="d-label">Expiry Date:</span>
+        <span class="d-label">Expiry Date</span>
         <span class="d-value">{{ selectedAsset.expiry | date:'fullDate' }}</span>
       </div>
       <div class="detail-row">
-        <span class="d-label">Status:</span>
+        <span class="d-label">Status</span>
         <span class="res-badge" [class.critical]="selectedAsset.days <= 5">
-          {{ selectedAsset.days }} Days remaining
+          {{ selectedAsset.days }} days remaining
         </span>
       </div>
     </div>
@@ -166,7 +282,6 @@
   </div>
 </div>
 
-<!-- Extend Warranty Professional Form Modal -->
 <div class="modal-overlay" *ngIf="isWarrantyModalOpen" (click)="closeWarrantyModal()">
   <div class="modal-content professional-form animate-slide-up" (click)="$event.stopPropagation()">
     <div class="modal-header">
@@ -178,9 +293,9 @@
         <span class="material-icons">close</span>
       </button>
     </div>
-    
+
     <div class="modal-body" *ngIf="selectedWarrantyRequest">
-      <div class="form-summary card">
+      <div class="form-summary">
         <div class="summary-item">
           <span class="label">Asset Details</span>
           <span class="value">{{ selectedWarrantyRequest.assetName }}</span>
@@ -199,17 +314,16 @@
         </div>
       </div>
 
-      <div class="form-group mt-24">
+      <div class="form-group">
         <label for="newExpiryDate" class="form-label">Select New Warranty Expiry Date</label>
         <div class="input-wrapper">
           <span class="material-icons input-icon">calendar_today</span>
-          <input 
-            type="date" 
-            id="newExpiryDate" 
-            class="form-input" 
+          <input
+            type="date"
+            id="newExpiryDate"
+            class="form-input"
             [(ngModel)]="newWarrantyDate"
-            [min]="selectedWarrantyRequest.assignedWarrantyExpiry"
-          >
+            [min]="selectedWarrantyRequest.assignedWarrantyExpiry">
         </div>
         <p class="form-hint">The new date must be after the current expiry date.</p>
       </div>

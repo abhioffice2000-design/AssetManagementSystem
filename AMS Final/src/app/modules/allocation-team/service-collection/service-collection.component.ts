@@ -132,8 +132,6 @@ export class ServiceCollectionComponent implements OnInit {
     if (this.isSaving) return;
     this.isSaving = true;
     try {
-      const currentUser = this.authService.getCurrentUser();
-
       // 1. Update this approval to Approved (Collected)
       const updateApproval = {
         tuple: {
@@ -179,9 +177,7 @@ export class ServiceCollectionComponent implements OnInit {
       }
 
       // 4. Complete BPM task
-      if (item.temp7) {
-        await this.requestService.completeUserTask({ TaskId: item.temp7, Action: 'COMPLETE' } as any);
-      }
+      await this.completeWorkflowTaskForApproval(item);
 
       this.notificationService.showToast(`Asset collected. Service request ${item.service_request_id} forwarded to Asset Manager for final approval.`, 'success');
       this.closeDrawer();
@@ -220,9 +216,7 @@ export class ServiceCollectionComponent implements OnInit {
       };
       await this.requestService.createEntryForServiceRequest(updateRequest);
 
-      if (item.temp7) {
-        await this.requestService.completeUserTask({ TaskId: item.temp7, Action: 'COMPLETE' } as any);
-      }
+      await this.completeWorkflowTaskForApproval(item);
 
       this.notificationService.showToast(`Service request ${item.service_request_id} rejected.`, 'success');
       this.closeDrawer();
@@ -233,5 +227,16 @@ export class ServiceCollectionComponent implements OnInit {
     } finally {
       this.isSaving = false;
     }
+  }
+
+  private async completeWorkflowTaskForApproval(item: any): Promise<void> {
+    const taskId = item?.temp7 || await this.requestService.getServiceApprovalTaskId(item?.approval_id);
+
+    if (!taskId) {
+      console.warn(`[ServiceCollection] No workflow task id found for approval ${item?.approval_id}. PerformTaskAction skipped.`);
+      return;
+    }
+
+    await this.requestService.completeUserTask({ TaskId: taskId, Action: 'COMPLETE' } as any);
   }
 }
