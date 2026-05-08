@@ -133,18 +133,6 @@ export class ServiceRequestsComponent implements OnInit {
           return db - da; // newest first
         });
 
-      // Load allocation team members for Stage 1 → Stage 2 forwarding
-      const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
-      const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
-      this.allocationTeamMemberList = rawMembers.map((m: any) => ({
-        user_id: m?.old?.m_users?.user_id || m?.m_users?.user_id || m?.user_id || '',
-        name: m?.old?.m_users?.name || m?.m_users?.name || m?.name || 'Unknown',
-        email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
-      }));
-      if (this.allocationTeamMemberList.length > 0) {
-        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
-      }
-
       // Load available assets for temp asset assignment
       const allAssets = await this.assetService.fetchAssetDetailsFromService().catch(() => []);
       this.availableAssets = allAssets.filter((a: any) => a.status === 'Available');
@@ -266,6 +254,8 @@ export class ServiceRequestsComponent implements OnInit {
     this.drawerOpen = true;
     this.actionRemarks = '';
     this.approvalChain = [];
+    this.allocationTeamMemberList = [];
+    this.selectedAllocationMemberId = '';
     this.loadingChain = true;
     try {
       const chain = await this.requestService.getServiceRequestApprovalChain(item.service_request_id);
@@ -278,6 +268,8 @@ export class ServiceRequestsComponent implements OnInit {
     } finally {
       this.loadingChain = false;
     }
+
+    await this.loadAllocationTeamMemberForItem(item);
   }
 
   closeDrawer(): void {
@@ -347,6 +339,39 @@ export class ServiceRequestsComponent implements OnInit {
       name: user?.name || fallbackName || this.allUsersMap.get(userId) || 'User',
       email: user?.email || fallbackEmail || ''
     };
+  }
+
+  private async loadAllocationTeamMemberForItem(item: any): Promise<void> {
+    if (item?.stage !== 'STAGE_1_MANAGER') return;
+
+    try {
+      const assetTypeId = item.asset_type_id || (item.asset_id ? await this.requestService.getTypeIdFromAssetId(item.asset_id) : '');
+      if (!assetTypeId) {
+        console.warn('Unable to resolve asset type for service request:', item?.service_request_id);
+        return;
+      }
+
+      const userId = await this.requestService.getUserIdByTypeAndRole(assetTypeId, 'rol_05');
+      const user = await this.authService.getUserDetails(userId).catch(() => null);
+
+      this.selectedAllocationMemberId = userId;
+      this.allocationTeamMemberList = [{
+        user_id: userId,
+        name: user?.name || this.allUsersMap.get(userId) || userId,
+        email: user?.email || ''
+      }];
+    } catch (err) {
+      console.error('Failed to resolve allocation team member for service request:', err);
+      this.allocationTeamMemberList = [];
+      this.selectedAllocationMemberId = '';
+    }
+  }
+
+  getSelectedAllocationMemberName(): string {
+    const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
+    if (!member) return 'Not Assigned';
+
+    return member.email ? `${member.name} - ${member.email}` : member.name;
   }
 
   private getServiceAssetLabel(item: any): string {
@@ -772,6 +797,15 @@ export class ServiceRequestsComponent implements OnInit {
     this.servicedDrawerItem = null;
     this.tempAssetInfo = null;
     this.tempReturnDone = false;
+  }
+
+  hasActiveTempAsset(): boolean {
+    const tempId = String(this.tempAssetInfo?.temp_asset_id || '').trim();
+    return !!tempId && tempId !== 'N/A' && tempId !== '-' && tempId !== '—';
+  }
+
+  canCompleteHandover(): boolean {
+    return !this.hasActiveTempAsset() || this.tempReturnDone;
   }
 
   // ─── Return Temp Asset ─────────────────────────────────────────────────
