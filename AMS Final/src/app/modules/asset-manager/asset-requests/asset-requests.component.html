@@ -419,6 +419,10 @@
               <ng-container *ngIf="detailRequest.status === RequestStatus.PENDING && detailRequest.currentStage === 'Asset Manager Approval'">
                 <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation' && detailRequest.requestType !== 'Extend Warranty'">
                   <label>Select Asset</label>
+                  <div class="asset-match-warning" *ngIf="showAvailableAssetFallbackWarning">
+                    <span class="material-icons-outlined">warning_amber</span>
+                    <span>No matching asset found for this request type/category. Showing all available assets.</span>
+                  </div>
                   <select class="asset-select" [(ngModel)]="selectedAssetId" (ngModelChange)="onAssetSelect($event)">
                     <option value="">-- Select Available Asset --</option>
                     <option *ngFor="let asset of filteredAvailableAssets" [value]="asset.asset_id">

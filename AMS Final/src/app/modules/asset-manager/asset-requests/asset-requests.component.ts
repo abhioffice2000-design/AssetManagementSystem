@@ -32,6 +32,7 @@ export class AssetRequestsComponent implements OnInit {
   urgencies = Object.values(RequestUrgency);
   RequestStatus = RequestStatus; // Add this to use in template
   availableAssets: any[] = [];
+  private assetSubCategoryMap = new Map<string, { name: string, typeId: string }>();
   selectedAssetId = '';
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
@@ -166,42 +167,136 @@ export class AssetRequestsComponent implements OnInit {
 
   async loadAvailableAssets(): Promise<void> {
     try {
-      const allAssets = await this.assetService.fetchAssetDetailsFromService();
+      const [allAssets, subCategories] = await Promise.all([
+        this.assetService.fetchAssetDetailsFromService(),
+        this.assetService.getAllSubcategoriesCordys().catch(err => {
+          console.warn('Failed to load asset subcategories for dropdown matching:', err);
+          return [];
+        })
+      ]);
       this.availableAssets = allAssets.filter(a => a.status === 'Available');
+      this.assetSubCategoryMap = new Map(
+        (subCategories || [])
+          .map((sub: any) => {
+            const id = this.normalizeAssetMatchKey(sub?.sub_category_id || sub?.SUB_CATEGORY_ID || sub?.id);
+            const name = this.normalizeAssetMatchKey(sub?.name || sub?.sub_category_name || sub?.SUB_CATEGORY_NAME);
+            const typeId = this.normalizeAssetMatchKey(sub?.type_id || sub?.TYPE_ID);
+            return id ? [id, { name, typeId }] as [string, { name: string, typeId: string }] : null;
+          })
+          .filter((entry): entry is [string, { name: string, typeId: string }] => !!entry)
+      );
       console.log(`Loaded ${this.availableAssets.length} available assets for dropdown`);
     } catch (err) {
       console.error('Failed to load available assets:', err);
       this.availableAssets = [];
+      this.assetSubCategoryMap.clear();
     }
   }
 
   get filteredAvailableAssets(): any[] {
-    if (!this.detailRequest) return [];
+    return this.getAvailableAssetDropdownResult().assets;
+  }
 
-    const reqType = (this.detailRequest.assetType || '').toLowerCase();
-    const reqCategory = (this.detailRequest.category || '').toLowerCase();
+  get showAvailableAssetFallbackWarning(): boolean {
+    return this.getAvailableAssetDropdownResult().isFallback;
+  }
 
-    return this.availableAssets.filter(asset => {
-      // Get normalized names for the asset using the public service methods
-      const normalizedAssetType = this.requestService.normalizeAssetType(asset.type_id).toLowerCase();
-      const normalizedAssetCat = this.requestService.normalizeCategory(asset.sub_category_id).toLowerCase();
+  private getAvailableAssetDropdownResult(): { assets: any[], isFallback: boolean } {
+    if (!this.detailRequest) return { assets: [], isFallback: false };
 
-      // Priority 1: Match by category (Laptop, Monitor, etc.)
-      if (reqCategory && reqCategory !== 'hardware' && reqCategory !== 'software' && reqCategory !== 'asset detail') {
-        if (normalizedAssetCat === reqCategory) return true;
+    const requestedTypes = this.getRequestedAssetTypeKeys(this.detailRequest);
+    const requestedCategories = this.getRequestedAssetCategoryKeys(this.detailRequest);
 
-        // Also check if asset_name contains the category for more flexible matching
-        if (asset.asset_name && asset.asset_name.toLowerCase().includes(reqCategory)) return true;
-      }
-
-      // Priority 2: Match by type (Hardware, Software)
-      if (reqType && reqType !== 'n/a') {
-        return normalizedAssetType === reqType;
-      }
-
-      // If we can't determine a match based on type/category, show all available (fallback)
-      return true;
+    const exactMatches = this.availableAssets.filter(asset => {
+      const typeMatches = requestedTypes.length === 0 || this.getAssetTypeKeys(asset).some(key => requestedTypes.includes(key));
+      const categoryMatches = requestedCategories.length === 0 || this.matchesRequestedAssetCategory(asset, requestedCategories);
+      return typeMatches && categoryMatches;
     });
+
+    if (exactMatches.length > 0) {
+      return { assets: exactMatches, isFallback: false };
+    }
+
+    return { assets: this.availableAssets, isFallback: this.availableAssets.length > 0 };
+  }
+
+  private getRequestedAssetTypeKeys(request: AssetRequest): string[] {
+    return this.uniqueKeys([
+      request.assetType,
+      request.assignedTypeId,
+      this.getSubCategoryInfo(request.category)?.typeId,
+      this.getSubCategoryInfo(request.subCategory)?.typeId,
+      this.requestService.normalizeAssetType(request.assetType)
+    ]);
+  }
+
+  private getRequestedAssetCategoryKeys(request: AssetRequest): string[] {
+    const genericValues = new Set(['hardware', 'software', 'network', 'peripheral', 'asset detail', 'n/a']);
+    return this.uniqueKeys([
+      request.category,
+      request.subCategory,
+      request.assetName,
+      request.assignedSubCategoryId,
+      this.getSubCategoryInfo(request.category)?.name,
+      this.getSubCategoryInfo(request.subCategory)?.name,
+      this.getSubCategoryInfo(request.assignedSubCategoryId)?.name,
+      this.requestService.normalizeCategory(request.category),
+      this.requestService.normalizeCategory(request.subCategory)
+    ]).filter(key => !genericValues.has(key));
+  }
+
+  private getAssetTypeKeys(asset: any): string[] {
+    return this.uniqueKeys([
+      asset?.type_id,
+      asset?.type_name,
+      asset?.asset_type,
+      this.getSubCategoryInfo(asset?.sub_category_id)?.typeId,
+      this.requestService.normalizeAssetType(asset?.type_id || asset?.type_name || asset?.asset_type)
+    ]);
+  }
+
+  private getAssetCategoryKeys(asset: any): string[] {
+    return this.uniqueKeys([
+      asset?.sub_category_id,
+      asset?.sub_category_name,
+      asset?.category,
+      asset?.asset_name,
+      this.getSubCategoryInfo(asset?.sub_category_id)?.name,
+      this.requestService.normalizeCategory(asset?.sub_category_id || asset?.sub_category_name || asset?.category)
+    ]);
+  }
+
+  private getSubCategoryInfo(value: string | undefined): { name: string, typeId: string } | undefined {
+    const key = this.normalizeAssetMatchKey(value);
+    return key ? this.assetSubCategoryMap.get(key) : undefined;
+  }
+
+  private matchesRequestedAssetCategory(asset: any, requestedCategories: string[]): boolean {
+    const assetCategories = this.getAssetCategoryKeys(asset);
+    return assetCategories.some(assetCategory =>
+      requestedCategories.some(requestedCategory =>
+        assetCategory === requestedCategory ||
+        assetCategory.includes(requestedCategory) ||
+        requestedCategory.includes(assetCategory)
+      )
+    );
+  }
+
+  private uniqueKeys(values: Array<string | undefined>): string[] {
+    return Array.from(new Set(
+      values
+        .map(value => this.normalizeAssetMatchKey(value))
+        .filter((value): value is string => !!value)
+    ));
+  }
+
+  private normalizeAssetMatchKey(value: string | undefined): string {
+    if (!value) return '';
+    const normalized = String(value).trim().toLowerCase();
+    if (!normalized || normalized === 'null' || normalized === 'undefined' || normalized === '—' || normalized === '-') {
+      return '';
+    }
+    return normalized;
   }
 
   switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
@@ -1077,6 +1172,7 @@ export class AssetRequestsComponent implements OnInit {
   async openDetailModal(request: AssetRequest): Promise<void> {
     this.detailRequest = { ...request };
     this.actionComments = ''; // Reset remarks for this specific request
+    this.selectedAssetId = '';
     this.showDetailModal = true;
 
     // Fetch real-time progress to get actual names and statuses for the tracker

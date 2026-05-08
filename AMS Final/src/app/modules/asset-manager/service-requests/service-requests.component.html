@@ -539,9 +539,14 @@
         <!-- Allocation Team Member Selector (Stage 1 only) -->
         <div class="assign-member-box" *ngIf="selectedItem.stage === 'STAGE_1_MANAGER' && allocationTeamMemberList.length > 0">
           <label>Assign Allocation Team Member</label>
-          <select [(ngModel)]="selectedAllocationMemberId" class="form-control">
-            <option *ngFor="let m of allocationTeamMemberList" [value]="m.user_id">{{ m.name }}</option>
-          </select>
+          <div *ngIf="allocationTeamMemberList.length === 1; else allocationMemberDropdown" class="readonly-member">
+            {{ getSelectedAllocationMemberName() }}
+          </div>
+          <ng-template #allocationMemberDropdown>
+            <select [(ngModel)]="selectedAllocationMemberId" class="form-control">
+              <option *ngFor="let m of allocationTeamMemberList" [value]="m.user_id">{{ m.name }}</option>
+            </select>
+          </ng-template>
         </div>
 
         <div class="remarks-form-box">
@@ -611,7 +616,7 @@
         </div>
       </div>
 
-      <div class="asset-summary-card temp-card" *ngIf="tempAssetInfo">
+      <div class="asset-summary-card temp-card" *ngIf="hasActiveTempAsset()">
         <div class="asset-card-header">
           <span class="material-icons">devices_other</span>
           <h4>Temporary Asset</h4>
@@ -641,7 +646,7 @@
         Handover Steps
       </div>
       <div class="handover-steps">
-        <div class="step-card" [class.step-done]="tempReturnDone">
+        <div class="step-card" [class.step-done]="tempReturnDone" *ngIf="hasActiveTempAsset()">
           <div class="step-header">
             <div class="step-number">
               <span class="material-icons" *ngIf="tempReturnDone">check_circle</span>
@@ -658,18 +663,18 @@
           </button>
         </div>
 
-        <div class="step-card" [class.step-disabled]="!tempReturnDone">
+        <div class="step-card" [class.step-disabled]="!canCompleteHandover()">
           <div class="step-header">
             <div class="step-number">
-              <span class="material-icons" *ngIf="tempReturnDone">arrow_forward</span>
-              <span *ngIf="!tempReturnDone">2</span>
+              <span class="material-icons" *ngIf="canCompleteHandover()">arrow_forward</span>
+              <span *ngIf="!canCompleteHandover()">2</span>
             </div>
             <div class="step-info">
               <span class="step-title">Handover Serviced Asset</span>
               <span class="step-desc">Hand over the serviced original asset back to the employee.</span>
             </div>
           </div>
-          <button class="step-btn step-btn-primary" *ngIf="tempReturnDone" (click)="completeHandover()" [disabled]="isSaving">
+          <button class="step-btn step-btn-primary" *ngIf="canCompleteHandover()" (click)="completeHandover()" [disabled]="isSaving">
             <span class="material-icons">handshake</span>
             {{ isSaving ? 'Processing...' : 'Complete Handover' }}
           </button>
