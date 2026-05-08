@@ -6,6 +6,7 @@ import { AssetService } from '../../../core/services/asset.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { RequestService } from '../../../core/services/request.service';
+import { MailService } from '../../../core/services/mail.service';
 
 @Component({
   selector: 'app-service-asset',
@@ -24,6 +25,7 @@ export class ServiceAssetComponent implements OnInit {
     private authService: AuthService,
     private notificationService: NotificationService,
     private requestService: RequestService,
+    private mailService: MailService,
     private router: Router
   ) { }
 
@@ -63,6 +65,8 @@ export class ServiceAssetComponent implements OnInit {
 
     try {
       const assetManagerId = await this.requestService.resolveServiceAssetManagerId(this.selectedAsset.id);
+      const freshUser = await this.authService.getUserDetails(user.id).catch(() => null);
+      const teamLeadId = user.managerId || user.teamLeadId || freshUser?.managerId || freshUser?.teamLeadId || '';
 
       // Build fields map - only include FK fields when they have valid values.
       // Using raw SOAP XML prevents Cordys BusObject from auto-generating
@@ -81,8 +85,8 @@ export class ServiceAssetComponent implements OnInit {
       };
 
       // Only add FK fields when they have actual valid values
-      if (user.managerId) {
-        fields['tl_id'] = user.managerId;
+      if (teamLeadId) {
+        fields['tl_id'] = teamLeadId;
       }
 
       const requestResp: any = await this.requestService.createServiceRequestRaw(fields);
@@ -134,6 +138,26 @@ export class ServiceAssetComponent implements OnInit {
         user_id: user.id,
         service_request_id: serviceRequestId,
         approval_id: approvalId
+      });
+
+      const [teamLead, assetManager] = await Promise.all([
+        teamLeadId ? this.authService.getUserDetails(teamLeadId).catch(() => null) : Promise.resolve(null),
+        assetManagerId ? this.authService.getUserDetails(assetManagerId).catch(() => null) : Promise.resolve(null)
+      ]);
+
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'submitted',
+        serviceRequestId,
+        employeeName: user.name,
+        employeeEmail: user.email,
+        teamLeadName: teamLead?.name || user.teamLeadName || freshUser?.teamLeadName || 'Team Lead',
+        teamLeadEmail: teamLead?.email,
+        assetManagerName: assetManager?.name || 'Asset Manager',
+        assetManagerEmail: assetManager?.email,
+        assetName: this.selectedAsset.name,
+        assetTag: this.selectedAsset.assetTag,
+        issueDescription: formVal.issueDescription,
+        urgency: formVal.urgency
       });
 
       this.notificationService.showToast('Service request submitted successfully!', 'success');

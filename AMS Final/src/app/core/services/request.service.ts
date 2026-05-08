@@ -2777,6 +2777,126 @@ ${fieldXml}
     });
   }
 
+  async getAssetManagerServiceHistory(filters: {
+    asset_manager_id: string;
+    employee_id?: string;
+    asset_id?: string;
+    status?: string;
+    service_request_id?: string;
+    from_date?: string;
+    to_date?: string;
+  }): Promise<any[]> {
+    const esc = (value: any) => this.escapeSoapValue(String(value || ''));
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetManagerServiceHistory xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <asset_manager_id>${esc(filters.asset_manager_id)}</asset_manager_id>
+      <employee_id>${esc(filters.employee_id)}</employee_id>
+      <asset_id>${esc(filters.asset_id)}</asset_id>
+      <status>${esc(filters.status)}</status>
+      <service_request_id>${esc(filters.service_request_id)}</service_request_id>
+      <from_date>${esc(filters.from_date)}</from_date>
+      <to_date>${esc(filters.to_date)}</to_date>
+    </GetAssetManagerServiceHistory>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const jsonText = this.extractServiceHistoryJson(response);
+      const parsed = jsonText ? JSON.parse(jsonText) : [];
+      return Array.isArray(parsed) ? parsed.map(row => this.mapAssetManagerServiceHistoryRow(row)) : [];
+    } catch (err) {
+      console.error('[GetAssetManagerServiceHistory] failed:', err);
+      return [];
+    }
+  }
+
+  private extractServiceHistoryJson(response: any): string {
+    const directResult = this.hs.xmltojson(response, 'result_json');
+    const directText = this.coerceText(directResult);
+    if (directText) return directText;
+
+    const returnNode = this.hs.xmltojson(response, 'return');
+    const returnText = this.coerceText(returnNode);
+    if (returnText) {
+      const resultMatch = returnText.match(/<result_json[^>]*>([\s\S]*?)<\/result_json>/i);
+      if (resultMatch?.[1]) return this.decodeXmlText(resultMatch[1].trim());
+      if (returnText.trim().startsWith('[')) return returnText.trim();
+    }
+
+    const responseText = typeof response === 'string' ? response : JSON.stringify(response || {});
+    const jsonMatch = responseText.match(/<result_json[^>]*>([\s\S]*?)<\/result_json>/i);
+    if (jsonMatch?.[1]) return this.decodeXmlText(jsonMatch[1].trim());
+
+    return '[]';
+  }
+
+  private mapAssetManagerServiceHistoryRow(row: any): any {
+    return {
+      service_request_id: this.getNullableValue(row?.service_request_id) || '',
+      asset_id: this.getNullableValue(row?.asset_id) || '',
+      asset_name: this.getNullableValue(row?.asset_name) || '',
+      serial_number: this.getNullableValue(row?.serial_number) || '',
+      type_id: this.getNullableValue(row?.type_id) || '',
+      employee_id: this.getNullableValue(row?.employee_id) || '',
+      employee_name: this.getNullableValue(row?.employee_name) || '',
+      employee_email: this.getNullableValue(row?.employee_email) || '',
+      team_lead_id: this.getNullableValue(row?.team_lead_id) || '',
+      team_lead_name: this.getNullableValue(row?.team_lead_name) || '',
+      issue_description: this.getNullableValue(row?.issue_description) || '',
+      urgency: this.getNullableValue(row?.urgency) || '',
+      needs_temp_asset: row?.needs_temp_asset === true || String(row?.needs_temp_asset).toLowerCase() === 'true',
+      current_status: this.getNullableValue(row?.current_status) || '',
+      created_at: this.getNullableValue(row?.created_at) || '',
+      history_id: this.getNullableValue(row?.history_id) || '',
+      previous_status: this.getNullableValue(row?.previous_status) || '',
+      new_status: this.getNullableValue(row?.new_status) || '',
+      changed_by: this.getNullableValue(row?.changed_by) || '',
+      changed_by_name: this.getNullableValue(row?.changed_by_name) || '',
+      changed_at: this.getNullableValue(row?.changed_at) || '',
+      history_remarks: this.getNullableValue(row?.history_remarks) || '',
+      action_stage: this.getNullableValue(row?.action_stage) || '',
+      history_asset_id: this.getNullableValue(row?.history_asset_id) || '',
+      temp_asset_id: this.getNullableValue(row?.temp_asset_id) || '',
+      temp_asset_name: this.getNullableValue(row?.temp_asset_name) || '',
+      service_cost: this.getNullableValue(row?.service_cost) || '',
+      serviced_by: this.getNullableValue(row?.serviced_by) || '',
+      expected_return_date: this.getNullableValue(row?.expected_return_date) || '',
+      extra_info: this.getNullableValue(row?.extra_info) || ''
+    };
+  }
+
+  private coerceText(value: any): string {
+    if (!value) return '';
+    if (typeof value === 'string') return this.decodeXmlText(value);
+    if (typeof value === 'object') {
+      if (typeof value['#text'] === 'string') return this.decodeXmlText(value['#text']);
+      if (typeof value.text === 'string') return this.decodeXmlText(value.text);
+      if (typeof value.return === 'string') return this.decodeXmlText(value.return);
+    }
+    return '';
+  }
+
+  private decodeXmlText(value: string): string {
+    return String(value || '')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  private escapeSoapValue(value: string): string {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
   /**
    * Updates asset request status (e.g., to 'Completed' when employee confirms receipt).
    */

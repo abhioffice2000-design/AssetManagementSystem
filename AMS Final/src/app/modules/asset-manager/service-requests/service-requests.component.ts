@@ -5,6 +5,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AdminDataService } from '../../../core/services/admin-data.service';
 import { HeroService } from '../../../core/services/hero.service';
+import { MailService } from '../../../core/services/mail.service';
 
 @Component({
   selector: 'app-service-requests',
@@ -12,7 +13,7 @@ import { HeroService } from '../../../core/services/hero.service';
   styleUrls: ['./service-requests.component.scss']
 })
 export class ServiceRequestsComponent implements OnInit {
-  activeTab: 'pending' | 'approved' | 'onservice' | 'serviced' | 'closed' = 'pending';
+  activeTab: 'pending' | 'approved' | 'onservice' | 'serviced' | 'closed' | 'history' = 'pending';
   isLoading = true;
   loadError = '';
 
@@ -20,6 +21,16 @@ export class ServiceRequestsComponent implements OnInit {
   pendingApprovals: any[] = [];
   allServiceRequests: any[] = [];
   allServiceApprovals: any[] = [];
+  serviceHistoryRows: any[] = [];
+  serviceHistoryLoading = false;
+  serviceHistoryFilters = {
+    employee_id: '',
+    asset_id: '',
+    status: '',
+    service_request_id: '',
+    from_date: '',
+    to_date: ''
+  };
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
   availableAssets: any[] = [];
@@ -57,12 +68,21 @@ export class ServiceRequestsComponent implements OnInit {
   currentPage = 1;
   pageSize = 5;
 
+  get minReturnDate(): string {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   constructor(
     private requestService: RequestService,
     private assetService: AssetService,
     private authService: AuthService,
     private notificationService: NotificationService,
     private adminService: AdminDataService,
+    private mailService: MailService,
     private hs: HeroService
   ) {}
 
@@ -138,10 +158,13 @@ export class ServiceRequestsComponent implements OnInit {
     }
   }
 
-  switchTab(tab: 'pending' | 'approved' | 'onservice' | 'serviced' | 'closed'): void {
+  switchTab(tab: 'pending' | 'approved' | 'onservice' | 'serviced' | 'closed' | 'history'): void {
     this.activeTab = tab;
     this.currentPage = 1;
     this.closeDrawer();
+    if (tab === 'history' && this.serviceHistoryRows.length === 0) {
+      this.loadServiceHistory();
+    }
   }
 
   // ─── Filtered Data ──────────────────────────────────────────────────────
@@ -173,6 +196,7 @@ export class ServiceRequestsComponent implements OnInit {
       case 'onservice': return this.onServiceRequests;
       case 'serviced': return this.servicedRequests;
       case 'closed': return this.closedRequests;
+      case 'history': return this.serviceHistoryRows;
       default: return [];
     }
   }
@@ -195,6 +219,45 @@ export class ServiceRequestsComponent implements OnInit {
   setPage(page: number): void { if (page >= 1 && page <= this.totalPages) this.currentPage = page; }
   nextPage(): void { if (this.currentPage < this.totalPages) this.currentPage++; }
   prevPage(): void { if (this.currentPage > 1) this.currentPage--; }
+
+  async loadServiceHistory(): Promise<void> {
+    const currentUser = this.authService.getCurrentUser();
+    if (!currentUser?.id) {
+      this.notificationService.showToast('Current user is missing. Please log in again.', 'error');
+      return;
+    }
+
+    this.serviceHistoryLoading = true;
+    try {
+      this.serviceHistoryRows = await this.requestService.getAssetManagerServiceHistory({
+        asset_manager_id: currentUser.id,
+        ...this.serviceHistoryFilters
+      });
+      this.currentPage = 1;
+    } catch (error) {
+      console.error('Failed to load service history:', error);
+      this.notificationService.showToast('Failed to load service history.', 'error');
+      this.serviceHistoryRows = [];
+    } finally {
+      this.serviceHistoryLoading = false;
+    }
+  }
+
+  resetServiceHistoryFilters(): void {
+    this.serviceHistoryFilters = {
+      employee_id: '',
+      asset_id: '',
+      status: '',
+      service_request_id: '',
+      from_date: '',
+      to_date: ''
+    };
+    this.loadServiceHistory();
+  }
+
+  getHistoryStatus(row: any): string {
+    return row?.new_status || row?.current_status || 'No History';
+  }
 
   // ─── Drawer ─────────────────────────────────────────────────────────────
 
@@ -274,6 +337,22 @@ export class ServiceRequestsComponent implements OnInit {
     return this.selectedItem?.requester_email || '—';
   }
 
+  private async getServiceUserContact(userId?: string, fallbackName?: string, fallbackEmail?: string): Promise<{ name: string; email: string }> {
+    if (!userId) {
+      return { name: fallbackName || 'User', email: fallbackEmail || '' };
+    }
+
+    const user = await this.authService.getUserDetails(userId).catch(() => null);
+    return {
+      name: user?.name || fallbackName || this.allUsersMap.get(userId) || 'User',
+      email: user?.email || fallbackEmail || ''
+    };
+  }
+
+  private getServiceAssetLabel(item: any): string {
+    return item?.asset_name || item?.req_temp1 || item?.asset_id || 'Service Asset';
+  }
+
   /** Finds the approval chain entry for a specific stage key */
   getChainEntry(stageKey: string): any | null {
     return this.approvalChain.find(a => a.stage === stageKey) || null;
@@ -338,6 +417,23 @@ export class ServiceRequestsComponent implements OnInit {
         await this.requestService.completeUserTask({ TaskId: item.temp7, Action: 'COMPLETE' } as any);
       }
 
+      const currentUser = this.authService.getCurrentUser();
+      const employee = await this.getServiceUserContact(item.user_id, item.requester_name, item.requester_email);
+      const allocationMember = this.allocationTeamMemberList.find(member => member.user_id === this.selectedAllocationMemberId);
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'stage1_approved',
+        serviceRequestId: item.service_request_id,
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        allocationName: allocationMember?.name || 'Allocation Team',
+        allocationEmail: allocationMember?.email,
+        assetManagerName: currentUser?.name || 'Asset Manager',
+        assetName: this.getServiceAssetLabel(item),
+        assetTag: item.asset_serial || item.req_temp2,
+        remarks: this.actionRemarks || 'Approved by Asset Manager',
+        actionByName: currentUser?.name || 'Asset Manager'
+      });
+
       this.notificationService.showToast(`Service request ${item.service_request_id} approved and forwarded to Allocation Team.`, 'success');
       this.closeDrawer();
       await this.loadAllData();
@@ -364,6 +460,23 @@ export class ServiceRequestsComponent implements OnInit {
       });
 
       await this.completeWorkflowTaskForApproval(item);
+
+      const employee = await this.getServiceUserContact(item.user_id, item.requester_name, item.requester_email);
+      const teamLead = await this.getServiceUserContact(item.tl_id, 'Team Lead', '');
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'stage3_approved',
+        serviceRequestId: item.service_request_id,
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        teamLeadName: teamLead.name,
+        teamLeadEmail: teamLead.email,
+        assetManagerName: currentUser?.name || 'Asset Manager',
+        assetName: this.getServiceAssetLabel(item),
+        assetTag: item.asset_serial || item.req_temp2,
+        remarks: this.actionRemarks || 'Final approval granted',
+        actionByName: currentUser?.name || 'Asset Manager',
+        tempAssetId: item.req_temp3 || item.temp3 || ''
+      });
 
       this.notificationService.showToast(`Service request ${item.service_request_id} final approval granted. Asset is now On Service.`, 'success');
       this.closeDrawer();
@@ -484,9 +597,21 @@ export class ServiceRequestsComponent implements OnInit {
     this.tempExpectedReturnDate = '';
   }
 
+  isTempAssetFormValid(): boolean {
+    return !!this.selectedTempAssetId && !!this.tempExpectedReturnDate && this.tempExpectedReturnDate >= this.minReturnDate;
+  }
+
   async assignTempAsset(): Promise<void> {
     if (!this.selectedTempAssetId || !this.selectedItem) {
       this.notificationService.showToast('Please select a temporary asset.', 'error');
+      return;
+    }
+    if (!this.tempExpectedReturnDate) {
+      this.notificationService.showToast('Expected return date is required.', 'error');
+      return;
+    }
+    if (this.tempExpectedReturnDate < this.minReturnDate) {
+      this.notificationService.showToast('Expected return date cannot be in the past.', 'error');
       return;
     }
     this.isSaving = true;
@@ -550,15 +675,55 @@ export class ServiceRequestsComponent implements OnInit {
     this.showServicedModal = false;
   }
 
+  onServiceCostInput(value: string): void {
+    const cleaned = String(value || '')
+      .replace(/[^\d.]/g, '')
+      .replace(/(\..*)\./g, '$1');
+    const [whole, decimal] = cleaned.split('.');
+    this.serviceCost = decimal !== undefined ? `${whole}.${decimal.slice(0, 2)}` : whole;
+  }
+
+  isServicedFormValid(): boolean {
+    return !!this.servicedBy.trim()
+      && !!this.serviceCost.trim()
+      && /^\d+(\.\d{1,2})?$/.test(this.serviceCost.trim())
+      && !!this.servicedRemarks.trim();
+  }
+
   async markServiced(): Promise<void> {
     if (!this.selectedItem) return;
+    if (!this.servicedBy.trim()) {
+      this.notificationService.showToast('Serviced By is required.', 'error');
+      return;
+    }
+    if (!this.serviceCost.trim() || !/^\d+(\.\d{1,2})?$/.test(this.serviceCost.trim())) {
+      this.notificationService.showToast('Service Cost must be numeric.', 'error');
+      return;
+    }
+    if (!this.servicedRemarks.trim()) {
+      this.notificationService.showToast('Service remarks are required.', 'error');
+      return;
+    }
     this.isSaving = true;
     try {
       await this.requestService.markServiceCompletedService({
         service_request_id: this.selectedItem.service_request_id,
-        serviced_by: this.servicedBy || 'Internal',
-        cost: this.serviceCost || '0',
-        remarks: this.servicedRemarks || 'Service completed'
+        serviced_by: this.servicedBy.trim(),
+        cost: this.serviceCost.trim(),
+        remarks: this.servicedRemarks.trim()
+      });
+
+      const employee = await this.getServiceUserContact(this.selectedItem.user_id, this.selectedItem.requester_name, this.selectedItem.requester_email);
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'serviced',
+        serviceRequestId: this.selectedItem.service_request_id,
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        assetName: this.getServiceAssetLabel(this.selectedItem),
+        assetTag: this.selectedItem.asset_serial || this.selectedItem.req_temp2,
+        remarks: this.servicedRemarks.trim(),
+        servicedBy: this.servicedBy.trim(),
+        serviceCost: this.serviceCost.trim()
       });
 
       this.notificationService.showToast(`Service request ${this.selectedItem.service_request_id} marked as Serviced. Employee notified.`, 'success');
@@ -619,6 +784,21 @@ export class ServiceRequestsComponent implements OnInit {
         service_request_id: this.servicedDrawerItem.service_request_id,
         remarks: 'Temporary asset returned'
       });
+      const employee = await this.getServiceUserContact(this.servicedDrawerItem.user_id, this.servicedDrawerItem.requester_name, this.servicedDrawerItem.requester_email);
+      const teamLead = await this.getServiceUserContact(this.servicedDrawerItem.tl_id, 'Team Lead', '');
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'temp_returned',
+        serviceRequestId: this.servicedDrawerItem.service_request_id,
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        teamLeadName: teamLead.name,
+        teamLeadEmail: teamLead.email,
+        assetName: this.getServiceAssetLabel(this.servicedDrawerItem),
+        assetTag: this.servicedDrawerItem.asset_serial || this.servicedDrawerItem.req_temp2,
+        remarks: 'Temporary asset returned',
+        tempAssetId: this.tempAssetInfo?.temp_asset_id || this.servicedDrawerItem.req_temp3 || '',
+        tempAssetName: this.tempAssetInfo?.temp_asset_name || ''
+      });
       this.notificationService.showToast('Temporary asset returned successfully.', 'success');
       this.tempReturnDone = true;
     } catch (err: any) {
@@ -637,6 +817,19 @@ export class ServiceRequestsComponent implements OnInit {
     try {
       await this.requestService.completeServiceHandoverService({
         service_request_id: this.servicedDrawerItem.service_request_id,
+        remarks: 'Serviced asset handed over to employee'
+      });
+      const employee = await this.getServiceUserContact(this.servicedDrawerItem.user_id, this.servicedDrawerItem.requester_name, this.servicedDrawerItem.requester_email);
+      const teamLead = await this.getServiceUserContact(this.servicedDrawerItem.tl_id, 'Team Lead', '');
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'handover_completed',
+        serviceRequestId: this.servicedDrawerItem.service_request_id,
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        teamLeadName: teamLead.name,
+        teamLeadEmail: teamLead.email,
+        assetName: this.getServiceAssetLabel(this.servicedDrawerItem),
+        assetTag: this.servicedDrawerItem.asset_serial || this.servicedDrawerItem.req_temp2,
         remarks: 'Serviced asset handed over to employee'
       });
       this.notificationService.showToast(`Service request ${this.servicedDrawerItem.service_request_id} closed. Asset handed over.`, 'success');

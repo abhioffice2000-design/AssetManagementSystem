@@ -524,6 +524,288 @@ Asset Management System
     await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${subject}`, body);
   }
 
+  async sendServiceRequestNotification(params: {
+    stage: 'submitted' | 'stage1_approved' | 'stage2_approved' | 'stage3_approved' | 'serviced' | 'temp_returned' | 'handover_completed';
+    serviceRequestId: string;
+    employeeName?: string;
+    employeeEmail?: string;
+    teamLeadName?: string;
+    teamLeadEmail?: string;
+    assetManagerName?: string;
+    assetManagerEmail?: string;
+    allocationName?: string;
+    allocationEmail?: string;
+    assetName?: string;
+    assetTag?: string;
+    issueDescription?: string;
+    urgency?: string;
+    remarks?: string;
+    actionByName?: string;
+    tempAssetId?: string;
+    tempAssetName?: string;
+    servicedBy?: string;
+    serviceCost?: string;
+    expectedReturnDate?: string;
+  }): Promise<void> {
+    const fallbackEmail = 'sourabhsharma1003@gmail.com';
+    const employeeName = params.employeeName || 'Employee';
+    const asset = [params.assetName, params.assetTag].filter(Boolean).join(' - ') || 'Service Asset';
+    const remarks = params.remarks || 'No remarks provided';
+    const urgency = params.urgency || 'Medium';
+    const actionBy = params.actionByName || 'Asset Management System';
+    const tempAsset = params.tempAssetName || params.tempAssetId || 'Temporary asset';
+
+    const messages: Array<{ toEmail?: string; toName: string; subject: string; body: string }> = [];
+
+    const addMessage = (toEmail: string | undefined, toName: string | undefined, subject: string, body: string) => {
+      messages.push({
+        toEmail: toEmail || fallbackEmail,
+        toName: toName || 'Recipient',
+        subject,
+        body
+      });
+    };
+
+    switch (params.stage) {
+      case 'submitted':
+        addMessage(params.employeeEmail, employeeName, `Service Request Submitted - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+Your service request has been submitted successfully.
+
+Service Request Details:
+---------------------------------------------
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+Urgency: ${urgency}
+Issue: ${params.issueDescription || remarks}
+---------------------------------------------
+
+You can track the request status from the Asset Management Portal.
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.teamLeadEmail, params.teamLeadName || 'Team Lead', `[Service Request] New request raised: ${params.serviceRequestId}`, `
+Dear ${params.teamLeadName || 'Team Lead'},
+
+${employeeName} has raised a service request for an assigned asset.
+
+Service Request Details:
+---------------------------------------------
+Request ID: ${params.serviceRequestId}
+Employee: ${employeeName}
+Asset: ${asset}
+Urgency: ${urgency}
+Issue: ${params.issueDescription || remarks}
+---------------------------------------------
+
+This is for your visibility.
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.assetManagerEmail, params.assetManagerName || 'Asset Manager', `[Service Request] Approval required: ${params.serviceRequestId}`, `
+Dear ${params.assetManagerName || 'Asset Manager'},
+
+A new service request has been submitted and requires your review.
+
+Service Request Details:
+---------------------------------------------
+Request ID: ${params.serviceRequestId}
+Employee: ${employeeName}
+Asset: ${asset}
+Urgency: ${urgency}
+Issue: ${params.issueDescription || remarks}
+---------------------------------------------
+
+Please review and take action from the Asset Manager portal.
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+
+      case 'stage1_approved':
+        addMessage(params.employeeEmail, employeeName, `Service Request Approved by Asset Manager - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+Your service request has been approved by ${actionBy} and forwarded to the Allocation Team for collection.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.allocationEmail, params.allocationName || 'Allocation Team', `[Service Request] Asset collection required: ${params.serviceRequestId}`, `
+Dear ${params.allocationName || 'Allocation Team'},
+
+The Asset Manager has approved a service request and assigned it to you for asset collection.
+
+Request ID: ${params.serviceRequestId}
+Employee: ${employeeName}
+Asset: ${asset}
+Remarks: ${remarks}
+
+Please collect the asset and update the service collection status.
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+
+      case 'stage2_approved':
+        addMessage(params.employeeEmail, employeeName, `Asset Collected for Service - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+The Allocation Team has collected your asset for service.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.assetManagerEmail, params.assetManagerName || 'Asset Manager', `[Service Request] Final approval required: ${params.serviceRequestId}`, `
+Dear ${params.assetManagerName || 'Asset Manager'},
+
+The Allocation Team has completed collection for this service request. Final approval is now required.
+
+Request ID: ${params.serviceRequestId}
+Employee: ${employeeName}
+Asset: ${asset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+
+      case 'stage3_approved':
+        addMessage(params.employeeEmail, employeeName, `Service Request Moved to Service - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+Your service request has received final approval and the asset is now marked On Service.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+${params.tempAssetId || params.tempAssetName ? `Temporary Asset: ${tempAsset}` : ''}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.teamLeadEmail, params.teamLeadName || 'Team Lead', `[Service Request] Final approval completed: ${params.serviceRequestId}`, `
+Dear ${params.teamLeadName || 'Team Lead'},
+
+The service request for ${employeeName} has received final Asset Manager approval.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+${params.tempAssetId || params.tempAssetName ? `Temporary Asset: ${tempAsset}` : ''}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+
+      case 'serviced':
+        addMessage(params.employeeEmail, employeeName, `Asset Service Completed - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+Your asset service has been completed.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+Serviced By: ${params.servicedBy || 'Internal'}
+Service Cost: ${params.serviceCost || '0'}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+
+      case 'temp_returned':
+        addMessage(params.employeeEmail, employeeName, `Temporary Asset Returned - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+The temporary asset linked to your service request has been returned.
+
+Request ID: ${params.serviceRequestId}
+Temporary Asset: ${tempAsset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.teamLeadEmail, params.teamLeadName || 'Team Lead', `[Service Request] Temporary asset returned: ${params.serviceRequestId}`, `
+Dear ${params.teamLeadName || 'Team Lead'},
+
+The temporary asset for ${employeeName}'s service request has been returned.
+
+Request ID: ${params.serviceRequestId}
+Temporary Asset: ${tempAsset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+
+      case 'handover_completed':
+        addMessage(params.employeeEmail, employeeName, `Serviced Asset Handed Over - ${params.serviceRequestId}`, `
+Dear ${employeeName},
+
+Your serviced asset has been handed over and the service request is now closed.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+
+        addMessage(params.teamLeadEmail, params.teamLeadName || 'Team Lead', `[Service Request] Handover completed: ${params.serviceRequestId}`, `
+Dear ${params.teamLeadName || 'Team Lead'},
+
+The serviced asset has been handed over to ${employeeName} and the service request is closed.
+
+Request ID: ${params.serviceRequestId}
+Asset: ${asset}
+Remarks: ${remarks}
+
+Best Regards,
+Asset Management System
+        `.trim());
+        break;
+    }
+
+    for (const message of messages) {
+      const recipients = Array.from(new Set([message.toEmail || fallbackEmail, fallbackEmail].filter(email => !!email && email.trim() !== '')));
+      for (const recipient of recipients) {
+        try {
+          await this.sendSoapEmail(recipient, message.toName, message.subject, message.body);
+        } catch (err) {
+          console.error(`[MailService] Failed service email (${params.stage}) to ${recipient}:`, err);
+        }
+      }
+    }
+
+    console.log(`[MailService] Service notification (${params.stage}) processed for ${params.serviceRequestId}`);
+  }
+
 
   /**
    * Sends email notifications for Return Request status changes at every stage.

@@ -220,6 +220,25 @@
         <p class="issue-text">{{ selectedItem.issue_description }}</p>
       </div>
 
+      <div class="detail-section remarks-history-section">
+        <h4>Remarks History</h4>
+        <div class="history-loading" *ngIf="loadingChain">
+          <span class="spinner-sm"></span>
+          <span>Loading remarks...</span>
+        </div>
+        <div class="remarks-history-list" *ngIf="!loadingChain">
+          <div class="remarks-history-card" *ngFor="let entry of getRemarksHistory()">
+            <div class="remarks-source">
+              <span class="material-icons">person</span>
+              <span>{{ entry.source }}</span>
+            </div>
+            <p>"{{ entry.text }}"</p>
+            <span class="remarks-date" *ngIf="entry.date">{{ entry.date | date:'dd MMM yyyy, hh:mm a' }}</span>
+          </div>
+          <p class="empty-history" *ngIf="getRemarksHistory().length === 0">No remarks added yet.</p>
+        </div>
+      </div>
+
       <div class="remarks-section">
         <label for="actionRemarks">Remarks <span class="hint">(mandatory for rejection)</span></label>
         <textarea id="actionRemarks" [(ngModel)]="actionRemarks"

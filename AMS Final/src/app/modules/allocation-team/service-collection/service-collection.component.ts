@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
 
 @Component({
   selector: 'app-service-collection',
@@ -21,6 +22,8 @@ export class ServiceCollectionComponent implements OnInit {
   selectedItem: any = null;
   actionRemarks = '';
   isSaving = false;
+  approvalChain: any[] = [];
+  loadingChain = false;
 
   // Pagination
   currentPage = 1;
@@ -29,7 +32,8 @@ export class ServiceCollectionComponent implements OnInit {
   constructor(
     private requestService: RequestService,
     private authService: AuthService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private mailService: MailService
   ) {}
 
   ngOnInit(): void {
@@ -97,16 +101,37 @@ export class ServiceCollectionComponent implements OnInit {
 
   // ─── Drawer ─────────────────────────────────────────────────────────────
 
-  openDrawer(item: any): void {
+  async openDrawer(item: any): Promise<void> {
     this.selectedItem = item;
     this.drawerOpen = true;
     this.actionRemarks = '';
+    this.approvalChain = [];
+    this.loadingChain = true;
+
+    try {
+      const chain = await this.requestService.getServiceRequestApprovalChain(item.service_request_id);
+      this.approvalChain = await Promise.all((chain || []).map(async (approval: any) => {
+        const approver = approval.approver_id
+          ? await this.authService.getUserDetails(approval.approver_id).catch(() => null)
+          : null;
+        return {
+          ...approval,
+          approver_name: approver?.name || approval.approver_id || 'Unknown'
+        };
+      }));
+    } catch (error) {
+      console.warn('Failed to load service remarks history:', error);
+    } finally {
+      this.loadingChain = false;
+    }
   }
 
   closeDrawer(): void {
     this.drawerOpen = false;
     this.selectedItem = null;
     this.actionRemarks = '';
+    this.approvalChain = [];
+    this.loadingChain = false;
   }
 
   getStageLabel(stage: string): string {
@@ -124,6 +149,54 @@ export class ServiceCollectionComponent implements OnInit {
     if (s === 'closed' || s === 'completed') return 'status-completed';
     if (s.includes('rejected')) return 'status-rejected';
     return 'status-default';
+  }
+
+  private async getServiceUserContact(userId?: string, fallbackName?: string, fallbackEmail?: string): Promise<{ name: string; email: string }> {
+    if (!userId) {
+      return { name: fallbackName || 'User', email: fallbackEmail || '' };
+    }
+
+    const user = await this.authService.getUserDetails(userId).catch(() => null);
+    return {
+      name: user?.name || fallbackName || 'User',
+      email: user?.email || fallbackEmail || ''
+    };
+  }
+
+  private getServiceAssetLabel(item: any): string {
+    return item?.asset_name || item?.req_temp1 || item?.asset_id || 'Service Asset';
+  }
+
+  getRemarksHistory(): { source: string; text: string; date?: string }[] {
+    if (!this.selectedItem) return [];
+
+    const history: { source: string; text: string; date?: string }[] = [];
+    if (this.selectedItem.issue_description) {
+      history.push({
+        source: 'Employee',
+        text: this.selectedItem.issue_description,
+        date: this.selectedItem.created_at
+      });
+    }
+
+    for (const approval of this.approvalChain) {
+      const remarks = (approval.remarks || '').trim();
+      const isSystemRemark = [
+        'waiting for approval',
+        'waiting for collection',
+        'waiting for final approval'
+      ].includes(remarks.toLowerCase());
+
+      if (approval.status !== 'Pending' && remarks && !isSystemRemark) {
+        history.push({
+          source: `${this.getStageLabel(approval.stage)} (${approval.approver_name || approval.approver_id || 'Approver'})`,
+          text: remarks,
+          date: approval.action_date
+        });
+      }
+    }
+
+    return history;
   }
 
   // ─── Stage 2: Allocation Team Approves (Collected Asset) ────────────────
@@ -178,6 +251,23 @@ export class ServiceCollectionComponent implements OnInit {
 
       // 4. Complete BPM task
       await this.completeWorkflowTaskForApproval(item);
+
+      const currentUser = this.authService.getCurrentUser();
+      const employee = await this.getServiceUserContact(item.user_id, item.requester_name, item.requester_email);
+      const assetManager = await this.getServiceUserContact(managerId, 'Asset Manager', '');
+      await this.mailService.sendServiceRequestNotification({
+        stage: 'stage2_approved',
+        serviceRequestId: item.service_request_id,
+        employeeName: employee.name,
+        employeeEmail: employee.email,
+        assetManagerName: assetManager.name,
+        assetManagerEmail: assetManager.email,
+        allocationName: currentUser?.name || 'Allocation Team',
+        assetName: this.getServiceAssetLabel(item),
+        assetTag: item.asset_serial || item.req_temp2,
+        remarks: this.actionRemarks || 'Asset collected by allocation team',
+        actionByName: currentUser?.name || 'Allocation Team'
+      });
 
       this.notificationService.showToast(`Asset collected. Service request ${item.service_request_id} forwarded to Asset Manager for final approval.`, 'success');
       this.closeDrawer();
