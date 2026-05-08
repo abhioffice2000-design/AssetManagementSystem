@@ -44,6 +44,11 @@
         Serviced
         <span class="tab-count" *ngIf="servicedRequests.length > 0">{{ servicedRequests.length }}</span>
       </button>
+      <button [class.active]="activeTab === 'history'" (click)="switchTab('history')">
+        <span class="material-icons">manage_search</span>
+        Service History
+        <span class="tab-count" *ngIf="serviceHistoryRows.length > 0">{{ serviceHistoryRows.length }}</span>
+      </button>
       <button [class.active]="activeTab === 'closed'" (click)="switchTab('closed')">
         <span class="material-icons">inventory</span>
         Closed / Rejected
@@ -214,6 +219,127 @@
     </div>
 
     <!-- ─── Closed / Rejected Tab ───────────────────────────────────────── -->
+    <div class="history-panel" *ngIf="!isLoading && activeTab === 'history'">
+      <div class="history-filter-bar">
+        <div class="filter-field">
+          <label>Employee ID</label>
+          <input type="text" [(ngModel)]="serviceHistoryFilters.employee_id" placeholder="usr_009">
+        </div>
+        <div class="filter-field">
+          <label>Asset ID</label>
+          <input type="text" [(ngModel)]="serviceHistoryFilters.asset_id" placeholder="asset_060">
+        </div>
+        <div class="filter-field">
+          <label>Request ID</label>
+          <input type="text" [(ngModel)]="serviceHistoryFilters.service_request_id" placeholder="SRVREQ_026">
+        </div>
+        <div class="filter-field">
+          <label>Status</label>
+          <select [(ngModel)]="serviceHistoryFilters.status">
+            <option value="">All Status</option>
+            <option value="Pending">Pending</option>
+            <option value="MoveToAllocationTeam">Move To Allocation</option>
+            <option value="CollectedByTeam">Collected By Team</option>
+            <option value="OnService">On Service</option>
+            <option value="Serviced">Serviced</option>
+            <option value="Closed">Closed</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>From</label>
+          <input type="date" [(ngModel)]="serviceHistoryFilters.from_date">
+        </div>
+        <div class="filter-field">
+          <label>To</label>
+          <input type="date" [(ngModel)]="serviceHistoryFilters.to_date">
+        </div>
+        <div class="filter-actions">
+          <button class="btn-filter-primary" (click)="loadServiceHistory()" [disabled]="serviceHistoryLoading">
+            <span class="material-icons">search</span>
+            Search
+          </button>
+          <button class="btn-filter-clear" (click)="resetServiceHistoryFilters()" [disabled]="serviceHistoryLoading">
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Employee</th>
+              <th>Asset</th>
+              <th>Status Movement</th>
+              <th>Changed By</th>
+              <th>Service Details</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="serviceHistoryLoading">
+              <td colspan="7" class="no-data">
+                <span class="material-icons">sync</span>
+                <p>Loading service history...</p>
+              </td>
+            </tr>
+            <tr *ngFor="let item of paginatedData">
+              <td class="ticket-id">{{ item.service_request_id }}</td>
+              <td>
+                <div class="history-person">
+                  <strong>{{ item.employee_name || item.employee_id || 'Unknown' }}</strong>
+                  <span>{{ item.employee_email || item.employee_id }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="history-asset">
+                  <strong>{{ item.asset_name || item.asset_id }}</strong>
+                  <span class="mono">{{ item.asset_id }}</span>
+                  <small *ngIf="item.serial_number">{{ item.serial_number }}</small>
+                </div>
+              </td>
+              <td>
+                <div class="status-flow">
+                  <span class="status-badge" [ngClass]="getStatusClass(item.previous_status || 'Pending')">
+                    {{ item.previous_status || 'Created' }}
+                  </span>
+                  <span class="material-icons">arrow_forward</span>
+                  <span class="status-badge" [ngClass]="getStatusClass(getHistoryStatus(item))">
+                    {{ getHistoryStatus(item) }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="history-person">
+                  <strong>{{ item.changed_by_name || item.changed_by || 'System' }}</strong>
+                  <span>{{ item.action_stage || 'Service Update' }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="history-service-details">
+                  <span *ngIf="item.serviced_by"><strong>Vendor:</strong> {{ item.serviced_by }}</span>
+                  <span *ngIf="item.service_cost"><strong>Cost:</strong> {{ item.service_cost }}</span>
+                  <span *ngIf="item.temp_asset_id"><strong>Temp:</strong> {{ item.temp_asset_name || item.temp_asset_id }}</span>
+                  <span *ngIf="item.expected_return_date"><strong>Return:</strong> {{ item.expected_return_date | date:'mediumDate' }}</span>
+                  <span class="history-remarks" *ngIf="item.history_remarks">{{ item.history_remarks }}</span>
+                  <span class="history-remarks" *ngIf="!item.history_remarks">{{ item.issue_description || '-' }}</span>
+                </div>
+              </td>
+              <td>{{ (item.changed_at || item.created_at) | date:'medium' }}</td>
+            </tr>
+            <tr *ngIf="!serviceHistoryLoading && currentData.length === 0">
+              <td colspan="7" class="no-data">
+                <span class="material-icons">manage_search</span>
+                <p>No service history found for these filters.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="table-wrapper" *ngIf="!isLoading && activeTab === 'closed'">
       <table>
         <thead>
@@ -575,6 +701,7 @@
       <div class="form-group">
         <label>
           Select Available Asset
+          <span class="required-star">*</span>
           <span *ngIf="!tempAssetFallbackMode && filteredTempAssets.length > 0"
                 style="font-size: 0.78rem; color: #059669; font-weight: 500; margin-left: 6px;">
             (Matching type &amp; category)
@@ -588,13 +715,14 @@
         </select>
       </div>
       <div class="form-group">
-        <label>Expected Return Date</label>
-        <input type="date" [(ngModel)]="tempExpectedReturnDate" class="form-control">
+        <label>Expected Return Date <span class="required-star">*</span></label>
+        <input type="date" [(ngModel)]="tempExpectedReturnDate" class="form-control" [min]="minReturnDate" required>
+        <small class="field-hint">Today or a future date only.</small>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeTempAssetModal()">Cancel</button>
-      <button class="btn btn-primary" (click)="assignTempAsset()" [disabled]="!selectedTempAssetId || isSaving">
+      <button class="btn btn-primary" (click)="assignTempAsset()" [disabled]="!isTempAssetFormValid() || isSaving">
         {{ isSaving ? 'Assigning...' : 'Assign' }}
       </button>
     </div>
@@ -612,22 +740,23 @@
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Serviced By</label>
-        <input type="text" [(ngModel)]="servicedBy" class="form-control" placeholder="Service center / vendor name">
+        <label>Serviced By <span class="required-star">*</span></label>
+        <input type="text" [(ngModel)]="servicedBy" class="form-control" placeholder="Service center / vendor name" required>
       </div>
       <div class="form-group">
-        <label>Service Cost</label>
-        <input type="text" [(ngModel)]="serviceCost" class="form-control" placeholder="0.00">
+        <label>Service Cost <span class="required-star">*</span></label>
+        <input type="text" [ngModel]="serviceCost" (ngModelChange)="onServiceCostInput($event)"
+          class="form-control" placeholder="0.00" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" required>
       </div>
       <div class="form-group">
-        <label>Remarks</label>
+        <label>Remarks <span class="required-star">*</span></label>
         <textarea [(ngModel)]="servicedRemarks" class="form-control" rows="3"
-          placeholder="Service details..."></textarea>
+          placeholder="Service details..." required></textarea>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" (click)="closeServicedModal()">Cancel</button>
-      <button class="btn btn-primary" (click)="markServiced()" [disabled]="isSaving">
+      <button class="btn btn-primary" (click)="markServiced()" [disabled]="!isServicedFormValid() || isSaving">
         {{ isSaving ? 'Processing...' : 'Mark Serviced' }}
       </button>
     </div>
