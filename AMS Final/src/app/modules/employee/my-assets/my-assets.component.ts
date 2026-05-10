@@ -73,7 +73,7 @@ export class MyAssetsComponent implements OnInit {
         const result = this.hs.xmltojson(resp, 'm_assets');
         const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
-        this.myAssets = rawData.map((item: any) => ({
+        const assetsFromGetAssetsByUser: Asset[] = rawData.map((item: any) => ({
           id: item.asset_id || item.id || '',
           assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
           name: item.asset_name || item.name || '',
@@ -84,8 +84,11 @@ export class MyAssetsComponent implements OnInit {
           status: item.status || 'Allocated',
           warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
           assignedTo: item.user_id || user.id || '',
-          purchaseDate: item.purchase_date || item.purchaseDate || ''
+          purchaseDate: item.purchase_date || item.purchaseDate || '',
+          allocatedDate: item.temp4 || ''
         } as any));
+
+        this.myAssets = assetsFromGetAssetsByUser;
       } catch (err) {
         console.error('Failed to fetch assets via GetAssetsByUser:', err);
         // Fallback
@@ -100,12 +103,48 @@ export class MyAssetsComponent implements OnInit {
       // this.myAssets = assets;
 
       // Fetch allocated assets and requests in parallel for joining
-      const [assets, requests] = await Promise.all([
+      const [assets, requests, allServiceReqs] = await Promise.all([
         this.assetService.getAllocatedAssetsByUserId(user.id),
-        this.requestService.getRequestsByUserIdFromCordys(user.id)
+        this.requestService.getRequestsByUserIdFromCordys(user.id),
+        this.requestService.getAllServiceRequests().catch(() => [])
       ]);
 
-      this.myAssets = assets;
+      let loadedAssets = [...assets];
+
+      // Append temporarily allocated assets from service requests
+      const tempReqs = allServiceReqs.filter((r: any) =>
+        r.user_id === user.id &&
+        r.temp3 &&
+        (r.status === 'OnService' || r.status === 'Serviced')
+      );
+
+      for (const sReq of tempReqs) {
+        try {
+          const tAssetId = sReq.temp3;
+          if (!loadedAssets.some(a => a.id === tAssetId || a.assetId === tAssetId)) {
+            const tAsset = await this.assetService.getAssetDetails(tAssetId);
+            if (tAsset) {
+              loadedAssets.push({
+                ...tAsset,
+                assignedTo: user.id,
+                status: 'TempAllocated',
+                requestId: sReq.service_request_id,
+                name: `${tAsset.name} (Temp)`
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Could not load temp asset details', e);
+        }
+      }
+
+      // Preserve allocatedDate from GetAssetsByUser (m_assets.temp4) if the allocation service
+      // doesn't return temp4 (common depending on join service implementation).
+      const byId = new Map<string, Asset>(this.myAssets.map(a => [a.id, a]));
+      this.myAssets = loadedAssets.map(a => ({
+        ...a,
+        allocatedDate: (a as any).allocatedDate || byId.get(a.id)?.allocatedDate || ''
+      }));
 
       // Fallback to mock data if no real data is found (for consistency with dashboard)
       if (this.myAssets.length === 0) {
@@ -116,7 +155,6 @@ export class MyAssetsComponent implements OnInit {
       this.myAssets = this.myAssets.map(asset => {
         // Try to find a matching request if requestId is missing from the asset record itself
         if (!asset.requestId || asset.requestId === 'N/A' || asset.requestId === '') {
-          // Normalize asset identifiers for matching
           const aId = (asset.id || '').toLowerCase().trim();
           const aTag = (asset.assetTag || '').toLowerCase().trim();
           const aSerial = (asset.serialNumber || '').toLowerCase().trim();
@@ -125,17 +163,12 @@ export class MyAssetsComponent implements OnInit {
             const rAllocId = (r.allocatedAssetId || '').toLowerCase().trim();
             const rAssignedId = ((r as any).assignedAssetId || '').toLowerCase().trim();
 
-
-            // Look into raw request data too if available (sometimes hidden in temp fields)
             const raw = (r as any).rawRequest || {};
             const rTemp1 = (raw.temp1 || '').toLowerCase().trim();
             const rTemp2 = (raw.temp2 || '').toLowerCase().trim();
 
             return (rAllocId && (rAllocId === aId || rAllocId === aTag || rAllocId === aSerial)) ||
               (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
-              (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
-              (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
-            (rAssignedId && (rAssignedId === aId || rAssignedId === aTag || rAssignedId === aSerial)) ||
               (rTemp1 && (rTemp1 === aId || rTemp1 === aTag || rTemp1 === aSerial)) ||
               (rTemp2 && (rTemp2 === aId || rTemp2 === aTag || rTemp2 === aSerial));
           });
@@ -318,7 +351,7 @@ export class MyAssetsComponent implements OnInit {
                 requested_by: `${user.id}`,
                 return_date: formattedDate,
                 status: 'Pending',
-                remarks: this.actionForm.value.comments || 'waiting for approval',
+                remarks: formVal.justification,
                 temp1: this.selectedAsset?.id || ''
               }
             }

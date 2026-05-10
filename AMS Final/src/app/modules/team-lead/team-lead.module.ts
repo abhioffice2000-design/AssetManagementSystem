@@ -23,7 +23,7 @@ const routes: Routes = [
 
 @NgModule({
   declarations: [
-    LeadDashboardComponent, 
+    LeadDashboardComponent,
     PendingApprovalsComponent,
     MyAssetComponent,
     RequestAssetComponent,

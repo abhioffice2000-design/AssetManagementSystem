@@ -1,9 +1,17 @@
 import { Component, OnInit } from '@angular/core';
-import { AssetService } from '../../../core/services/asset.service';
-import { Asset } from '../../../core/models/asset.model';
+import { Asset, AssetCondition } from '../../../core/models/asset.model';
 import { HeroService } from 'src/app/core/services/hero.service';
 import { NotificationService } from 'src/app/core/services/notification.service';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+
+interface InventorySummaryRow {
+  typeName: string;
+  categoryName: string;
+  total: number;
+  available: number;
+  moveToAllocation: number;
+  assigned: number;
+  other: number;
+}
 
 @Component({
   selector: 'app-allocation-inventory',
@@ -18,12 +26,9 @@ export class AllocationInventoryComponent implements OnInit {
   statusFilter = '';
   
   viewMode: 'summary' | 'details' = 'summary';
-  typeSummaries: any[] = [];
-
-  // Warranty Update Modal
-  isWarrantyModalOpen = false;
-  selectedAsset: Asset | null = null;
-  warrantyForm!: FormGroup;
+  summaryRows: InventorySummaryRow[] = [];
+  inventoryTypeName = '';
+  inventoryStats = { total: 0, available: 0, moveToAllocation: 0, assigned: 0, other: 0 };
 
   // Pagination
   currentPage = 1;
@@ -32,15 +37,9 @@ export class AllocationInventoryComponent implements OnInit {
   totalPages = 1;
 
   constructor(
-    private assetService: AssetService,
     private hs: HeroService,
-    private notification: NotificationService,
-    private fb: FormBuilder
-  ) {
-    this.warrantyForm = this.fb.group({
-      newExpiry: ['', Validators.required]
-    });
-  }
+    private notification: NotificationService
+  ) { }
 
   async ngOnInit(): Promise<void> {
     await this.loadInventory();
@@ -49,8 +48,19 @@ export class AllocationInventoryComponent implements OnInit {
   async loadInventory(): Promise<void> {
     this.loading = true;
     try {
-      this.allAssets = await this.assetService.fetchAssetsFromService();
-      await this.calculateSummary();
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      const userId = currentUser?.id;
+
+      if (!userId) {
+        this.allAssets = [];
+        this.summaryRows = [];
+        this.inventoryStats = { total: 0, available: 0, moveToAllocation: 0, assigned: 0, other: 0 };
+        this.notification.showToast('Current user is missing. Please log in again.', 'error');
+        return;
+      }
+
+      this.allAssets = await this.fetchAllocationInventoryByUser(userId);
+      this.calculateSummary();
       this.applyFilters();
     } catch (error) {
       console.error('Failed to load inventory', error);
@@ -60,90 +70,97 @@ export class AllocationInventoryComponent implements OnInit {
     }
   }
 
-  async calculateSummary(): Promise<void> {
-    const typesMap = new Map<string, any>();
-    
-    try {
-      // First, try to get all known asset types to ensure even empty categories show up
-      const counts = await this.assetService.fetchAssetTypeWiseCount();
-      counts.forEach(c => {
-        if (!typesMap.has(c.type_name)) {
-          typesMap.set(c.type_name, {
-            name: c.type_name,
-            total: 0,
-            available: 0,
-            assigned: 0,
-            other: 0,
-            subCategories: new Map<string, any>()
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Failed to fetch asset types, falling back to local asset list only');
-    }
-    
-    this.finalProcessSummary(typesMap);
+  private async fetchAllocationInventoryByUser(userId: string): Promise<Asset[]> {
+    const response = await this.hs.ajax(
+      'GetAllocationInventoryByUser',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      { user_id: userId }
+    );
+    const tuples = this.hs.xmltojson(response, 'tuple');
+    const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
+
+    return tupleArray.map((tuple: any) => this.mapAllocationInventoryTupleToAsset(tuple));
   }
 
-  private finalProcessSummary(typesMap: Map<string, any>): void {
+  private mapAllocationInventoryTupleToAsset(tuple: any): Asset {
+    const data = tuple?.old?.m_assets ?? tuple?.m_assets ?? tuple;
+    const typeInfo = data?.m_asset_types ?? {};
+    const subCategoryInfo = data?.m_asset_subcategories ?? {};
+    const assignedUserInfo = data?.m_users ?? {};
+    const assetId = this.getVal(data?.asset_id) ?? '';
+    const serialNumber = this.getVal(data?.serial_number) ?? '';
+    const typeName = this.getVal(typeInfo?.type_name) ?? this.getVal(data?.type_id) ?? 'Assigned Type';
+    const categoryName = this.getVal(subCategoryInfo?.name) ?? this.getVal(data?.sub_category_id) ?? 'Uncategorized';
+    const status = this.getVal(data?.status) ?? 'Unknown';
+    const assignedUserId = this.getVal(data?.temp1) ?? '';
+    const assignedUserName = this.getVal(assignedUserInfo?.assigned_user_name) ?? '';
+    const shouldShowAssignedUser = this.isAllocatedStatus(status) && !!assignedUserId;
+
+    return {
+      id: assetId,
+      assetId,
+      assetTag: serialNumber || assetId,
+      name: this.getVal(data?.asset_name) ?? 'Unknown Asset',
+      type: typeName,
+      category: categoryName,
+      subCategory: categoryName,
+      status,
+      assignedTo: shouldShowAssignedUser ? assignedUserId : '',
+      assignedToName: shouldShowAssignedUser ? this.formatAssignedUser(assignedUserName, assignedUserId) : '',
+      location: '',
+      purchaseDate: this.getVal(data?.purchase_date) ?? '',
+      warrantyExpiry: this.getVal(data?.warranty_expiry) ?? '',
+      vendor: '',
+      serialNumber,
+      cost: 0,
+      condition: AssetCondition.GOOD,
+      requestId: this.getVal(data?.temp2) ?? ''
+    };
+  }
+
+  calculateSummary(): void {
+    const summaryMap = new Map<string, InventorySummaryRow>();
+    const stats = { total: 0, available: 0, moveToAllocation: 0, assigned: 0, other: 0 };
+
     this.allAssets.forEach(asset => {
-      const type = asset.type as string || 'Other';
-      const subCat = asset.category || 'Uncategorized';
+      const typeName = asset.type as string || 'Assigned Type';
+      const categoryName = asset.category || 'Uncategorized';
       const statusValue = (asset.status || '').toLowerCase().trim();
       
-      const isAvailable = statusValue === 'available' || statusValue === 'movetoallocationteam';
+      const isAvailable = statusValue === 'available';
+      const isMoveToAllocation = statusValue === 'movetoallocationteam';
       const isAssigned = statusValue === 'allocated' || statusValue === 'assigned';
 
-      if (!typesMap.has(type)) {
-        typesMap.set(type, {
-          name: type,
+      stats.total++;
+      if (isAvailable) stats.available++;
+      else if (isMoveToAllocation) stats.moveToAllocation++;
+      else if (isAssigned) stats.assigned++;
+      else stats.other++;
+
+      if (!summaryMap.has(categoryName)) {
+        summaryMap.set(categoryName, {
+          typeName,
+          categoryName,
           total: 0,
           available: 0,
-          assigned: 0,
-          other: 0,
-          subCategories: new Map<string, any>()
-        });
-      }
-
-      const typeData = typesMap.get(type);
-      typeData.total++;
-      if (isAvailable) typeData.available++;
-      else if (isAssigned) typeData.assigned++;
-      else typeData.other++;
-
-      if (!typeData.subCategories.has(subCat)) {
-        typeData.subCategories.set(subCat, {
-          name: subCat,
-          total: 0,
-          available: 0,
+          moveToAllocation: 0,
           assigned: 0,
           other: 0
         });
       }
 
-      const subData = typeData.subCategories.get(subCat);
-      subData.total++;
-      if (isAvailable) subData.available++;
-      else if (isAssigned) subData.assigned++;
-      else subData.other++;
+      const row = summaryMap.get(categoryName)!;
+      row.total++;
+      if (isAvailable) row.available++;
+      else if (isMoveToAllocation) row.moveToAllocation++;
+      else if (isAssigned) row.assigned++;
+      else row.other++;
     });
 
-    // Convert Map to array for template and assign dynamic pastel gradients
-    const gradients = [
-      'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)', // Pastel Blue
-      'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)', // Pastel Emerald/Sage
-      'linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%)', // Pastel Lavender
-      'linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%)', // Pastel Rose
-      'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)'  // Pastel Amber
-    ];
-
-    this.typeSummaries = Array.from(typesMap.values())
-      .sort((a: any, b: any) => a.name.localeCompare(b.name)) // Sort alphabetically
-      .map((type, index) => ({
-        ...type,
-        subCategories: Array.from(type.subCategories.values()).sort((a: any, b: any) => a.name.localeCompare(b.name)),
-        gradient: gradients[index % gradients.length]
-      }));
+    this.inventoryStats = stats;
+    this.inventoryTypeName = this.allAssets[0]?.type as string || '';
+    this.summaryRows = Array.from(summaryMap.values())
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
   }
 
   selectSubCategory(subCat: string): void {
@@ -154,12 +171,21 @@ export class AllocationInventoryComponent implements OnInit {
     this.applyFilters();
   }
 
+  clearFilters(): void {
+    this.searchText = '';
+    this.statusFilter = '';
+    this.currentPage = 1;
+    this.applyFilters();
+  }
+
   applyFilters(): void {
     let results = [...this.allAssets];
 
     if (this.statusFilter) {
       if (this.statusFilter === 'Available') {
-        results = results.filter(a => a.status === 'Available' || a.status === 'MoveToAllocationTeam');
+        results = results.filter(a => a.status === 'Available');
+      } else if (this.statusFilter === 'MoveToAllocationTeam') {
+        results = results.filter(a => a.status === 'MoveToAllocationTeam');
       } else {
         results = results.filter(a => a.status === this.statusFilter);
       }
@@ -171,6 +197,8 @@ export class AllocationInventoryComponent implements OnInit {
         a.name.toLowerCase().includes(q) ||
         a.assetTag.toLowerCase().includes(q) ||
         a.category.toLowerCase().includes(q) ||
+        a.status.toLowerCase().includes(q) ||
+        (a.requestId || '').toLowerCase().includes(q) ||
         (a.assignedToName || '').toLowerCase().includes(q)
       );
     }
@@ -210,64 +238,39 @@ export class AllocationInventoryComponent implements OnInit {
     this.applyFilters();
   }
 
-  openWarrantyModal(asset: Asset): void {
-    this.selectedAsset = asset;
-    // Format existing date if present to YYYY-MM-DD
-    const existingDate = asset.warrantyExpiry ? new Date(asset.warrantyExpiry).toISOString().split('T')[0] : '';
-    this.warrantyForm.patchValue({ newExpiry: existingDate });
-    this.isWarrantyModalOpen = true;
-  }
-
-  closeWarrantyModal(): void {
-    this.isWarrantyModalOpen = false;
-    this.selectedAsset = null;
-  }
-
-  async updateWarranty(): Promise<void> {
-    if (this.warrantyForm.invalid || !this.selectedAsset) return;
-
-    const newExpiry = this.warrantyForm.value.newExpiry;
-    
-    // SOAP call to update M_assets
-    const updateSoap = `
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
-      <tuple>
-        <old>
-          <m_assets qConstraint="0">
-            <asset_id>${this.selectedAsset.id}</asset_id>
-          </m_assets>
-        </old>
-        <new>
-          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
-            <warranty_expiry>${newExpiry}</warranty_expiry>
-          </m_assets>
-        </new>
-      </tuple>
-    </UpdateM_assets>
-  </SOAP:Body>
-</SOAP:Envelope>`.trim();
-
-    try {
-      this.loading = true;
-      await this.hs.ajax(null, null, {}, updateSoap);
-      this.notification.showToast('Warranty expiry updated successfully', 'success');
-      this.closeWarrantyModal();
-      await this.loadInventory(); // Refresh list
-    } catch (error) {
-      console.error('Update warranty failed', error);
-      this.notification.showToast('Failed to update warranty', 'error');
-    } finally {
-      this.loading = false;
-    }
-  }
-
   getStatusClass(status: string): string {
     const s = status?.toLowerCase() || '';
-    if (s.includes('available') || s.includes('movetoallocationteam')) return 'status-available';
+    if (s.includes('movetoallocationteam')) return 'status-move-to-allocation';
+    if (s.includes('available')) return 'status-available';
     if (s.includes('allocated') || s.includes('assigned')) return 'status-allocated';
     if (s.includes('repair')) return 'status-maintenance';
     return 'status-other';
+  }
+
+  getStatusLabel(status: string): string {
+    return status === 'MoveToAllocationTeam' ? 'Ready for Allocation' : status;
+  }
+
+  getStatusTitle(status: string): string {
+    return status === 'MoveToAllocationTeam' ? 'Move To Allocation Team: available and currently ready for allocation' : status;
+  }
+
+  private isAllocatedStatus(status: string): boolean {
+    const value = (status || '').toLowerCase().trim();
+    return value === 'allocated' || value === 'assigned';
+  }
+
+  private formatAssignedUser(name: string, id: string): string {
+    return name ? `${name} (${id})` : id;
+  }
+
+  private getVal(value: any): string | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'object') {
+      if (value['@nil'] === 'true' || value['@null'] === 'true' || value['@xsi:nil'] === 'true') return undefined;
+      return undefined;
+    }
+    const str = String(value).trim();
+    return str === '' ? undefined : str;
   }
 }

@@ -87,6 +87,61 @@
     }
   }
 
+  // Custom time dropdown (forces list opening downwards)
+  .time-dropdown {
+    .dropdown-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+      padding-right: 14px;
+    }
+
+    .chevron {
+      font-size: 20px;
+      color: #64748b;
+    }
+
+    .dropdown-menu {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 9999;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.10);
+      max-height: 260px;
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .dropdown-item {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      padding: 10px 12px;
+      border-radius: 10px;
+      text-align: left;
+      font-weight: 600;
+      color: #0f172a;
+      cursor: pointer;
+
+      &:hover {
+        background: #f1f5f9;
+      }
+
+      &.active {
+        background: rgba(59, 130, 246, 0.12);
+        color: #2563eb;
+      }
+    }
+  }
+
   .scheduler-preview {
     background: #f1f5f9;
     padding: 24px;
@@ -109,6 +164,49 @@
     background: #f8fafc;
     display: flex;
     justify-content: flex-end;
+  }
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+.results {
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .results-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+
+  .table-responsive {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+  }
+
+  .table {
+    margin: 0;
+    thead th {
+      font-size: 0.8rem;
+      color: #64748b;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    tbody td {
+      vertical-align: top;
+      padding: 14px 12px;
+      border-bottom: 1px solid #f1f5f9;
+    }
   }
 }
 

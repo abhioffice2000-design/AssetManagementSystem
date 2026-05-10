@@ -33,6 +33,12 @@ export class AuthService {
       if (user.projectId && (!user.projectName || !user.teamLeadName)) {
         this.resolveProjectDetailsInBackground(user);
       }
+      if (user.assetTypeId && !user.assetTypeName) {
+        this.resolveAssetTypeDetailsInBackground(user);
+      } else if (user.role === UserRole.ASSET_MANAGER || user.role === UserRole.ALLOCATION_TEAM) {
+        // Force resolution for asset roles to ensure category info is always present
+        this.resolveAssetTypeDetailsInBackground(user);
+      }
     } else {
       this.currentUserSubject = new BehaviorSubject<User | null>(null);
     }
@@ -111,7 +117,9 @@ export class AuthService {
       projectId: userData.project_id,
       projectName: (userData.m_projects && userData.m_projects.project_name && typeof userData.m_projects.project_name === 'string') ? userData.m_projects.project_name : undefined,
       teamLeadName: (userData.m_projects && (userData.m_projects.team_lead || userData.m_projects.tl_id) && typeof (userData.m_projects.team_lead || userData.m_projects.tl_id) === 'string') ? (userData.m_projects.team_lead || userData.m_projects.tl_id) : undefined,
-      teamLeadId: (userData.m_projects && userData.m_projects.tl_id && typeof userData.m_projects.tl_id === 'string') ? userData.m_projects.tl_id : undefined
+      teamLeadId: this.getNullableValue(userData.m_projects?.tl_id || userData.tl_id),
+      assetTypeId: this.getNullableValue(userData.asset_type_id || userData.type_id || userData.Asset_type_id),
+      assetTypeName: this.getNullableValue(userData.m_asset_types?.type_name || userData.m_asset_types?.asset_type_name || userData.asset_type_name || userData.type_name)
     };
 
     // Block login if user account is inactive
@@ -121,6 +129,10 @@ export class AuthService {
 
     if (finalUser.projectId && (!finalUser.projectName || !finalUser.teamLeadName)) {
       this.resolveProjectDetailsInBackground(finalUser);
+    }
+
+    if (finalUser.assetTypeId && !finalUser.assetTypeName) {
+      this.resolveAssetTypeDetailsInBackground(finalUser);
     }
 
     return finalUser;
@@ -165,15 +177,21 @@ export class AuthService {
         projectId: item.project_id,
         projectName: (item.m_projects && item.m_projects.project_name && typeof item.m_projects.project_name === 'string') ? item.m_projects.project_name : (item.projectName || item.team),
         teamLeadName: (item.m_projects && (item.m_projects.team_lead || item.m_projects.tl_id) && typeof (item.m_projects.team_lead || item.m_projects.tl_id) === 'string') ? (item.m_projects.team_lead || item.m_projects.tl_id) : undefined,
-        teamLeadId: (item.m_projects && item.m_projects.tl_id && typeof item.m_projects.tl_id === 'string') ? item.m_projects.tl_id : undefined,
+        teamLeadId: this.getNullableValue(item.m_projects?.tl_id || item.tl_id),
         designation: item.designation || 'Specialist',
         isActive: item.status === 'Active',
-        joinDate: item.created_at || new Date().toISOString().split('T')[0]
+        joinDate: item.created_at || new Date().toISOString().split('T')[0],
+        assetTypeId: this.getNullableValue(item.asset_type_id || item.type_id || item.Asset_type_id),
+        assetTypeName: this.getNullableValue(item.m_asset_types?.type_name || item.m_asset_types?.asset_type_name || item.asset_type_name || item.type_name)
       };
 
       // Background resolution for project details if standard mapping was incomplete
       if (user.projectId && (!user.projectName || !user.teamLeadName)) {
         this.resolveProjectDetailsInBackground(user);
+      }
+
+      if (user.assetTypeId && !user.assetTypeName) {
+        this.resolveAssetTypeDetailsInBackground(user);
       }
 
       return user;
@@ -230,6 +248,58 @@ export class AuthService {
       }
     } catch (e) {
       console.warn('Silent failure resolving project details in background:', e);
+    }
+  }
+
+  private async resolveAssetTypeDetailsInBackground(user: User) {
+    const isAssetRole = user.role === UserRole.ASSET_MANAGER || user.role === UserRole.ALLOCATION_TEAM;
+    if (!user.assetTypeId && !isAssetRole) return;
+
+    const getTypesSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetNAssetManagerDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const resp = await this.hs.ajax(null, null, {}, getTypesSoap);
+      let typesData = this.hs.xmltojson(resp, 'm_asset_types');
+
+      if (typesData) {
+        if (!Array.isArray(typesData)) {
+          typesData = [typesData];
+        }
+
+        let matchingType: any = null;
+        
+        // 1. Try matching by assetTypeId if we have it
+        if (user.assetTypeId) {
+          matchingType = typesData.find((t: any) => (t.type_id || t.Type_id) === user.assetTypeId);
+        }
+
+        // 2. If no match and it's an asset role, try matching by manager ID
+        if (!matchingType && isAssetRole) {
+          matchingType = typesData.find((t: any) => 
+            (t.asset_manager_id || t.am_id || t.manager_id || t.temp1) === user.id
+          );
+        }
+
+        if (matchingType) {
+          user.assetTypeId = user.assetTypeId || matchingType.type_id || matchingType.Type_id;
+          user.assetTypeName = matchingType.type_name || matchingType.asset_type_name || matchingType.name;
+
+          // Update subject if this is the current user
+          const current = this.currentUserSubject.value;
+          if (current && current.id === user.id) {
+            const updatedUser = { ...current, assetTypeId: user.assetTypeId, assetTypeName: user.assetTypeName };
+            this.currentUserSubject.next(updatedUser);
+            localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Silent failure resolving asset type details in background:', e);
     }
   }
 
@@ -561,5 +631,17 @@ export class AuthService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
+  }
+
+  private getNullableValue(value: any): string | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'object' && value !== null) {
+      if (value['@nil'] === 'true' || value['@null'] === 'true' || Object.keys(value).length === 0) return undefined;
+      // Cordys sometimes returns an empty object or an object with xsi:nil
+      if (value.hasOwnProperty('#text')) return value['#text'];
+      return undefined;
+    }
+    if (typeof value === 'string' && value.trim() === '') return undefined;
+    return String(value);
   }
 }

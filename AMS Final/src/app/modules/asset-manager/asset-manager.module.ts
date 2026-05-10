@@ -9,12 +9,14 @@ import { AssetInventoryComponent } from './asset-inventory/asset-inventory.compo
 import { AssetRequestsComponent } from './asset-requests/asset-requests.component';
 import { ReportsComponent } from './reports/reports.component';
 import { WarrantyRequestsComponent } from './warranty-requests/warranty-requests.component';
+import { ServiceRequestsComponent } from './service-requests/service-requests.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: ManagerDashboardComponent },
   { path: 'inventory', component: AssetInventoryComponent },
   { path: 'requests', component: AssetRequestsComponent },
   { path: 'warranty', component: WarrantyRequestsComponent },
+  { path: 'service', component: ServiceRequestsComponent },
   { path: 'reports', component: ReportsComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
@@ -25,7 +27,8 @@ const routes: Routes = [
     AssetInventoryComponent,
     AssetRequestsComponent,
     ReportsComponent,
-    WarrantyRequestsComponent
+    WarrantyRequestsComponent,
+    ServiceRequestsComponent
   ],
   imports: [
     CommonModule,

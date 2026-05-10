@@ -4,7 +4,7 @@
     <p class="subtitle mt-8">Initiate a return request for an asset currently assigned to you.</p>
   </div>
   <div class="card-body">
-    <form [formGroup]="returnForm" (ngSubmit)="onSubmit()">
+    <form [formGroup]="returnForm" (ngSubmit)="onSubmit()" translate="no">
       
       <div class="form-group">
         <label>Select Asset to Return *</label>
@@ -35,7 +35,7 @@
 
       <div class="form-group mt-24">
         <label>Reason for Return *</label>
-        <textarea formControlName="justification" class="form-control" placeholder="E.g., No longer needed, hardware issue, project completed..." rows="4"></textarea>
+        <textarea formControlName="justification" class="form-control" data-gramm="false" spellcheck="false" placeholder="E.g., No longer needed, hardware issue, project completed..." rows="4"></textarea>
       </div>
 
       <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">

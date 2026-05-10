@@ -235,6 +235,14 @@
             <span class="detail-label">Reason</span>
             <span class="detail-value">{{ selectedTicket.reason }}</span>
           </div>
+          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET">
+            <span class="detail-label">Employee Return Reason</span>
+            <span class="detail-value">{{ getReturnEmployeeReason(selectedTicket) }}</span>
+          </div>
+          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET && getReturnAssetManagerRemarks(selectedTicket)">
+            <span class="detail-label">Asset Manager Remarks</span>
+            <span class="detail-value">{{ getReturnAssetManagerRemarks(selectedTicket) }}</span>
+          </div>
         </div>
       </div>
 

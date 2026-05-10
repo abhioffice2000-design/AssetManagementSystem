@@ -138,8 +138,15 @@ export class ExtendWarrantyComponent implements OnInit {
     this.isLoading = true;
     const formVal = this.warrantyForm.value;
     console.log("formval", formVal);
+    var reqAss = {
+      assetid: formVal.assetId
+    }
+    var assetResp = await this.requestService.getAssetTypeFromAssetId(reqAss)
+    console.log(assetResp)
+    var assetTypeId = assetResp.old.m_assets.type_id
+
     var assetReq = {
-      Asset_type_id: formVal.assetId
+      Asset_type_id: assetTypeId
     }
     var assetresp = await this.requestService.getAssetManagerByAssetTypeId(assetReq)
     console.log(assetresp);
@@ -197,10 +204,10 @@ export class ExtendWarrantyComponent implements OnInit {
                 status: 'Pending',
                 remarks: formVal.justification,
                 action_date: new Date().toISOString(),
-                temp1: this.selectedAsset?.id || '',
+                temp1: '',
                 temp2: '',
                 temp3: '',
-                temp4: '',
+                temp4: this.selectedAsset?.id || '',
                 temp5: '',
                 temp6: '',
                 temp7: ''

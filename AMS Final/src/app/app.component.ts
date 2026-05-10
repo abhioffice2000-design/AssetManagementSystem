@@ -11,21 +11,24 @@ declare var $: any;
 export class AppComponent implements OnInit {
   title = 'ams';
 
-  constructor(private warrantyScheduler: WarrantySchedulerService) {}
+  constructor(private warrantyScheduler: WarrantySchedulerService) { }
 
   ngOnInit() {
     this.warrantyScheduler.initScheduler();
     console.log('AppComponent initialized. Checking for Cordys SDK...', typeof $, typeof $.cordys);
-    
+
     // Configure Cordys SDK to use the proxy root endpoints (bypassing the default /cordys/ prefix)
     if (typeof $ !== 'undefined' && $.cordys) {
       console.log('Cordys SDK found. Configuring paths...');
       if ($.cordys.authentication && $.cordys.authentication.defaults) {
         $.cordys.authentication.defaults.preLoginInfoURL = "/com.eibus.sso.web.authentication.PreLoginInfo.wcp";
         $.cordys.authentication.defaults.loginURL = "/com.eibus.web.soap.Gateway.wcp";
+
+        // $.cordys.authentication.defaults.preLoginInfoURL = "home/training2025/com.eibus.sso.web.authentication.PreLoginInfo.wcp";
+        // $.cordys.authentication.defaults.loginURL = "home/training2025/com.eibus.web.soap.Gateway.wcp";
         console.log('Cordys paths configured.');
       }
-      
+
       // Auto-trigger PreLoginInfo on load to establish Cordys connectivity
       if ($.cordys.authentication) {
         console.log('Triggering getPreloginInfo()...');

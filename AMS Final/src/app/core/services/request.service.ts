@@ -174,6 +174,7 @@ export class RequestService {
       this.requestsLoaded = true;
 
       console.log(`Fetched ${this.requests.length} pending requests from service`);
+      console.log("request are.............", this.requests)
       return [...this.requests];
     } catch (err) {
       console.error('Failed to fetch requests from GetallpendingrequestsForAssetManager:', err);
@@ -286,7 +287,12 @@ export class RequestService {
     }
   }
 
-  async fetchPendingReturnApprovalsFromService(approverId: string = 'usr_004'): Promise<AssetRequest[]> {
+  async fetchPendingReturnApprovalsFromService(approverId: string): Promise<AssetRequest[]> {
+    if (!approverId) {
+      console.warn('Approver ID is required to fetch return approvals.');
+      return [];
+    }
+
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -398,26 +404,29 @@ export class RequestService {
    * Used for the "Resolved" tab in Warranty Extensions.
    */
   async fetchAllWarrantyRequests(): Promise<AssetRequest[]> {
-    const soapRequest = `
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <GetT_extend_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
-  </SOAP:Body>
-</SOAP:Envelope>`.trim();
-
     try {
-      const response = await this.hs.ajax(null, null, {}, soapRequest);
-      const tuples = this.hs.xmltojson(response, 'tuple');
+      const resp = await this.hs.ajax(
+        'GetT_extend_asset_requestsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromRequest_id: '0', toRequest_id: 'zzzzzzzzzz' }
+      );
+      let tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) {
+        // Try direct object extraction or standard table name
+        tuples = this.hs.xmltojson(resp, 't_extend_asset_requests') || 
+                 this.hs.xmltojson(resp, 'old') || 
+                 this.hs.xmltojson(resp, 'new');
+      }
 
       if (!tuples) {
-        console.warn('No tuples found in GetT_extend_asset_requests response');
+        console.warn('No records found in GetT_extend_asset_requestsObjects response');
         return [];
       }
 
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
       return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
     } catch (err) {
-      console.error('Failed to fetch all warranty requests from GetT_extend_asset_requests:', err);
+      console.error('Failed to fetch all warranty requests from GetT_extend_asset_requestsObjects:', err);
       return [];
     }
   }
@@ -458,6 +467,57 @@ export class RequestService {
   }
 
   /**
+   * Fetches ALL warranty extension requests for a specific user (Pending + Resolved).
+   */
+  async fetchAllWarrantyRequestsForUser(userId: string): Promise<AssetRequest[]> {
+    try {
+      console.log(`[RequestService] Fetching all warranty requests for user: ${userId} via client-side filtering`);
+      const allRequests = await this.fetchAllWarrantyRequests();
+      const userRequests = allRequests.filter(req => req.requesterId === userId);
+      
+      // For each request, ensure we have the latest status from the approval chain
+      const enrichedRequests = await Promise.all(userRequests.map(async (req) => {
+        try {
+          const progress = await this.getWarrantyProgress(req.id);
+          if (progress && progress.length > 0) {
+            // Sort by ID to get the latest
+            const latest = [...progress].sort((a, b) => {
+              const idA = parseInt(a.approvalId?.replace(/\D/g, '') || '0');
+              const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
+              return idB - idA;
+            })[0];
+            
+            if (latest) {
+              const latestStatus = this.mapToStatus(latest.status);
+              const isAllocationStage = latest.stage?.toLowerCase().includes('allocation') || latest.stage?.toLowerCase().includes('team');
+              
+              if (latestStatus === RequestStatus.APPROVED && !isAllocationStage) {
+                // If manager approved but not allocation, keep it as Pending for the employee
+                req.status = RequestStatus.PENDING;
+              } else {
+                req.status = latestStatus;
+              }
+              
+              req.approvalId = latest.approvalId;
+              req.taskid = latest.temp1;
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to enrich warranty request ${req.id} with progress:`, err);
+        }
+        return req;
+      }));
+
+      console.log(`[RequestService] Found ${enrichedRequests.length} warranty requests for user ${userId}`);
+      return enrichedRequests;
+    } catch (err) {
+      console.error('Failed to fetch all warranty requests for user:', err);
+      // Fallback to the pending-only service if the robust approach fails
+      return this.fetchWarrantyRequestsForUser(userId);
+    }
+  }
+
+  /**
    * Fetches the full object for a specific warranty extension request.
    * Based on USER provided SOAP request structure.
    */
@@ -483,73 +543,61 @@ export class RequestService {
   }
 
   /**
-   * Updates an existing warranty extension approval record.
-   * Uses UpdateT_extend_request_approvals SOAP service.
+   * Updates an existing warranty extension approval record using standard object payload.
    */
-  async updateWarrantyRequestApproval(approvalId: string, status: string, remarks: string, temp1?: string): Promise<any> {
-    const soapRequest = `
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <UpdateT_extend_request_approvals xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
-      <tuple>
-        <old>
-          <t_extend_request_approvals qConstraint="0">
-            <approval_id>${approvalId}</approval_id>
-          </t_extend_request_approvals>
-        </old>
-        <new>
-          <t_extend_request_approvals qAccess="0" qConstraint="0" qInit="0" qValues="">
-            <status>${status}</status>
-            <remarks>${remarks}</remarks>
-            <action_date>${new Date().toISOString()}</action_date>
-            <temp1>${temp1 || ''}</temp1>
-          </t_extend_request_approvals>
-        </new>
-      </tuple>
-    </UpdateT_extend_request_approvals>
-  </SOAP:Body>
-</SOAP:Envelope>`.trim();
+  updateWarrantyApproval(data: any): Promise<any> {
+    return this.hs.ajax('UpdateT_extend_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', data);
+  }
 
-    try {
-      return await this.hs.ajax(null, null, {}, soapRequest);
-    } catch (err) {
-      console.error('Failed to update warranty request approval:', err);
-      throw err;
-    }
+  /**
+   * Creates a new warranty extension approval record using standard object payload.
+   */
+  createWarrantyApproval(data: any): Promise<any> {
+    return this.hs.ajax('UpdateT_extend_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', data);
+  }
+
+  /**
+   * Updates an existing warranty extension approval record.
+   * [DEPRECATED] Use updateWarrantyApproval instead.
+   */
+  async updateWarrantyRequestApproval(approvalId: string, status: string, remarks: string, assetId?: string): Promise<any> {
+    const payload = {
+      tuple: {
+        old: { t_extend_request_approvals: { approval_id: approvalId } },
+        new: {
+          t_extend_request_approvals: {
+            status: status,
+            remarks: remarks,
+            action_date: new Date().toISOString(),
+            temp4: assetId || ''
+          }
+        }
+      }
+    };
+    return this.updateWarrantyApproval(payload);
   }
 
   /**
    * Creates a new warranty extension approval record for the next stage.
-   * Uses UpdateT_extend_request_approvals SOAP service.
+   * [DEPRECATED] Use createWarrantyApproval instead.
    */
   async createNewWarrantyApprovalEntry(requestId: string, approverId: string, role: string, remarks: string, assetId: string): Promise<any> {
-    const soapRequest = `
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <UpdateT_extend_request_approvals xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
-      <tuple>
-        <new>
-          <t_extend_request_approvals qAccess="0" qConstraint="0" qInit="0" qValues="">
-            <request_id>${requestId}</request_id>
-            <approver_id>${approverId}</approver_id>
-            <role>${role}</role>
-            <status>Pending</status>
-            <remarks>${remarks}</remarks>
-            <action_date>${new Date().toISOString()}</action_date>
-            <temp1>${assetId}</temp1>
-          </t_extend_request_approvals>
-        </new>
-      </tuple>
-    </UpdateT_extend_request_approvals>
-  </SOAP:Body>
-</SOAP:Envelope>`.trim();
-
-    try {
-      return await this.hs.ajax(null, null, {}, soapRequest);
-    } catch (err) {
-      console.error('Failed to create new warranty approval entry:', err);
-      throw err;
-    }
+    const payload = {
+      tuple: {
+        new: {
+          t_extend_request_approvals: {
+            request_id: requestId,
+            approver_id: approverId,
+            role: role,
+            status: 'Pending',
+            remarks: remarks,
+            action_date: new Date().toISOString(),
+            temp4: assetId
+          }
+        }
+      }
+    };
+    return this.createWarrantyApproval(payload);
   }
 
   /**
@@ -621,21 +669,19 @@ export class RequestService {
    * Specialized mapping for warranty requests (t_extend_asset_requests).
    */
   private mapWarrantyTupleToRequest(tuple: any): AssetRequest {
-    const parent = tuple?.old || tuple;
+    const parent = tuple?.old || tuple?.new || tuple;
 
     // In Cordys join queries, tables can be siblings or nested.
-    // Try to find approval data in both common patterns.
     const approvalData = parent?.t_extend_request_approvals ||
       parent?.t_extend_asset_requests?.t_extend_request_approvals ||
       parent;
 
     const reqData = parent?.t_extend_asset_requests ||
       approvalData?.t_extend_asset_requests ||
-      (parent.request_id ? parent : {});
+      (parent.request_id || parent.Request_id || parent.user_id || parent.User_id || parent.temp1 ? parent : {});
 
-    const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || {};
+    const userInfo = parent?.m_users || approvalData?.m_users || reqData?.m_users || parent?.old?.m_users || {};
 
-    // Asset metadata can be in multiple places depending on the join depth
     const assetInfo = parent?.m_assets ||
       reqData?.m_assets ||
       approvalData?.m_assets ||
@@ -643,72 +689,85 @@ export class RequestService {
       parent?.t_extend_request_approvals?.m_assets ||
       {};
 
-    // Robust mapping: Prioritize Temp tags from t_extend_asset_requests as they are always present upon submission
-    const assetName = this.getNullableValue(reqData?.temp1 || parent?.temp1 || assetInfo?.asset_name || assetInfo?.name) || 'Unknown Asset';
+    // Robust mapping for capitalized or lowercase keys
+    const assetName = this.getNullableValue(reqData?.temp1 || reqData?.Temp1 || assetInfo?.asset_name || parent?.temp1 || parent?.Temp1 || assetInfo?.name) || 'Unknown Asset';
     const serialNumber = this.getNullableValue(
-      reqData?.temp2 ||
-      parent?.temp2 ||
-      reqData?.serial_number ||
-      reqData?.asset_tag ||
-      assetInfo?.serial_number ||
-      assetInfo?.asset_tag ||
-      assetInfo?.serial_no ||
-      assetInfo?.Serial_number ||
+      reqData?.temp2 || reqData?.Temp2 ||
+      parent?.temp2 || parent?.Temp2 ||
+      reqData?.serial_number || reqData?.Serial_number ||
+      assetInfo?.serial_number || assetInfo?.Serial_number ||
       parent?.serial_number
     ) || 'N/A';
-    const expiryDate = this.getNullableValue(reqData?.temp3 || assetInfo?.warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
-    const assetId = this.getNullableValue(reqData?.asset_id || assetInfo?.asset_id || reqData?.asset_type) || 'N/A';
+    const expiryDate = this.getNullableValue(reqData?.temp3 || reqData?.Temp3 || assetInfo?.warranty_expiry || assetInfo?.Warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
+    const assetId = this.getNullableValue(reqData?.asset_id || reqData?.Asset_id || assetInfo?.asset_id || assetInfo?.Asset_id || approvalData?.temp4 || approvalData?.Temp4 || reqData?.asset_type) || 'N/A';
 
-    const status = this.mapToStatus(approvalData?.status || reqData?.status || '');
+    // Prioritize type_name or type_id for assignment lookup, fallback to 'Hardware'
+    const rawAssetType = this.getNullableValue(
+      assetInfo?.type_name || 
+      assetInfo?.type_id || 
+      assetInfo?.asset_type || 
+      reqData?.asset_type || 
+      'Hardware'
+    ) || 'Hardware';
+
+    const statusStr = this.getNullableValue(approvalData?.status || approvalData?.Status || reqData?.status || reqData?.Status || '') || '';
+    const status = this.mapToStatus(statusStr);
     const currentStage = ApprovalStage.ASSET_MANAGER;
 
-    const requesterId = reqData?.user_id || reqData?.User_id || userInfo?.user_id || '';
+    const requesterId = this.getNullableValue(
+      reqData?.user_id || reqData?.User_id || reqData?.USER_ID ||
+      parent?.user_id || parent?.User_id || parent?.requested_by ||
+      userInfo?.user_id || userInfo?.User_id || ''
+    ) || '';
+    const requestId = this.getNullableValue(reqData?.request_id || reqData?.Request_id || parent?.request_id || parent?.Request_id || '') || '';
+    const justification = this.getNullableValue(reqData?.reason || reqData?.Reason || '') || '';
+    const urgencyStr = this.getNullableValue(reqData?.urgency || reqData?.Urgency || 'Medium') || 'Medium';
+    const createdAt = this.getNullableValue(reqData?.created_at || reqData?.Created_at || '') || '';
+
     if (!requesterId) {
-      console.warn('[RequestService] mapWarrantyTupleToRequest: Missing requesterId (user_id). reqData keys:', Object.keys(reqData || {}), 'tuple:', tuple);
+      console.warn('[RequestService] mapWarrantyTupleToRequest: Missing requesterId. reqData keys:', Object.keys(reqData || {}), 'tuple:', tuple);
     }
 
-    const requestId = reqData?.request_id || parent?.request_id || '';
-
     return {
-      taskid: this.getNullableValue(approvalData?.temp1 || parent?.temp1 || parent?.t_extend_asset_requests?.t_extend_request_approvals?.temp1) || '',
-      document: this.getNullableValue(reqData?.document) || '',
-      approvalId: approvalData?.approval_id || parent?.approval_id || parent?.t_extend_asset_requests?.t_extend_request_approvals?.approval_id || '',
+      taskid: this.getNullableValue(approvalData?.temp1 || approvalData?.Temp1 || parent?.temp1 || parent?.Temp1) || '',
+      document: this.getNullableValue(reqData?.document || reqData?.Document) || '',
+      approvalId: this.getNullableValue(approvalData?.approval_id || approvalData?.Approval_id || parent?.approval_id || parent?.Approval_id) || '',
       id: requestId,
       requestNumber: requestId,
       requesterId: requesterId,
-      requesterName: userInfo?.name || '',
-      requesterEmail: userInfo?.email || '',
-      requesterDepartment: this.getNullableValue(userInfo?.department) || '',
-      requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.getNullableValue(assetInfo?.type_id || assetInfo?.asset_type) || this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
+      requesterName: this.getNullableValue(userInfo?.name || userInfo?.Name || '') || '',
+      requesterEmail: this.getNullableValue(userInfo?.email || userInfo?.Email || '') || '',
+      requesterDepartment: this.getNullableValue(userInfo?.department || userInfo?.Department) || '',
+      requesterTeam: this.getNullableValue(userInfo?.team || userInfo?.Team) || '',
+      assetType: this.normalizeAssetType(rawAssetType),
       category: 'Warranty extension',
       subCategory: assetName,
       assetName: assetName,
       assignedAssetId: assetId,
       assignedSerial: serialNumber,
       assignedWarrantyExpiry: expiryDate,
-      justification: reqData?.reason || '',
-      urgency: this.mapToUrgency(reqData?.urgency || 'Medium'),
+      justification: justification,
+      urgency: this.mapToUrgency(urgencyStr),
       status: status,
       currentStage: currentStage,
       hasEmailApproval: false,
-      requestDate: reqData?.created_at || '',
-      lastUpdated: reqData?.created_at || '',
+      requestDate: createdAt,
+      lastUpdated: createdAt,
       requestType: RequestType.EXTEND_WARRANTY,
       approvalChain: [
         {
           stage: ApprovalStage.ASSET_MANAGER,
           action: (status === RequestStatus.PENDING) ? 'Pending' : 'Approved',
-          approverId: approvalData?.approver_id,
-          comments: approvalData?.remarks
+          approverId: this.getNullableValue(approvalData?.approver_id || approvalData?.Approver_id) || '',
+          comments: this.getNullableValue(approvalData?.remarks || approvalData?.Remarks) || ''
         }
       ],
       comments: [],
-      requesterStatus: this.getNullableValue(userInfo?.status),
-      requesterProject: this.getNullableValue(userInfo?.project_id),
-      requesterRole: this.getNullableValue(userInfo?.role_id),
-      requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
-      requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name)
+      requesterStatus: this.getNullableValue(userInfo?.status || userInfo?.Status) || '',
+      requesterProject: this.getNullableValue(userInfo?.project_id || userInfo?.Project_id) || '',
+      requesterRole: this.getNullableValue(userInfo?.role_id || userInfo?.Role_id) || '',
+      requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.Project_name) || '',
+      requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.Role_name) || ''
     };
   }
 
@@ -723,7 +782,8 @@ export class RequestService {
    *   t_request_approvals.approval_id / status / remarks / temp1 etc. — approval record fields
    */
   private mapConfirmationTupleToRequest(tuple: any): AssetRequest {
-    const approval = tuple?.old?.t_request_approvals || tuple?.t_request_approvals || {};
+    debugger
+    const approval = tuple?.old?.t_request_approvals;
     const reqData = approval?.t_asset_requests || {};
     const assetData = approval?.m_assets || {};
     const userInfo = approval?.m_users || {};
@@ -780,7 +840,7 @@ export class RequestService {
       requesterRole: this.getNullableValue(userInfo?.role_id),
       requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
       requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
-      teamLeadJustification: this.getNullableValue(approval?.reason || approval?.remarks || approval?.temp2)
+      teamLeadJustification: this.getNullableValue(approval?.reason || approval?.remarks)
     };
   }
 
@@ -844,7 +904,7 @@ export class RequestService {
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
           timestamp: approvalData?.action_date || approvalData?.created_at || '',
-          comments: approvalData?.remarks || approvalData?.reason || approvalData?.temp2 || ''
+          comments: approvalData?.remarks || approvalData?.reason || ''
         };
       });
 
@@ -863,29 +923,44 @@ export class RequestService {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <GetWarrantyProgressForEmployee xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
-      <requestId>${requestId}</requestId>
-    </GetWarrantyProgressForEmployee>
+    <GetT_extend_request_approvalsObjects xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <fromApproval_id>0</fromApproval_id>
+      <toApproval_id>zzzzzzzzzz</toApproval_id>
+    </GetT_extend_request_approvalsObjects>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
     try {
       const response = await this.hs.ajax(null, null, {}, soapRequest);
-      const data = this.hs.xmltojson(response, 'tuple');
+      const data = this.hs.xmltojson(response, 't_extend_request_approvals');
 
       if (!data) return [];
       const tupleArray = Array.isArray(data) ? data : [data];
 
-      return tupleArray.map((tuple: any) => {
-        const approvalData = tuple?.old?.t_extend_request_approvals || tuple?.t_extend_request_approvals || tuple;
-        return {
-          stage: approvalData?.role || 'Asset Manager',
-          status: approvalData?.status || 'Pending',
-          approverId: approvalData?.approver_id,
-          approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Approver',
-          timestamp: approvalData?.action_date || approvalData?.created_at,
-          comments: approvalData?.remarks || ''
-        };
+      const results = tupleArray
+        .map((tuple: any) => {
+          const approvalData = tuple?.old?.t_extend_request_approvals || tuple?.t_extend_request_approvals || tuple;
+          const userInfo = approvalData?.m_users || {};
+
+          return {
+            stage: this.getNullableValue(approvalData?.role || approvalData?.Role || approvalData?.ROLE || 'Asset Manager'),
+            status: this.getNullableValue(approvalData?.status || approvalData?.Status || approvalData?.STATUS || 'Pending'),
+            approverId: this.getNullableValue(approvalData?.approver_id || approvalData?.Approver_id || approvalData?.APPROVER_ID),
+            approverName: this.getNullableValue(userInfo?.name || userInfo?.Name || userInfo?.NAME || approvalData?.approver_name || approvalData?.Approver_name),
+            timestamp: this.getNullableValue(approvalData?.action_date || approvalData?.Action_date || approvalData?.ACTION_DATE || approvalData?.created_at || approvalData?.Created_at || approvalData?.CREATED_AT),
+            comments: this.getNullableValue(approvalData?.remarks || approvalData?.Remarks || approvalData?.REMARKS || ''),
+            requestId: this.getNullableValue(approvalData?.request_id || approvalData?.Request_id)
+          };
+        })
+        .filter(r => r.requestId === requestId);
+
+      // Sort by timestamp to ensure chronological order for the tracker
+      return results.sort((a, b) => {
+        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        // If timestamps are equal, fallback to a consistent order (Approved before Pending if same role, etc.)
+        if (timeA === timeB) return a.status === 'Approved' ? -1 : 1;
+        return timeA - timeB;
       });
     } catch (err) {
       console.error('Error fetching warranty progress:', err);
@@ -943,11 +1018,11 @@ export class RequestService {
         for (let i = tupleArray.length - 1; i >= 0; i--) {
           const tuple = tupleArray[i];
           if (!assetId) {
-            const foundAsset = findValue(tuple, ['temp1', 'asset_id', 'assetid']);
+            const foundAsset = findValue(tuple, ['temp4', 'temp1', 'asset_id', 'assetid']);
             if (foundAsset) assetId = foundAsset;
           }
           if (!taskId) {
-            const foundTask = findValue(tuple, ['temp2', 'taskid', 'task_id', 'instance_id']);
+            const foundTask = findValue(tuple, ['temp1', 'temp2', 'taskid', 'task_id', 'instance_id']);
             if (foundTask) taskId = foundTask;
           }
           if (assetId && taskId) break;
@@ -1090,7 +1165,7 @@ export class RequestService {
     const requestDate = createdAt;
 
     return {
-      taskid: parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
+      taskid: parent?.t_request_approvals?.temp1 || reqData?.t_request_approvals?.temp1 || parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
       approvalId: parent?.t_request_approvals?.approval_id || reqData?.t_request_approvals?.approval_id || '',
       id: reqData?.request_id || '',
       requestNumber: reqData?.request_id || '',
@@ -1099,7 +1174,7 @@ export class RequestService {
       requesterEmail: userInfo?.email || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
+      assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
       assetName: this.getNullableValue(
         reqData?.temp1 ||
         parent?.temp1 ||
@@ -1169,8 +1244,8 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: reqData?.temp1 || parent?.t_request_approvals?.temp1 || '',
-      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp1 || '',
+      allocatedAssetId: reqData?.temp4 || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
+      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
       assignedTypeId: assetInfo?.type_id || '',
       assignedSubCategoryId: assetInfo?.sub_category_id || '',
       assignedSerial: assetInfo?.serial_number || '',
@@ -1185,10 +1260,8 @@ export class RequestService {
       teamLeadJustification: this.getNullableValue(
         parent?.t_request_approvals?.reason ||
         parent?.t_request_approvals?.remarks ||
-        parent?.t_request_approvals?.temp2 ||
         reqData?.t_request_approvals?.reason ||
-        reqData?.t_request_approvals?.remarks ||
-        reqData?.t_request_approvals?.temp2
+        reqData?.t_request_approvals?.remarks
       )
     };
   }
@@ -1197,48 +1270,62 @@ export class RequestService {
    * Specialized mapping for return requests (t_asset_returns).
    */
   private mapReturnTupleToRequest(tuple: any): AssetRequest {
-    const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
+    const parent = tuple?.old || tuple;
+    const data = parent?.t_asset_returns || tuple?.t_asset_returns || tuple;
     const userInfo = data?.m_users || {};
-    let approvalData = data?.t_asset_return_approvals || {};
+    let approvalData = data?.t_asset_return_approvals || parent?.t_asset_return_approvals || tuple?.t_asset_return_approvals || {};
     if (Array.isArray(approvalData)) {
-      approvalData = approvalData.find((approval: any) => this.getNullableValue(approval?.status) === 'Pending') || approvalData[0] || {};
+      approvalData = approvalData.find((approval: any) => this.mapToStatus(this.getReturnValue(approval?.status) || '') === RequestStatus.PENDING) || approvalData[0] || {};
     }
 
-    const assetInfo = data?.m_assets || tuple?.old?.m_assets || tuple?.m_assets || {};
+    const assetInfo = data?.m_assets || parent?.m_assets || tuple?.m_assets || {};
+    const returnId = this.getReturnValue(data?.return_id) || '';
+    const assetId = this.getReturnValue(data?.temp1) ||
+      this.getReturnValue(data?.asset_id) ||
+      this.getReturnValue(assetInfo?.asset_id) ||
+      this.getReturnValue(approvalData?.temp1) ||
+      '';
+    const rawAssetType = this.getReturnValue(assetInfo?.type_id) ||
+      this.getReturnValue(assetInfo?.asset_type) ||
+      this.getReturnValue(assetInfo?.type_name) ||
+      'Hardware';
+    const assetName = this.getReturnValue(assetInfo?.asset_name);
 
-    const status = this.mapToStatus(data?.status || approvalData?.status || '');
-    const currentStage = ApprovalStage.ASSET_MANAGER; // Assuming it's at this stage if fetched by manager
+    const status = this.mapToStatus(this.getReturnValue(data?.status) || this.getReturnValue(approvalData?.status) || '');
+    const currentStage = this.getReturnValue(approvalData?.role)?.toLowerCase().includes('allocation')
+      ? ApprovalStage.ALLOCATION
+      : ApprovalStage.ASSET_MANAGER;
 
     return {
-      taskid: approvalData.temp2,
-      returnapprovalId: approvalData?.return_approval_id || '',
-      id: data?.return_id || '',
-      requestNumber: data?.return_id || '',
-      requesterId: data?.requested_by || userInfo?.user_id || '',
-      requesterName: userInfo?.name || '',
-      requesterEmail: userInfo?.email || '',
+      taskid: this.getReturnValue(approvalData?.temp2) || '',
+      returnapprovalId: this.getReturnValue(approvalData?.return_approval_id) || '',
+      id: returnId,
+      requestNumber: returnId,
+      requesterId: this.getReturnValue(data?.requested_by) || this.getReturnValue(userInfo?.user_id) || '',
+      requesterName: this.getReturnValue(userInfo?.name) || '',
+      requesterEmail: this.getReturnValue(userInfo?.email) || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(assetInfo?.asset_type || 'Hardware'),
-      category: this.normalizeCategory(this.getNullableValue(assetInfo?.asset_name || 'Asset Return')),
+      assetType: this.normalizeAssetType(rawAssetType),
+      category: this.normalizeCategory(assetName || this.getReturnValue(assetInfo?.sub_category_id) || 'Asset Return'),
       subCategory: 'N/A',
-      assetName: this.getNullableValue(assetInfo?.asset_name),
-      assignedAssetId: this.getNullableValue(data?.temp1 || assetInfo?.asset_id || approvalData?.temp1),
+      assetName,
+      assignedAssetId: assetId,
       assignedSerial: this.getNullableValue(assetInfo?.serial_number),
-      justification: data?.remarks || '',
+      justification: this.getReturnValue(data?.remarks) || '',
       urgency: RequestUrgency.MEDIUM,
       status: status,
       currentStage: currentStage,
       hasEmailApproval: false,
-      requestDate: data?.return_date || '',
-      lastUpdated: data?.return_date || '',
+      requestDate: this.getReturnValue(data?.return_date) || '',
+      lastUpdated: this.getReturnValue(approvalData?.action_date) || this.getReturnValue(data?.return_date) || '',
       requestType: RequestType.RETURN_ASSET,
       approvalChain: [
         {
-          stage: ApprovalStage.ASSET_MANAGER,
-          action: 'Pending',
-          approverId: approvalData?.approver_id,
-          comments: approvalData?.remarks
+          stage: currentStage,
+          action: status === RequestStatus.REJECTED ? 'Rejected' : status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED ? 'Approved' : 'Pending',
+          approverId: this.getReturnValue(approvalData?.approver_id),
+          comments: this.getReturnValue(approvalData?.remarks)
         }
       ],
       comments: [],
@@ -1313,15 +1400,27 @@ export class RequestService {
     if (value === null || value === undefined) return undefined;
     if (typeof value === 'object' && value !== null) {
       if (value['@nil'] === 'true' || value['@null'] === 'true') return undefined;
+      if (value['#text'] !== undefined) return String(value['#text']);
       return undefined;
     }
     if (typeof value === 'string' && value.trim() === '') return undefined;
     return String(value);
   }
 
+  private getReturnValue(value: any): string | undefined {
+    const text = this.getNullableValue(value)?.trim();
+    if (!text) return undefined;
+
+    const normalized = text.toLowerCase();
+    if (['-', 'n/a', 'na', 'null', 'undefined', 'nan'].includes(normalized)) return undefined;
+    if (text === '\u2014' || text === '\u2013') return undefined;
+    if (normalized.includes('\u00e2') || normalized.includes('\ufffd')) return undefined;
+
+    return text;
+  }
+
   private mapToUrgency(urgency: string): RequestUrgency {
     const normalized = urgency.toLowerCase();
-    if (normalized.includes('critical')) return RequestUrgency.CRITICAL;
     if (normalized.includes('high')) return RequestUrgency.HIGH;
     if (normalized.includes('medium')) return RequestUrgency.MEDIUM;
     if (normalized.includes('low')) return RequestUrgency.LOW;
@@ -1374,15 +1473,26 @@ export class RequestService {
   }
 
   public normalizeAssetType(type: string | undefined): string {
-    if (!type) return 'N/A';
+    if (!type) return 'Hardware';
     const t = type.toLowerCase().trim();
-    if (t === 'typ_01' || t === 'software' || t.includes('license') || t.includes('anti') || t.includes('security')) return 'Software';
-    if (t === 'typ_02' || t === 'hardware' || t.includes('laptop') || t.includes('hard') || t.includes('comp')) return 'Hardware';
-    if (t === 'typ_03' || t === 'network' || t.includes('wifi') || t.includes('router')) return 'Network';
-    if (t === 'typ_04' || t === 'peripheral') return 'Peripheral';
+    
+    // 1. Furniture detection (prioritized)
+    if (t.includes('furn') || t.includes('chair') || t.includes('table') || t.includes('desk') || t === 'typ_05') return 'Furniture';
+    
+    // 2. Software detection
+    if (t.includes('soft') || t.includes('license') || t.includes('adobe') || t.includes('office') || t === 'typ_01') return 'Software';
+    
+    // 3. Hardware detection
+    if (t.includes('laptop') || t.includes('hard') || t.includes('comp') || t.includes('dell') || t.includes('hp') || t.includes('mouse') || t === 'typ_02') return 'Hardware';
+    
+    // 4. Network detection
+    if (t.includes('network') || t.includes('wifi') || t.includes('router') || t === 'typ_03') return 'Network';
+    
+    // 5. Peripheral detection
+    if (t.includes('periph') || t.includes('keyboard') || t === 'typ_04') return 'Peripheral';
 
-    // Default: capitalize first letter
-    return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    // Default fallback to Hardware if no specific category matched
+    return 'Hardware';
   }
 
   public normalizeCategory(value: string | undefined): string {
@@ -1594,6 +1704,92 @@ export class RequestService {
     return this.hs.ajax(
       'UpdateT_asset_return_approvals',
       'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  /**
+   * Inserts a service request using raw SOAP XML.
+   * Only the fields present in the 'fields' object are included in the XML,
+   * preventing Cordys BusObject from auto-generating empty tags for FK columns
+   * (allocation_id, tl_id) which would violate FK constraints (empty string != NULL).
+   */
+  createServiceRequestRaw(fields: Record<string, string>): Promise<any> {
+    // Build only the XML tags for fields that have values
+    const fieldXml = Object.entries(fields)
+      .filter(([_, val]) => val !== undefined && val !== null)
+      .map(([key, val]) => `              <${key}>${val}</${key}>`)
+      .join('\n');
+
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_service_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata">
+      <tuple>
+        <new>
+          <t_service_requests>
+${fieldXml}
+          </t_service_requests>
+        </new>
+      </tuple>
+    </UpdateT_service_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    console.log('[createServiceRequestRaw] SOAP:', soapRequest);
+    return this.hs.ajax(null, null, {}, soapRequest)
+      .then((res: any) => {
+        const tuple = this.hs.xmltojson(res, 'tuple');
+        console.log('[createServiceRequestRaw] response tuple:', tuple);
+        return tuple;
+      })
+      .catch((err: any) => {
+        console.error('[createServiceRequestRaw] failed:', err);
+        throw err;
+      });
+  }
+
+  /**
+   * Legacy object-based insert (kept for updates where all fields exist).
+   */
+  createEntryForServiceRequest(request: any) {
+    return this.hs.ajax(
+      'UpdateT_service_requests',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  createEntryForServiceApproval(request: any) {
+    return this.hs.ajax(
+      'UpdateT_service_approvals',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      throw err;
+    });
+  }
+
+  callBPMForService(request: any) {
+    return this.hs.ajax(
+      'ams_serviceflow_bpm2',
+      'http://schemas.cordys.com/default',
       request
     ).then((res: any) => {
       console.log(res);
@@ -1963,7 +2159,7 @@ export class RequestService {
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
+      console.log("response for all pending request...........",res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
@@ -2105,12 +2301,15 @@ export class RequestService {
       return tupleArray.map((tuple: any) => {
         const data = tuple?.old?.t_asset_return_approvals || tuple?.t_asset_return_approvals || tuple;
         return {
-          return_approval_id: data?.return_approval_id || '',
-          request_id: data?.request_id || '',
-          approver_id: data?.approver_id || '',
-          role: data?.role || '',
-          status: data?.status || '',
-          remarks: data?.remarks || ''
+          return_approval_id: this.getReturnValue(data?.return_approval_id) || '',
+          request_id: this.getReturnValue(data?.request_id) || '',
+          approver_id: this.getReturnValue(data?.approver_id) || '',
+          role: this.getReturnValue(data?.role) || '',
+          status: this.getReturnValue(data?.status) || '',
+          remarks: this.getReturnValue(data?.remarks) || '',
+          action_date: this.getReturnValue(data?.action_date) || '',
+          temp1: this.getReturnValue(data?.temp1) || '',
+          temp2: this.getReturnValue(data?.temp2) || ''
         };
       });
     } catch (err) {
@@ -2152,13 +2351,15 @@ export class RequestService {
         .map((tuple: any) => {
           const data = tuple?.old?.t_asset_return_approvals || tuple?.t_asset_return_approvals || tuple;
           return {
-            return_approval_id: data?.return_approval_id || '',
-            request_id: data?.request_id || '',
-            approver_id: data?.approver_id || '',
-            role: data?.role || '',
-            status: data?.status || '',
-            remarks: data?.remarks || '',
-            action_date: data?.action_date || ''
+            return_approval_id: this.getReturnValue(data?.return_approval_id) || '',
+            request_id: this.getReturnValue(data?.request_id) || '',
+            approver_id: this.getReturnValue(data?.approver_id) || '',
+            role: this.getReturnValue(data?.role) || '',
+            status: this.getReturnValue(data?.status) || '',
+            remarks: this.getReturnValue(data?.remarks) || '',
+            action_date: this.getReturnValue(data?.action_date) || '',
+            temp1: this.getReturnValue(data?.temp1) || '',
+            temp2: this.getReturnValue(data?.temp2) || ''
           };
         })
         .filter((r: any) => r.request_id === requestId);
@@ -2182,5 +2383,551 @@ export class RequestService {
       console.log(err);
       return err;
     })
+  }
+  getAssetTypeFromAssetId(request: any) {
+    return this.hs.ajax(
+      'Gettypeidfromassetid',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      request
+    ).then((res: any) => {
+      console.log(res);
+      return this.hs.xmltojson(res, 'tuple');
+    }).catch((err: any) => {
+      console.log(err);
+      return err;
+    })
+  }
+
+  async resolveServiceAssetManagerId(assetId: string): Promise<string> {
+    const assetTypeResp: any = await this.getAssetTypeFromAssetId({ assetid: assetId });
+    const assetTuple = Array.isArray(assetTypeResp) ? assetTypeResp[0] : assetTypeResp;
+    const asset = assetTuple?.old?.m_assets || assetTuple?.new?.m_assets || assetTuple?.m_assets || assetTuple;
+    const assetTypeId = asset?.type_id;
+
+    if (!assetTypeId) {
+      throw new Error('Unable to find asset type for selected asset.');
+    }
+
+    const managerResp: any = await this.getAssetManagerByAssetTypeId({ Asset_type_id: assetTypeId });
+    const managerTuple = Array.isArray(managerResp) ? managerResp[0] : managerResp;
+    const manager = managerTuple?.old?.m_users || managerTuple?.new?.m_users || managerTuple?.m_users || managerTuple;
+    const managerId = manager?.user_id;
+
+    if (!managerId) {
+      throw new Error('Unable to find Asset Manager for selected asset type.');
+    }
+
+    return managerId;
+  }
+
+  // ─── SERVICE / MAINTENANCE FLOW ────────────────────────────────────────────
+
+  /**
+   * Fetches pending service approvals assigned to a given approver.
+   * Uses the custom Java method GetPendingServiceApprovalsForApprover
+   * which joins t_service_approvals + t_service_requests + m_assets + m_users.
+   */
+  async fetchPendingServiceApprovals(approverId: string): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetPendingServiceApprovalsForApprover xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </GetPendingServiceApprovalsForApprover>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((tuple: any) => this.mapServiceApprovalTuple(tuple));
+    } catch (err) {
+      console.error('fetchPendingServiceApprovals failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches a single service approval object by approval_id.
+   */
+  async getServiceApprovalById(approvalId: string): Promise<any> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetT_service_approvalsObject xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approval_id>${approvalId}</Approval_id>
+    </GetT_service_approvalsObject>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuple = this.hs.xmltojson(response, 'tuple');
+      if (!tuple) return null;
+      const t = Array.isArray(tuple) ? tuple[0] : tuple;
+      return t?.old?.t_service_approvals || t?.t_service_approvals || t;
+    } catch (err) {
+      console.error('getServiceApprovalById failed:', err);
+      return null;
+    }
+  }
+
+  async getServiceApprovalTaskId(approvalId: string): Promise<string> {
+    if (!approvalId) return '';
+
+    const approval = await this.getServiceApprovalById(approvalId);
+    const taskId = this.getNullableValue(
+      approval?.temp7 ||
+      approval?.Temp7 ||
+      approval?.TEMP7
+    );
+
+    if (taskId) return taskId;
+
+    const approvals = await this.getAllServiceApprovals();
+    const matchingApproval = approvals.find((item: any) => item.approval_id === approvalId);
+    return this.getNullableValue(matchingApproval?.temp7) || '';
+  }
+
+  /**
+   * Fetches all service requests using the cursor pattern.
+   */
+  async getAllServiceRequests(): Promise<any[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_service_requestsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromService_request_id: '0', toService_request_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((t: any) => {
+        const data = t?.old?.t_service_requests || t?.t_service_requests || t;
+        return {
+          service_request_id: data?.service_request_id || '',
+          allocation_id: data?.allocation_id || '',
+          asset_id: data?.asset_id || '',
+          user_id: data?.user_id || '',
+          tl_id: data?.tl_id || '',
+          issue_description: data?.issue_description || '',
+          urgency: data?.urgency || '',
+          document: data?.document || '',
+          needs_temp_asset: data?.needs_temp_asset === 'true' || data?.needs_temp_asset === true,
+          status: data?.status || '',
+          created_at: data?.created_at || '',
+          temp1: data?.temp1 || '',
+          temp2: data?.temp2 || '',
+          temp3: data?.temp3 || ''
+        };
+      });
+    } catch (err) {
+      console.error('getAllServiceRequests failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches service requests for a specific employee and maps them to AssetRequest[].
+   */
+  async fetchServiceRequestsByUser(userId: string): Promise<any[]> {
+    const allReqs = await this.getAllServiceRequests();
+    return allReqs
+      .filter((r: any) => r.user_id === userId)
+      .map((r: any) => ({
+        id: r.service_request_id,
+        requestNumber: r.service_request_id,
+        requesterId: r.user_id,
+        requesterName: '',
+        requesterDepartment: '',
+        requesterTeam: '',
+        assetType: 'Service / Maintenance',
+        category: r.asset_id || 'Service Request',
+        subCategory: '',
+        justification: r.issue_description || '',
+        urgency: r.urgency || 'Medium',
+        status: r.status || 'Pending',
+        currentStage: 'Asset Manager Approval',
+        hasEmailApproval: false,
+        requestDate: r.created_at || '',
+        lastUpdated: r.created_at || '',
+        requestType: 'Service / Maintenance',
+        assetName: r.asset_id || '',
+        assignedAssetId: r.asset_id || '',
+        approvalChain: [],
+        comments: []
+      }));
+  }
+
+  /**
+   * Fetches all service approvals using the cursor pattern.
+   */
+  async getAllServiceApprovals(): Promise<any[]> {
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_service_approvalsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromApproval_id: '0', toApproval_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.map((t: any) => {
+        const data = t?.old?.t_service_approvals || t?.t_service_approvals || t;
+        return {
+          approval_id: data?.approval_id || '',
+          service_request_id: data?.service_request_id || '',
+          approver_id: data?.approver_id || '',
+          role: data?.role || '',
+          stage: data?.stage || '',
+          status: data?.status || '',
+          remarks: data?.remarks || '',
+          action_date: data?.action_date || '',
+          temp1: data?.temp1 || '',
+          temp2: data?.temp2 || '',
+          temp3: data?.temp3 || '',
+          temp4: data?.temp4 || '',
+          temp5: data?.temp5 || '',
+          temp6: data?.temp6 || '',
+          temp7: data?.temp7 || ''
+        };
+      });
+    } catch (err) {
+      console.error('getAllServiceApprovals failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Gets approval chain (all approvals) for a specific service request.
+   */
+  async getServiceRequestApprovalChain(serviceRequestId: string): Promise<any[]> {
+    const allApprovals = await this.getAllServiceApprovals();
+    return allApprovals
+      .filter((a: any) => a.service_request_id === serviceRequestId)
+      .sort((a: any, b: any) => {
+        const dateA = a.action_date ? new Date(a.action_date).getTime() : 0;
+        const dateB = b.action_date ? new Date(b.action_date).getTime() : 0;
+        return dateA - dateB;
+      });
+  }
+
+  /**
+   * Maps a single tuple from GetPendingServiceApprovalsForApprover into a flat object.
+   * The Java join returns t_service_approvals + nested t_service_requests + m_assets + m_users.
+   */
+  private mapServiceApprovalTuple(tuple: any): any {
+    const parent = tuple?.old || tuple;
+    const approval = parent?.t_service_approvals || parent;
+    const request = approval?.t_service_requests || parent?.t_service_requests || {};
+    const asset = approval?.m_assets || parent?.m_assets || request?.m_assets || {};
+    const user = approval?.m_users || parent?.m_users || request?.m_users || {};
+
+    return {
+      approval_id: approval?.approval_id || '',
+      service_request_id: approval?.service_request_id || request?.service_request_id || '',
+      approver_id: approval?.approver_id || '',
+      role: approval?.role || '',
+      stage: approval?.stage || '',
+      approval_status: approval?.status || '',
+      remarks: approval?.remarks || '',
+      action_date: approval?.action_date || '',
+      temp1: approval?.temp1 || '',
+      temp2: approval?.temp2 || '',
+      temp3: approval?.temp3 || '',
+      temp4: approval?.temp4 || '',
+      temp5: approval?.temp5 || '',
+      temp6: approval?.temp6 || '',
+      temp7: approval?.temp7 || '',
+      // Service request fields
+      asset_id: request?.asset_id || asset?.asset_id || '',
+      user_id: request?.user_id || user?.user_id || '',
+      tl_id: request?.tl_id || '',
+      issue_description: request?.issue_description || '',
+      urgency: request?.urgency || '',
+      needs_temp_asset: request?.needs_temp_asset === 'true' || request?.needs_temp_asset === true,
+      request_status: request?.status || '',
+      created_at: request?.created_at || '',
+      req_temp3: request?.temp3 || request?.allocation_id || '',
+      // Asset fields
+      asset_name: asset?.asset_name || request?.temp1 || '',
+      asset_serial: asset?.serial_number || request?.temp2 || '',
+      asset_type_id: asset?.type_id || '',
+      asset_sub_category: asset?.sub_category_id || '',
+      asset_status: asset?.status || '',
+      // User fields
+      requester_name: user?.name || '',
+      requester_email: user?.email || ''
+    };
+  }
+
+  // ─── Custom Java service wrappers ────────────────────────────────────────
+
+  /**
+   * Assigns a temporary asset to the employee during service.
+   * Calls the custom Java method AssignTempAssetWithStatusUpdate.
+   */
+  assignTempAssetService(payload: {
+    service_request_id: string;
+    temp_asset_id: string;
+    assigned_to: string;
+    assigned_by: string;
+    expected_return_date: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'AssignTempAssetWithStatusUpdate',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[AssignTempAsset] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[AssignTempAsset] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Final approval by Asset Manager (Stage 3).
+   * Validates temp asset condition + updates approval/request/asset statuses.
+   */
+  finalServiceApprovalService(payload: {
+    service_request_id: string;
+    approval_id: string;
+    approver_id: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'FinalServiceApproval',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[FinalServiceApproval] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[FinalServiceApproval] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Marks service as completed by Asset Manager.
+   * Updates request/asset/maintenance_log statuses and notifies employee.
+   */
+  markServiceCompletedService(payload: {
+    service_request_id: string;
+    serviced_by: string;
+    cost: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'MarkServiceCompleted',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[MarkServiceCompleted] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[MarkServiceCompleted] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Returns the temporary asset (marks it Available again).
+   */
+  returnTempAssetService(payload: {
+    service_request_id: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'ReturnTempAsset',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[ReturnTempAsset] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[ReturnTempAsset] failed:', err);
+      throw err;
+    });
+  }
+
+  /**
+   * Completes the handover of the original serviced asset back to the employee.
+   * Validates temp asset return condition.
+   */
+  completeServiceHandoverService(payload: {
+    service_request_id: string;
+    remarks: string;
+  }) {
+    return this.hs.ajax(
+      'CompleteServiceHandover',
+      'http://schemas.cordys.com/AMS_Database_Metadata',
+      payload
+    ).then((res: any) => {
+      console.log('[CompleteServiceHandover] response:', res);
+      return this.hs.xmltojson(res, 'tuple') || res;
+    }).catch((err: any) => {
+      console.error('[CompleteServiceHandover] failed:', err);
+      throw err;
+    });
+  }
+
+  async getAssetManagerServiceHistory(filters: {
+    asset_manager_id: string;
+    employee_id?: string;
+    asset_id?: string;
+    status?: string;
+    service_request_id?: string;
+    from_date?: string;
+    to_date?: string;
+  }): Promise<any[]> {
+    const esc = (value: any) => this.escapeSoapValue(String(value || ''));
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetManagerServiceHistory xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <asset_manager_id>${esc(filters.asset_manager_id)}</asset_manager_id>
+      <employee_id>${esc(filters.employee_id)}</employee_id>
+      <asset_id>${esc(filters.asset_id)}</asset_id>
+      <status>${esc(filters.status)}</status>
+      <service_request_id>${esc(filters.service_request_id)}</service_request_id>
+      <from_date>${esc(filters.from_date)}</from_date>
+      <to_date>${esc(filters.to_date)}</to_date>
+    </GetAssetManagerServiceHistory>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const jsonText = this.extractServiceHistoryJson(response);
+      const parsed = jsonText ? JSON.parse(jsonText) : [];
+      return Array.isArray(parsed) ? parsed.map(row => this.mapAssetManagerServiceHistoryRow(row)) : [];
+    } catch (err) {
+      console.error('[GetAssetManagerServiceHistory] failed:', err);
+      return [];
+    }
+  }
+
+  private extractServiceHistoryJson(response: any): string {
+    const directResult = this.hs.xmltojson(response, 'result_json');
+    const directText = this.coerceText(directResult);
+    if (directText) return directText;
+
+    const returnNode = this.hs.xmltojson(response, 'return');
+    const returnText = this.coerceText(returnNode);
+    if (returnText) {
+      const resultMatch = returnText.match(/<result_json[^>]*>([\s\S]*?)<\/result_json>/i);
+      if (resultMatch?.[1]) return this.decodeXmlText(resultMatch[1].trim());
+      if (returnText.trim().startsWith('[')) return returnText.trim();
+    }
+
+    const responseText = typeof response === 'string' ? response : JSON.stringify(response || {});
+    const jsonMatch = responseText.match(/<result_json[^>]*>([\s\S]*?)<\/result_json>/i);
+    if (jsonMatch?.[1]) return this.decodeXmlText(jsonMatch[1].trim());
+
+    return '[]';
+  }
+
+  private mapAssetManagerServiceHistoryRow(row: any): any {
+    return {
+      service_request_id: this.getNullableValue(row?.service_request_id) || '',
+      asset_id: this.getNullableValue(row?.asset_id) || '',
+      asset_name: this.getNullableValue(row?.asset_name) || '',
+      serial_number: this.getNullableValue(row?.serial_number) || '',
+      type_id: this.getNullableValue(row?.type_id) || '',
+      employee_id: this.getNullableValue(row?.employee_id) || '',
+      employee_name: this.getNullableValue(row?.employee_name) || '',
+      employee_email: this.getNullableValue(row?.employee_email) || '',
+      team_lead_id: this.getNullableValue(row?.team_lead_id) || '',
+      team_lead_name: this.getNullableValue(row?.team_lead_name) || '',
+      issue_description: this.getNullableValue(row?.issue_description) || '',
+      urgency: this.getNullableValue(row?.urgency) || '',
+      needs_temp_asset: row?.needs_temp_asset === true || String(row?.needs_temp_asset).toLowerCase() === 'true',
+      current_status: this.getNullableValue(row?.current_status) || '',
+      created_at: this.getNullableValue(row?.created_at) || '',
+      history_id: this.getNullableValue(row?.history_id) || '',
+      previous_status: this.getNullableValue(row?.previous_status) || '',
+      new_status: this.getNullableValue(row?.new_status) || '',
+      changed_by: this.getNullableValue(row?.changed_by) || '',
+      changed_by_name: this.getNullableValue(row?.changed_by_name) || '',
+      changed_at: this.getNullableValue(row?.changed_at) || '',
+      history_remarks: this.getNullableValue(row?.history_remarks) || '',
+      action_stage: this.getNullableValue(row?.action_stage) || '',
+      history_asset_id: this.getNullableValue(row?.history_asset_id) || '',
+      temp_asset_id: this.getNullableValue(row?.temp_asset_id) || '',
+      temp_asset_name: this.getNullableValue(row?.temp_asset_name) || '',
+      service_cost: this.getNullableValue(row?.service_cost) || '',
+      serviced_by: this.getNullableValue(row?.serviced_by) || '',
+      expected_return_date: this.getNullableValue(row?.expected_return_date) || '',
+      extra_info: this.getNullableValue(row?.extra_info) || ''
+    };
+  }
+
+  private coerceText(value: any): string {
+    if (!value) return '';
+    if (typeof value === 'string') return this.decodeXmlText(value);
+    if (typeof value === 'object') {
+      if (typeof value['#text'] === 'string') return this.decodeXmlText(value['#text']);
+      if (typeof value.text === 'string') return this.decodeXmlText(value.text);
+      if (typeof value.return === 'string') return this.decodeXmlText(value.return);
+    }
+    return '';
+  }
+
+  private decodeXmlText(value: string): string {
+    return String(value || '')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  private escapeSoapValue(value: string): string {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  /**
+   * Updates asset request status (e.g., to 'Completed' when employee confirms receipt).
+   */
+  updateRequestStatusCordys(requestId: string, status: string, remarks: string): Promise<any> {
+    const soapRequest = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_asset_requests xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <t_asset_requests qConstraint="0">
+            <request_id>${requestId}</request_id>
+          </t_asset_requests>
+        </old>
+        <new>
+          <t_asset_requests qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <status>${status}</status>
+            <temp3><![CDATA[${remarks}]]></temp3>
+          </t_asset_requests>
+        </new>
+      </tuple>
+    </UpdateT_asset_requests>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    return this.hs.ajax(null, null, {}, soapRequest
+    ).then((res: any) => {
+      console.log('[UpdateRequestStatus] response:', res);
+      return res;
+    }).catch((err: any) => {
+      console.error('[UpdateRequestStatus] failed:', err);
+      throw err;
+    });
   }
 }

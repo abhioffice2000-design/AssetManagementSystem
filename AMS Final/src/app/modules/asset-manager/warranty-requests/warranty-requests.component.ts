@@ -21,8 +21,7 @@ export class WarrantyRequestsComponent implements OnInit {
   selectedUrgency = '';
 
   activeTab: 'pending' | 'resolved' = 'pending';
-  statuses = Object.values(RequestStatus);
-  urgencies = Object.values(RequestUrgency);
+  statuses = [RequestStatus.APPROVED, RequestStatus.REJECTED];
 
   allWarrantyRequests: AssetRequest[] = [];
 
@@ -30,9 +29,7 @@ export class WarrantyRequestsComponent implements OnInit {
   selectedAllocationMemberId = '';
 
   showDetailModal = false;
-  showActionModal = false;
   detailRequest: AssetRequest | null = null;
-  actionType: 'approve' | 'reject' | null = null;
   actionComments = '';
 
   isLoading = true;
@@ -72,10 +69,22 @@ export class WarrantyRequestsComponent implements OnInit {
       ]);
 
       this.warrantyRequests = pendingReqs;
-      this.allWarrantyRequests = allReqs;
       
-      console.log("warrantyReqs", pendingReqs);
-      console.log("allWarrantyRequests", allReqs);
+      // Enrich resolved requests to show 'Approved' even if main table is 'Pending'
+      this.allWarrantyRequests = await Promise.all((allReqs || []).map(async (req) => {
+        // If it's already Approved/Rejected/Completed, keep it
+        if (req.status !== RequestStatus.PENDING) return req;
+        
+        // If it's Pending in main table, check if THIS manager already approved it
+        try {
+          const progress = await this.requestService.getWarrantyProgress(req.id);
+          const myAction = progress.find(p => p.approverId === approverId && (p.status?.toLowerCase() === 'approved' || p.status?.toLowerCase() === 'rejected'));
+          if (myAction) {
+            req.status = myAction.status === 'Approved' ? RequestStatus.APPROVED : RequestStatus.REJECTED;
+          }
+        } catch (e) { /* ignore */ }
+        return req;
+      }));
 
       // Normalize team members to a flat structure
       const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
@@ -84,6 +93,10 @@ export class WarrantyRequestsComponent implements OnInit {
         name: m?.old?.m_users?.name || m?.m_users?.name || m?.name || 'Unknown',
         email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
       }));
+
+      if (this.allocationTeamMemberList.length > 0) {
+        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+      }
 
       this.applyFilters();
     } catch (err: any) {
@@ -112,6 +125,7 @@ export class WarrantyRequestsComponent implements OnInit {
 
   get resolvedWarrantyRequests(): AssetRequest[] {
     return this.allWarrantyRequests.filter(req => 
+      req.status === RequestStatus.APPROVED ||
       req.status === RequestStatus.COMPLETED || 
       req.status === RequestStatus.REJECTED || 
       req.status === RequestStatus.CANCELLED
@@ -155,7 +169,6 @@ export class WarrantyRequestsComponent implements OnInit {
 
   getUrgencyClass(urgency: RequestUrgency): string {
     switch (urgency) {
-      case RequestUrgency.CRITICAL: return 'urgency-critical';
       case RequestUrgency.HIGH: return 'urgency-high';
       case RequestUrgency.MEDIUM: return 'urgency-medium';
       case RequestUrgency.LOW: return 'urgency-low';
@@ -166,17 +179,23 @@ export class WarrantyRequestsComponent implements OnInit {
   async openDetailModal(request: AssetRequest): Promise<void> {
     this.detailRequest = { ...request };
     this.actionComments = '';
-    this.selectedAllocationMemberId = '';
 
     try {
-      // Fetch fresh data using user-provided SOAP request logic
+      // Fetch fresh data from the main request table
       const rawData = await this.requestService.getWarrantyRequestById(request.id);
       if (rawData) {
-        this.detailRequest.assetName = rawData.temp1 || this.detailRequest.assetName;
-        this.detailRequest.assignedSerial = rawData.temp2 || this.detailRequest.assignedSerial;
-        this.detailRequest.assignedWarrantyExpiry = rawData.temp3 || this.detailRequest.assignedWarrantyExpiry;
-        this.detailRequest.assignedAssetId = rawData.asset_id || this.detailRequest.assignedAssetId;
-        this.detailRequest.justification = rawData.reason || this.detailRequest.justification;
+        // Merge fresh data while PRESERVING critical tracking IDs from the list item
+        this.detailRequest = {
+          ...this.detailRequest,
+          assetName: rawData.temp1 || this.detailRequest.assetName,
+          assignedSerial: rawData.temp2 || this.detailRequest.assignedSerial,
+          assignedWarrantyExpiry: rawData.temp3 || this.detailRequest.assignedWarrantyExpiry,
+          assignedAssetId: rawData.asset_id || rawData.asset_type || this.detailRequest.assignedAssetId,
+          justification: rawData.reason || this.detailRequest.justification,
+          // Ensure these are NEVER lost during refresh
+          approvalId: request.approvalId || this.detailRequest.approvalId,
+          taskid: request.taskid || this.detailRequest.taskid
+        };
       }
     } catch (err) {
       console.warn('Error fetching fresh warranty details:', err);
@@ -190,39 +209,16 @@ export class WarrantyRequestsComponent implements OnInit {
     this.detailRequest = null;
   }
 
-  openActionModal(request: AssetRequest, action: 'approve' | 'reject'): void {
-    this.detailRequest = request;
-    this.actionType = action;
-    this.actionComments = '';
-    this.selectedAllocationMemberId = '';
-    this.showActionModal = true;
-  }
-
-  closeActionModal(): void {
-    this.showActionModal = false;
-    this.actionType = null;
-    this.actionComments = '';
-  }
-
-  async directConfirmAction(request: AssetRequest | null, action: 'approve' | 'reject' | null): Promise<void> {
-    if (!request || !action) return;
-
-    if (!this.actionComments || this.actionComments.trim() === '') {
-      alert('Approver remarks are required.');
-      return;
-    }
-
-    if (action === 'approve' && !this.selectedAllocationMemberId) {
-      alert('Please assign an Allocation Team Member before approving.');
-      return;
-    }
-
-    this.detailRequest = request;
-    await this.confirmAction(action);
-  }
 
   async confirmAction(action: 'approve' | 'reject'): Promise<void> {
     if (!this.detailRequest) return;
+
+    if (!this.actionComments || this.actionComments.trim() === '') {
+      const actionText = action === 'approve' ? 'Approval' : 'Rejection';
+      this.notificationService.showToast(`${actionText} remarks are mandatory.`, 'warning');
+      return;
+    }
+
     const currentUser = this.authService.getCurrentUser();
     if (!currentUser) return;
 
@@ -234,11 +230,14 @@ export class WarrantyRequestsComponent implements OnInit {
         await this.requestService.updateWarrantyRequestApproval(
           this.detailRequest.approvalId as string,
           'Approved',
-          this.actionComments,
+          this.actionComments, // Correctly pass current action comments
           this.detailRequest.assignedAssetId as string
         );
 
-        // 2. Update status of the asset in m_assets table
+        // 1.1 [REMOVED] Main request status update moved to Allocation Team final confirmation
+        // await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Approved');
+
+        // 2. Update status of the asset in m_assets table to MoveToAllocationTeam
         const req2 = {
           tuple: {
             old: { m_assets: { asset_id: this.detailRequest.assignedAssetId } },
@@ -248,7 +247,7 @@ export class WarrantyRequestsComponent implements OnInit {
         await this.requestService.updateAssetStatus(req2 as any);
 
         // 3. Create new entry in t_extend_request_approvals for the Allocation Team
-        await this.requestService.createNewWarrantyApprovalEntry(
+        const newApprovalResp = await this.requestService.createNewWarrantyApprovalEntry(
           this.detailRequest.id,
           this.selectedAllocationMemberId,
           "Asset Allocation Team",
@@ -256,9 +255,21 @@ export class WarrantyRequestsComponent implements OnInit {
           this.detailRequest.assignedAssetId as string
         );
 
+        // Extract the new approval ID to pass it to the BPM
+        const newapprovalid = newApprovalResp?.tuple?.new?.t_extend_request_approvals?.approval_id || 
+                             newApprovalResp?.t_extend_request_approvals?.approval_id;
+        
+        console.log('New Approval Record Created:', newapprovalid);
+
         // 4. Complete BPM task
         if (this.detailRequest.taskid) {
-          await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
+          // Pass the new approval_id as part of the task completion payload
+          // This allows the BPM to update its internal variable and correctly link to the new record
+          await this.requestService.completeUserTask({ 
+            TaskId: this.detailRequest.taskid, 
+            Action: 'COMPLETE',
+            approval_id: newapprovalid 
+          } as any);
         }
 
         const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
@@ -274,7 +285,8 @@ export class WarrantyRequestsComponent implements OnInit {
 
         this.notificationService.showToast(`Warranty request approved.`, 'success');
       } else {
-        // Handle Rejection using the same specialized warranty table
+        // Handle Rejection
+        // 1. Update existing manager approval entry
         await this.requestService.updateWarrantyRequestApproval(
           this.detailRequest.approvalId as string,
           'Rejected',
@@ -282,14 +294,26 @@ export class WarrantyRequestsComponent implements OnInit {
           this.detailRequest.assignedAssetId as string
         );
 
+        // 2. Update master request status to 'Rejected'
+        await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Rejected');
+
+        // 3. Complete BPM task
         if (this.detailRequest.taskid) {
           await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
         }
 
-        this.notificationService.showToast(`Warranty request rejected.`, 'info');
+        // 4. Send Rejection Email
+        this.mailService.sendWarrantyRejectionNotification({
+          requestId: this.detailRequest.id,
+          employeeName: this.detailRequest.requesterName,
+          managerName: currentUser.name,
+          remarks: this.actionComments,
+          assetName: this.detailRequest.assetName || this.detailRequest.category
+        });
+
+        this.notificationService.showToast(`Warranty request rejected and employee notified.`, 'info');
       }
 
-      this.closeActionModal();
       this.closeDetailModal();
       this.loadData();
     } catch (error) {
@@ -305,5 +329,16 @@ export class WarrantyRequestsComponent implements OnInit {
     if (diff === 0) return 'Today';
     if (diff === 1) return 'Yesterday';
     return `${diff} days ago`;
+  }
+
+  getSelectedAllocationMemberName(): string {
+    if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
+      this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+    }
+    
+    const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
+    if (!member) return 'Not Assigned';
+    
+    return member.email ? `${member.name} — ${member.email}` : member.name;
   }
 }

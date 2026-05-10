@@ -33,13 +33,7 @@
     <div class="filter-group">
       <select [(ngModel)]="selectedStatus" (ngModelChange)="onFilterChange()" *ngIf="activeTab === 'resolved'">
         <option value="">All Statuses</option>
-        <option value="Completed">Completed</option>
-        <option value="Rejected">Rejected</option>
-        <option value="Cancelled">Cancelled</option>
-      </select>
-      <select [(ngModel)]="selectedUrgency" (ngModelChange)="onFilterChange()">
-        <option value="">All Urgency</option>
-        <option *ngFor="let urgency of urgencies" [value]="urgency">{{ urgency }}</option>
+        <option *ngFor="let status of statuses" [value]="status">{{ status }}</option>
       </select>
     </div>
   </div>
@@ -88,14 +82,6 @@
           </div>
         </div>
         <div class="request-actions">
-          <div class="action-buttons" *ngIf="activeTab === 'pending' && req.status === 'Pending'">
-            <button class="btn-approve" (click)="openActionModal(req, 'approve')">
-              <span class="material-icons-outlined">check_circle</span> Approve
-            </button>
-            <button class="btn-reject" (click)="openActionModal(req, 'reject')">
-              <span class="material-icons-outlined">cancel</span> Reject
-            </button>
-          </div>
           <button class="btn-detail" (click)="openDetailModal(req)">
             <span class="material-icons-outlined">info</span> Details
           </button>
@@ -126,72 +112,6 @@
   </div>
 </div>
 
-<!-- Action Modal (Approve/Reject) -->
-<div class="modal-overlay" *ngIf="showActionModal">
-  <div class="modal-content animate-slide-up">
-    <div class="modal-header" [ngClass]="actionType === 'approve' ? 'modal-approve' : 'modal-reject'">
-      <h3>
-        <span class="material-icons-outlined">{{ actionType === 'approve' ? 'check_circle' : 'cancel' }}</span>
-        {{ actionType === 'approve' ? 'Approve Warranty Extension' : 'Reject Warranty Extension' }}
-      </h3>
-      <button class="btn-icon-close" (click)="closeActionModal()">
-        <span class="material-icons-outlined">close</span>
-      </button>
-    </div>
-    
-    <div class="modal-body">
-      <div class="modal-request-summary">
-        <div class="summary-row">
-          <label>Request ID</label>
-          <span>{{ detailRequest?.id }}</span>
-        </div>
-        <div class="summary-row">
-          <label>Asset</label>
-          <span>{{ detailRequest?.subCategory || detailRequest?.assetName }}</span>
-        </div>
-        <div class="summary-row">
-          <label>Requester</label>
-          <span>{{ detailRequest?.requesterName }}</span>
-        </div>
-      </div>
-
-      <div class="detail-section" *ngIf="actionType === 'approve'">
-        <h4 class="detail-section-title">
-          <span class="material-icons-outlined">group</span>
-          Assign Execution Team
-        </h4>
-        <div class="detail-grid">
-          <div class="detail-item full-col">
-            <label>Allocation Team Member</label>
-            <select class="asset-select" [(ngModel)]="selectedAllocationMemberId">
-              <option value="">-- Choose Team Member --</option>
-              <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
-                {{ member.name }} — {{ member.email }}
-              </option>
-            </select>
-            <small class="error-text" *ngIf="!selectedAllocationMemberId" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px; display: block;">
-              * Mandatory for approval
-            </small>
-          </div>
-        </div>
-      </div>
-
-      <div class="comments-section">
-        <label>Manager Remarks</label>
-        <textarea [(ngModel)]="actionComments" placeholder="Enter your comments here..." rows="4"></textarea>
-      </div>
-    </div>
-
-    <div class="modal-footer">
-      <button class="btn-cancel" (click)="closeActionModal()">Cancel</button>
-      <button class="btn-confirm" 
-              [ngClass]="actionType === 'approve' ? 'btn-confirm-approve' : 'btn-confirm-reject'"
-              (click)="directConfirmAction(detailRequest!, actionType!)">
-        {{ actionType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection' }}
-      </button>
-    </div>
-  </div>
-</div>
 
 <!-- Detail Modal -->
 <div class="modal-overlay" *ngIf="showDetailModal">
@@ -242,28 +162,36 @@
           </div>
           <div class="detail-item full-col">
             <label>Allocation Team Member</label>
-            <select class="asset-select" [(ngModel)]="selectedAllocationMemberId" style="width: 100%; height: 42px; border: 1.5px solid var(--border-color); border-radius: 10px; padding: 0 16px; font-size: 0.95rem; background: var(--card-bg); color: var(--text-main); transition: all 0.3s ease; cursor: pointer;">
-              <option value="">-- Choose Execution Team Member --</option>
-              <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
-                {{ member.name }} — {{ member.email }}
-              </option>
-            </select>
+            <span style="display: block; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; color: #1e293b; font-weight: 600; border: 1px solid #e2e8f0; margin-top: 5px;">
+              <span class="material-icons-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 6px; color: var(--primary);">person</span>
+              {{ getSelectedAllocationMemberName() }}
+            </span>
           </div>
           <div class="detail-item full-col">
             <label>Employee Justification</label>
             <p>{{ detailRequest.justification }}</p>
           </div>
           <div class="detail-item full-col" *ngIf="detailRequest.status === 'Pending'">
-            <label>Manager Remarks</label>
+            <label>Manager Remarks *</label>
             <textarea [(ngModel)]="actionComments" placeholder="Enter your comments here..." rows="3" style="width: 100%; border: 1.5px solid var(--border-color); border-radius: 10px; padding: 12px; margin-top: 8px; font-family: inherit; font-size: 0.95rem;"></textarea>
+            <small class="error-text" *ngIf="!actionComments || actionComments.trim() === ''" style="color: #ef4444; font-size: 0.75rem; margin-top: 4px; display: block;">
+              * Mandatory for approval/rejection
+            </small>
           </div>
         </div>
       </div>
     </div>
 
     <div class="modal-footer" *ngIf="detailRequest && detailRequest.status === 'Pending'">
-      <button class="btn-approve" (click)="confirmAction('approve')">Approve Request</button>
-      <button class="btn-reject" (click)="confirmAction('reject')">Reject Request</button>
+      <button class="btn-cancel" (click)="closeDetailModal()">Cancel</button>
+      <div class="action-buttons-group">
+        <button class="btn-reject" (click)="confirmAction('reject')">
+          <span class="material-icons-outlined">cancel</span> Reject Request
+        </button>
+        <button class="btn-approve" (click)="confirmAction('approve')">
+          <span class="material-icons-outlined">check_circle</span> Approve Request
+        </button>
+      </div>
     </div>
   </div>
 </div>

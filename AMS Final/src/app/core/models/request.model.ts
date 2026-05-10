@@ -47,14 +47,14 @@ export interface AssetRequest {
 export enum RequestType {
   NEW_ASSET = 'New Asset',
   RETURN_ASSET = 'Return Asset',
-  EXTEND_WARRANTY = 'Extend Warranty'
+  EXTEND_WARRANTY = 'Extend Warranty',
+  SERVICE_MAINTENANCE = 'Service / Maintenance'
 }
 
 export enum RequestUrgency {
   LOW = 'Low',
   MEDIUM = 'Medium',
-  HIGH = 'High',
-  CRITICAL = 'Critical'
+  HIGH = 'High'
 }
 
 export enum RequestStatus {

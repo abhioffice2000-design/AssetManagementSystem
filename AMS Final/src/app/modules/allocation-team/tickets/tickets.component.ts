@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
-import { AssetRequest, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
+import { AssetRequest, ApprovalEntry, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
 import { HeroService } from 'src/app/core/services/hero.service';
 import { MailService } from 'src/app/core/services/mail.service';
 import { NotificationService } from 'src/app/core/services/notification.service';
@@ -41,6 +41,7 @@ export class AllocationTicketsComponent implements OnInit {
   resolvedReturnTickets: EnrichedTicket[] = [];
   currentUser: any;
   returnTickets: EnrichedTicket[] = [];
+  pendingWarrantyTickets: EnrichedTicket[] = [];
   selectedTicket: EnrichedTicket | null = null;
   drawerOpen = false;
 
@@ -165,8 +166,11 @@ export class AllocationTicketsComponent implements OnInit {
 
       // Sync return tickets load
       await this.loadReturnTickets();
-      // Merge return tickets into allTickets so they appear in the table
-      this.allTickets = [...this.allTickets, ...this.returnTickets];
+      // Sync warranty tickets load
+      await this.loadPendingWarrantyTickets();
+      
+      // Merge return and warranty tickets into allTickets so they appear in the table
+      this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
       // Load resolved history
       await this.loadResolvedTickets();
       // Load resolved return history
@@ -211,10 +215,11 @@ export class AllocationTicketsComponent implements OnInit {
             if (asset) {
               ticket.assetName = asset.asset_name || ticket.assetName;
               ticket.assetType = asset.type_id || ticket.assetType;
-              ticket.subCategory = asset.sub_category_id || ticket.subCategory;
+              ticket.subCategory = this.subCategoryMap.get(asset.sub_category_id) || asset.sub_category_id || ticket.subCategory;
               ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
             }
           }
+          await this.enrichReturnTicketWithApprovalHistory(ticket);
         }
 
         console.log('Return Tickets Statuses:', this.returnTickets.map(t => `${t.ticketId}: ${t.status}`));
@@ -222,6 +227,73 @@ export class AllocationTicketsComponent implements OnInit {
     } catch (err) {
       console.error('Failed to load return tickets:', err);
       this.returnTickets = [];
+    }
+  }
+
+  async loadPendingWarrantyTickets(): Promise<void> {
+    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const userId = currentUser?.id;
+    if (!userId) {
+      this.pendingWarrantyTickets = [];
+      return;
+    }
+
+    try {
+      // 1. Try the direct service first
+      let warrantyRequests = await this.requestService.fetchPendingWarrantyApprovalsFromService(userId);
+      
+      // 2. If direct service returns nothing (likely due to role restrictions on the backend), 
+      // use a more robust discovery approach
+      if (!warrantyRequests || warrantyRequests.length === 0) {
+        console.log('[AllocationTickets] Direct pending service returned 0. Trying robust discovery...');
+        const allWarrantyReqs = await this.requestService.fetchAllWarrantyRequests();
+        const allAssets = await this.assetService.fetchAssetsFromService();
+        
+        // Find assets that are in "MoveToAllocationTeam" status
+        const allocationAssetIds = new Set(
+          allAssets
+            .filter(a => a.status === 'MoveToAllocationTeam')
+            .map(a => a.assetId || a.id)
+        );
+
+        // Find warranty requests linked to these assets
+        const candidateReqs = allWarrantyReqs.filter(req => allocationAssetIds.has(req.assignedAssetId || ''));
+        console.log(`[AllocationTickets] Found ${candidateReqs.length} candidate warranty requests based on asset status`);
+
+        const discoveredReqs: AssetRequest[] = [];
+        for (const req of candidateReqs) {
+          try {
+            const progress = await this.requestService.getWarrantyProgress(req.id);
+            // Check if the latest approval is Pending and assigned to the current user
+            if (progress && progress.length > 0) {
+              const latest = [...progress].sort((a, b) => {
+                const idA = parseInt(a.approvalId?.replace(/\D/g, '') || '0');
+                const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
+                return idB - idA;
+              })[0];
+
+              if (latest && latest.status === 'Pending' && latest.approverId === userId) {
+                req.approvalId = latest.approvalId;
+                req.taskid = latest.temp1;
+                req.status = RequestStatus.PENDING;
+                discoveredReqs.push(req);
+              }
+            }
+          } catch (pErr) {
+            console.warn(`Failed to check progress for candidate req ${req.id}:`, pErr);
+          }
+        }
+        warrantyRequests = discoveredReqs;
+      }
+
+      this.pendingWarrantyTickets = (warrantyRequests || [])
+        .filter(req => req.status === RequestStatus.PENDING || req.status === RequestStatus.IN_PROGRESS)
+        .map(req => this.mapWarrantyToEnrichedTicket(req));
+      
+      console.log(`[AllocationTickets] Loaded ${this.pendingWarrantyTickets.length} pending warranty tickets`);
+    } catch (err) {
+      console.error('Failed to load pending warranty tickets:', err);
+      this.pendingWarrantyTickets = [];
     }
   }
 
@@ -274,13 +346,34 @@ export class AllocationTicketsComponent implements OnInit {
 
   async loadResolvedReturnTickets(): Promise<void> {
     const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
-    const approverId = currentUser?.id;
+    const approverId = currentUser?.id ?? currentUser?.user_id ?? currentUser?.userId;
     if (!approverId) {
       this.resolvedReturnTickets = [];
       return;
     }
 
     try {
+      const res = await this.hs.ajax(
+        'Getallreturnrequests',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        {}
+      );
+      const tuples = this.hs.xmltojson(res, 'tuple');
+      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
+      const returnTupleById = new Map<string, any>();
+      const approvalsById = new Map<string, any>();
+
+      tupleArray.forEach((tuple: any) => {
+        const data = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
+        const returnId = this.getVal(data?.return_id);
+        if (returnId) returnTupleById.set(returnId, tuple);
+
+        const approvals = this.extractReturnApprovalsFromReturnTuple(tuple);
+        approvals.forEach((approval: any) => {
+          if (approval.return_approval_id) approvalsById.set(approval.return_approval_id, approval);
+        });
+      });
+
       const approvalsRes = await this.hs.ajax(
         'GetT_asset_return_approvalsObjects',
         'http://schemas.cordys.com/AMS_Database_Metadata',
@@ -288,10 +381,16 @@ export class AllocationTicketsComponent implements OnInit {
       );
       const approvalTuples = this.hs.xmltojson(approvalsRes, 'tuple');
       const approvalArray: any[] = approvalTuples ? (Array.isArray(approvalTuples) ? approvalTuples : [approvalTuples]) : [];
-      const resolvedApprovals = approvalArray
+      approvalArray
         .map((tuple: any) => this.mapReturnApprovalTuple(tuple))
+        .forEach((approval: any) => {
+          if (approval.return_approval_id) approvalsById.set(approval.return_approval_id, approval);
+        });
+
+      let resolvedApprovals = Array.from(approvalsById.values())
         .filter((approval: any) =>
           approval.approver_id === approverId &&
+          this.isAllocationReturnRole(approval.role) &&
           (
             approval.status === RequestStatus.APPROVED ||
             approval.status === RequestStatus.REJECTED ||
@@ -301,23 +400,28 @@ export class AllocationTicketsComponent implements OnInit {
         );
 
       if (!resolvedApprovals.length) {
+        const progressApprovals: any[] = [];
+        for (const returnId of returnTupleById.keys()) {
+          const progress = await this.requestService.getReturnRequestProgress(returnId);
+          progressApprovals.push(...progress);
+        }
+        resolvedApprovals = progressApprovals.filter((approval: any) => {
+          const status = this.mapToStatus(approval.status || '');
+          return approval.approver_id === approverId &&
+            this.isAllocationReturnRole(approval.role) &&
+            (
+              status === RequestStatus.APPROVED ||
+              status === RequestStatus.REJECTED ||
+              status === RequestStatus.COMPLETED ||
+              status === RequestStatus.CANCELLED
+            );
+        });
+      }
+
+      if (!resolvedApprovals.length) {
         this.resolvedReturnTickets = [];
         return;
       }
-
-      const res = await this.hs.ajax(
-        'Getallreturnrequests',
-        'http://schemas.cordys.com/AMS_Database_Metadata',
-        {}
-      );
-      const tuples = this.hs.xmltojson(res, 'tuple');
-      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
-      const returnTupleById = new Map<string, any>();
-      tupleArray.forEach((tuple: any) => {
-        const data = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
-        const returnId = this.getVal(data?.return_id);
-        if (returnId) returnTupleById.set(returnId, tuple);
-      });
 
       this.resolvedReturnTickets = [];
       for (const approval of resolvedApprovals) {
@@ -328,16 +432,24 @@ export class AllocationTicketsComponent implements OnInit {
               status: approval.status,
               remarks: approval.remarks,
               return_date: approval.action_date,
+              temp1: approval.temp1,
               t_asset_return_approvals: approval
             }
           }
         };
+
         const ticket = this.mapReturnTupleToEnrichedTicket(baseTuple);
         ticket.approvalid = approval.return_approval_id || ticket.approvalid;
         ticket.status = approval.status;
-        ticket.reason = approval.remarks || ticket.reason;
+        ticket.reason = ticket.reason || approval.remarks || '—';
         ticket.assignedDate = approval.action_date || ticket.assignedDate;
+        ticket.taskid = approval.temp2 || ticket.taskid;
+        if ((!ticket.assetId || ticket.assetId === '—' || ticket.assetId === 'â€”') && approval.temp1) {
+          ticket.assetId = approval.temp1;
+          ticket.rawRequest.assignedAssetId = approval.temp1;
+        }
         await this.enrichReturnTicketWithAssetDetails(ticket);
+        await this.enrichReturnTicketWithApprovalHistory(ticket);
         this.resolvedReturnTickets.push(ticket);
       }
 
@@ -374,55 +486,52 @@ export class AllocationTicketsComponent implements OnInit {
     let approvalObj = returnData?.t_asset_return_approvals ?? tuple?.old?.t_asset_return_approvals ?? tuple?.t_asset_return_approvals ?? {};
 
     if (Array.isArray(approvalObj)) {
-      approvalObj = approvalObj.find((a: any) => this.getVal(a.status) === 'Pending') ?? approvalObj[0] ?? {};
+      approvalObj = approvalObj.find((a: any) => this.mapToStatus(this.getSafeVal(a.status) || '') === RequestStatus.PENDING) ?? approvalObj[0] ?? {};
     }
 
     const userData = returnData?.m_users ?? {};
     const assetData = returnData?.m_assets ?? tuple?.old?.m_assets ?? tuple?.m_assets ?? {};
     const assetId = this.getVal(returnData?.temp1) ?? this.getVal(assetData?.asset_id) ?? this.getVal(approvalObj?.temp1) ?? 'â€”';
-    const statusStr = this.getVal(returnData?.status) ?? this.getVal(approvalObj?.status) ?? 'Pending';
+    const statusStr = this.getSafeVal(returnData?.status) ?? this.getSafeVal(approvalObj?.status) ?? 'Pending';
     const status = this.mapToStatus(statusStr);
-
-    // Recursive search for TaskID to handle any XML structure
-    // const taskId = this.findTaskIdRecursively(tuple) || '—';
-    const taskId = "-";
-    // if (taskId === '—') {
-    //   console.warn('CRITICAL: TaskID still missing for Return ID:', this.getVal(returnData?.return_id));
-    //   console.log('Full Raw Tuple for analysis:', JSON.stringify(tuple));
-    // } else {
-    //   console.log(`Successfully identified TaskID [${taskId}] for return ${this.getVal(returnData?.return_id)}`);
-    // }
+    const safeAssetId = this.getSafeVal(assetId) || '';
+    const returnId = this.getSafeVal(returnData?.return_id) ?? this.getSafeVal(approvalObj?.request_id) ?? '';
+    const requestorName = this.getSafeVal(userData?.name) ?? 'Unknown';
+    const assetType = this.getSafeVal(assetData?.type_id) ?? this.getSafeVal(assetData?.asset_type) ?? 'Hardware';
+    const assetName = this.getSafeVal(assetData?.asset_name) ?? 'Asset Return';
+    const reason = this.getSafeVal(returnData?.remarks) ?? '';
 
     return {
-      taskid: this.getVal(approvalObj?.temp2) ?? '-',
-      approvalid: this.getVal(approvalObj?.return_approval_id) ?? '—',
-      ticketId: this.getVal(returnData?.return_id) ?? this.getVal(approvalObj?.request_id) ?? '—',
-      requestorName: this.getVal(userData?.name) ?? '—',
-      assetType: this.getVal(assetData?.type_id) ?? this.getVal(assetData?.asset_type) ?? 'Hardware',
+      taskid: this.getSafeVal(approvalObj?.temp2) ?? '',
+      approvalid: this.getSafeVal(approvalObj?.return_approval_id) ?? '',
+      ticketId: returnId,
+      requestorName,
+      assetType,
       subCategory: this.getVal(assetData?.sub_category_id) ?? 'N/A',
-      assetName: this.getVal(assetData?.asset_name) ?? 'Asset Return',
-      assetId,
+      assetName,
+      assetId: safeAssetId,
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '-',
       availabilityStatus: 'N/A',
-      assignedDate: this.getVal(returnData?.return_date) ?? '',
+      assignedDate: this.getSafeVal(approvalObj?.action_date) ?? this.getSafeVal(returnData?.return_date) ?? '',
       assetManagerName: '—',
       teamLeadName: '—',
       urgency: 'Medium',
-      reason: this.getVal(returnData?.remarks) ?? '—',
+      reason,
       status,
       rawRequest: {
-        id: this.getVal(returnData?.return_id) ?? '',
-        requestNumber: this.getVal(returnData?.return_id) ?? '',
-        requesterId: this.getVal(returnData?.requested_by) ?? '',
-        requesterName: this.getVal(userData?.name) ?? '',
+        id: returnId,
+        requestNumber: returnId,
+        requesterId: this.getSafeVal(returnData?.requested_by) ?? '',
+        requesterName: requestorName,
         requestType: RequestType.RETURN_ASSET,
         status,
         currentStage: ApprovalStage.ALLOCATION,
-        requestDate: this.getVal(returnData?.return_date) ?? '',
-        lastUpdated: this.getVal(returnData?.return_date) ?? '',
-        assignedAssetId: assetId && assetId !== '-' ? assetId : '',
-        assetType: this.getVal(assetData?.type_id) ?? this.getVal(assetData?.asset_type) ?? '',
-        assetName: this.getVal(assetData?.asset_name) ?? '',
+        justification: reason,
+        requestDate: this.getSafeVal(returnData?.return_date) ?? '',
+        lastUpdated: this.getSafeVal(approvalObj?.action_date) ?? this.getSafeVal(returnData?.return_date) ?? '',
+        assignedAssetId: safeAssetId,
+        assetType,
+        assetName,
         approvalChain: [{ stage: ApprovalStage.ALLOCATION, action: 'Pending' }],
         comments: []
       } as any
@@ -457,7 +566,8 @@ export class AllocationTicketsComponent implements OnInit {
       subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',
 
-      assetId: this.getVal(assetData?.asset_id) ?? this.getVal(reqData?.asset_id) ?? this.getVal(parent?.asset_id) ?? '—',
+      // Reference from resolved return tickets: use temp1 for assetId if missing
+      assetId: this.getVal(assetData?.asset_id) ?? this.getVal(reqData?.asset_id) ?? this.getVal(reqData?.temp1) ?? this.getVal(parent?.asset_id) ?? '—',
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '—',
       availabilityStatus: this.getVal(assetData?.status) ?? '—',
       assignedDate: this.getVal(reqData?.created_at) ?? '',
@@ -547,6 +657,18 @@ export class AllocationTicketsComponent implements OnInit {
     return str === '' ? undefined : str;
   }
 
+  private getSafeVal(value: any): string | undefined {
+    const text = this.getVal(value)?.trim();
+    if (!text) return undefined;
+
+    const normalized = text.toLowerCase();
+    if (['-', 'n/a', 'na', 'null', 'undefined', 'nan'].includes(normalized)) return undefined;
+    if (text === '\u2014' || text === '\u2013') return undefined;
+    if (normalized.includes('\u00e2') || normalized.includes('\ufffd')) return undefined;
+
+    return text;
+  }
+
   private mapToStatus(status: string): RequestStatus {
     const n = status.toLowerCase();
     if (n.includes('pending')) return RequestStatus.PENDING;
@@ -569,10 +691,13 @@ export class AllocationTicketsComponent implements OnInit {
 
 
 
-  viewDetails(ticket: EnrichedTicket): void {
+  async viewDetails(ticket: EnrichedTicket): Promise<void> {
     this.selectedTicket = ticket;
     this.drawerOpen = true;
     this.decisionRemarks = '';
+    if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
+      await this.enrichReturnTicketWithApprovalHistory(ticket);
+    }
   }
 
   closeDetails(): void {
@@ -712,6 +837,24 @@ export class AllocationTicketsComponent implements OnInit {
     }
     console.log("First request is", req1)
     await this.requestService.updateEntryForAllocationTeamMember(req1 as any)
+
+    // Handle Warranty Extension specific final approval
+    if (ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY) {
+      await this.requestService.updateExtendAssetRequest(ticket.rawRequest.id, 'Approved');
+      
+      // For warranty, we just complete the BPM task and notify
+      if (ticket.taskid && ticket.taskid !== '—') {
+        await this.requestService.completeUserTask({
+          TaskId: ticket.taskid,
+          Action: 'COMPLETE'
+        } as any);
+      }
+
+      this.notificationService.showToast('Warranty extension confirmed successfully.', 'success');
+      this.loadTickets();
+      return;
+    }
+
     var req2 = {
       tuple: {
         old: {
@@ -723,7 +866,8 @@ export class AllocationTicketsComponent implements OnInit {
           m_assets: {
             status: "Allocated",
             temp1: ticket.rawRequest.requesterId,
-            temp2: ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY ? 'Extend' : 'Allocate'
+            // Store allocated date in m_assets.temp4 (YYYY-MM-DD)
+            temp4: new Date().toISOString().split('T')[0]
           }
         }
       }
@@ -858,7 +1002,7 @@ export class AllocationTicketsComponent implements OnInit {
           new: {
             t_asset_return_approvals: {
               status: "Approved",
-              remarks: "Allocated to Asset Manager"
+              remarks: this.decisionRemarks || ''
             }
           }
         }
@@ -889,7 +1033,7 @@ export class AllocationTicketsComponent implements OnInit {
               request_id: ticket.ticketId,
               role: "Asset Manager",
               status: "Pending",
-              remarks: "Waiting for Hand-off Confirmation",
+              remarks: '',
               temp1: assetLookupId
             }
           }
@@ -930,7 +1074,7 @@ export class AllocationTicketsComponent implements OnInit {
         returnId: ticket.ticketId,
         employeeName: ticket.requestorName,
         assetName: ticket.assetName,
-        remarks: "Allocated to Asset Manager",
+        remarks: this.decisionRemarks || '',
         actionByName: 'Allocation Team Member',
         nextApproverName: 'Asset Manager'
       });
@@ -955,8 +1099,22 @@ export class AllocationTicketsComponent implements OnInit {
       role: this.getVal(data?.role) ?? '',
       status: this.mapToStatus(this.getVal(data?.status) ?? ''),
       remarks: this.getVal(data?.remarks) ?? '',
-      action_date: this.getVal(data?.action_date) ?? this.getVal(data?.created_at) ?? ''
+      action_date: this.getVal(data?.action_date) ?? this.getVal(data?.created_at) ?? '',
+      temp1: this.getVal(data?.temp1) ?? '',
+      temp2: this.getVal(data?.temp2) ?? ''
     };
+  }
+
+  private extractReturnApprovalsFromReturnTuple(tuple: any): any[] {
+    const returnData = tuple?.old?.t_asset_returns ?? tuple?.t_asset_returns ?? tuple;
+    const returnId = this.getVal(returnData?.return_id) ?? '';
+    const approvalObj = returnData?.t_asset_return_approvals ?? tuple?.old?.t_asset_return_approvals ?? tuple?.t_asset_return_approvals;
+    const approvalArray = approvalObj ? (Array.isArray(approvalObj) ? approvalObj : [approvalObj]) : [];
+
+    return approvalArray.map((approval: any) => ({
+      ...this.mapReturnApprovalTuple(approval),
+      request_id: this.getVal(approval?.request_id) ?? returnId
+    }));
   }
 
   private async enrichReturnTicketWithAssetDetails(ticket: EnrichedTicket): Promise<void> {
@@ -969,6 +1127,53 @@ export class AllocationTicketsComponent implements OnInit {
     ticket.assetType = asset.type_id || ticket.assetType;
     ticket.subCategory = asset.sub_category_id || ticket.subCategory;
     ticket.warrantyExpiry = asset.warranty_expiry || ticket.warrantyExpiry;
+  }
+
+  private async enrichReturnTicketWithApprovalHistory(ticket: EnrichedTicket): Promise<void> {
+    if (!ticket.ticketId || ticket.ticketId === 'â€”') return;
+    const progress = await this.requestService.getReturnRequestProgress(ticket.ticketId);
+    ticket.rawRequest.approvalChain = this.buildReturnApprovalChain(progress);
+  }
+
+  private buildReturnApprovalChain(progress: any[]): ApprovalEntry[] {
+    if (!progress?.length) return [];
+    return [...progress]
+      .sort((a: any, b: any) => this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id))
+      .map((approval: any) => ({
+        stage: this.isAllocationReturnRole(approval.role) ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER,
+        action: this.toApprovalAction(approval.status),
+        approverId: this.getVal(approval.approver_id) ?? '',
+        timestamp: this.getVal(approval.action_date) ?? '',
+        comments: this.getVal(approval.remarks) ?? ''
+      }));
+  }
+
+  getReturnAssetManagerRemarks(ticket: EnrichedTicket): string {
+    const stage = ticket.rawRequest.approvalChain?.find(entry =>
+      entry.stage === ApprovalStage.ASSET_MANAGER &&
+      (entry.action === 'Approved' || entry.action === 'Rejected')
+    );
+    return stage ? (stage.comments || 'No remarks provided') : '';
+  }
+
+  getReturnEmployeeReason(ticket: EnrichedTicket): string {
+    return ticket.rawRequest.justification || ticket.reason || 'No reason provided';
+  }
+
+  private toApprovalAction(status: string): ApprovalEntry['action'] {
+    const normalized = this.mapToStatus(status || '');
+    if (normalized === RequestStatus.APPROVED || normalized === RequestStatus.COMPLETED) return 'Approved';
+    if (normalized === RequestStatus.REJECTED || normalized === RequestStatus.CANCELLED) return 'Rejected';
+    return 'Pending';
+  }
+
+  private isAllocationReturnRole(role: string): boolean {
+    return (role || '').toLowerCase().includes('allocation');
+  }
+
+  private getNumericApprovalId(id: string): number {
+    const numericId = String(id || '').match(/\d+/g)?.join('');
+    return numericId ? Number(numericId) : 0;
   }
 
   async rejectAssetReturn(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
@@ -1004,8 +1209,7 @@ export class AllocationTicketsComponent implements OnInit {
           },
           new: {
             t_asset_returns: {
-              status: 'Rejected',
-              remarks: remarks
+              status: 'Rejected'
             }
           }
         }
@@ -1050,19 +1254,10 @@ export class AllocationTicketsComponent implements OnInit {
   // ─── Reject Methods ───────────────────────────────────────────────────
 
   private getReturnAssetLookupId(ticket: EnrichedTicket): string {
-    if (ticket.assetId && ticket.assetId !== 'â€”' && ticket.assetId !== '-' && ticket.assetId !== 'N/A') {
-      return ticket.assetId;
-    }
-
-    if (ticket.rawRequest?.assignedAssetId) {
-      return ticket.rawRequest.assignedAssetId;
-    }
-
-    if (ticket.assetType && ticket.assetType.startsWith('typ_')) {
-      return ticket.assetType;
-    }
-
-    return '';
+    return this.getSafeVal(ticket.assetId) ||
+      this.getSafeVal(ticket.rawRequest?.assignedAssetId) ||
+      (ticket.assetType?.startsWith('typ_') ? ticket.assetType : '') ||
+      '';
   }
 
   async handleRejectClick(ticket: EnrichedTicket): Promise<void> {

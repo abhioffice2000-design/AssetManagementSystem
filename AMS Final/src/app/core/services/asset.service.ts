@@ -213,7 +213,8 @@ export class AssetService {
            serial_number: this.getNullableValue(data?.serial_number) || '',
            purchase_date: data?.purchase_date || '',
            warranty_expiry: data?.warranty_expiry || '',
-           status: data?.status || ''
+           status: data?.status || '',
+           temp1: data?.temp1 || ''
          };
        });
  
@@ -720,6 +721,7 @@ export class AssetService {
           status: data.status || 'Allocated',
           warrantyExpiry: data.warranty_expiry || data.warrantyExpiry || '',
           purchaseDate: data.purchase_date || data.purchaseDate || '',
+          allocatedDate: data.temp4 || old?.m_assets?.temp4 || old?.ts_asset_allocation?.allocation_date || '',
           vendor: data.m_asset_vendors?.name || data.vendor || '',
           serialNumber: data.serial_number || '',
           requestId: requestId

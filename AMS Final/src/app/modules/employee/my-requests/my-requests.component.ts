@@ -28,6 +28,7 @@ export class MyRequestsComponent implements OnInit {
   selectedRequest: AssetRequest | null = null;
   loadingProgress = false;
   trackingSteps: any[] = [];
+  activeTab: 'pending' | 'resolved' = 'pending';
   overallProgress = 0;
   rejectionInfo: { stage: string, reason: string, approver: string } | null = null;
 
@@ -43,7 +44,8 @@ export class MyRequestsComponent implements OnInit {
     { label: 'All Requests', value: '' },
     { label: 'New Asset Requests', value: RequestType.NEW_ASSET },
     { label: 'Warranty Requests', value: RequestType.EXTEND_WARRANTY },
-    { label: 'Return Requests', value: RequestType.RETURN_ASSET }
+    { label: 'Return Requests', value: RequestType.RETURN_ASSET },
+    { label: 'Service Requests', value: RequestType.SERVICE_MAINTENANCE }
   ];
 
   // Filters
@@ -110,22 +112,25 @@ export class MyRequestsComponent implements OnInit {
     const user = this.authService.getCurrentUser();
     if (user) {
       try {
-        const [assetRequests, warrantyRequests, returnRequests] = await Promise.all([
+        const [assetRequests, warrantyRequests, returnRequests, serviceRequests] = await Promise.all([
           this.requestService.getRequestsByUserIdFromCordys(user.id),
-          this.requestService.fetchWarrantyRequestsForUser(user.id),
-          this.requestService.fetchReturnRequestsByEmployee(user.id)
+          this.requestService.fetchAllWarrantyRequestsForUser(user.id),
+          this.requestService.fetchReturnRequestsByEmployee(user.id),
+          this.requestService.fetchServiceRequestsByUser(user.id)
         ]);
 
 
-        console.log(`[MyRequests] Loaded ${assetRequests.length} asset requests and ${warrantyRequests.length} warranty requests`);
-        if (warrantyRequests.length > 0) {
-          console.log('[MyRequests] Sample Warranty Request:', warrantyRequests[0]);
-        }
+        console.log(`[MyRequests] Loaded ${assetRequests.length} asset, ${warrantyRequests.length} warranty, ${serviceRequests.length} service requests`);
 
-        // Merge both request types
-        this.requests = [...assetRequests, ...warrantyRequests, ...returnRequests];
+        // Merge all request types and sort by date descending
+        this.requests = [...assetRequests, ...warrantyRequests, ...returnRequests, ...serviceRequests];
+        this.requests.sort((a, b) => {
+          const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
+          const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+          return dateB - dateA;
+        });
 
-        console.log(`[MyRequests] Total requests after merge: ${this.requests.length}`);
+        console.log(`[MyRequests] Total requests after merge and sort: ${this.requests.length}`);
         console.log('[MyRequests] Request Types distribution:', this.requests.reduce((acc: any, r) => {
           acc[r.requestType] = (acc[r.requestType] || 0) + 1;
           return acc;
@@ -143,16 +148,52 @@ export class MyRequestsComponent implements OnInit {
 
   get filteredRequests(): AssetRequest[] {
     const filtered = this.requests.filter(req => {
-      //   const matchesSearch = !this.searchTerm ||
+      // 1. Tab filtering
+      const isResolved = req.status === RequestStatus.APPROVED ||
+        req.status === RequestStatus.COMPLETED ||
+        req.status === RequestStatus.REJECTED ||
+        req.status === RequestStatus.CANCELLED;
+
+      const tabMatch = this.activeTab === 'resolved' ? isResolved : !isResolved;
+      if (!tabMatch) return false;
+
+      // 2. Search filtering
       const matchesSearch = !this.searchTerm ||
         req.id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         (req.assetName || '').toLowerCase().includes(this.searchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.searchTerm.toLowerCase());
+
+      // 3. Type filtering
       const matchesType = !this.selectedType || req.requestType === this.selectedType;
+
       return matchesSearch && matchesType;
     });
+    // Sort by Date (Descending - Newest first)
+    filtered.sort((a, b) => {
+      try {
+        const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
+        const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+        
+        // If dates are different, sort by date descending
+        if (dateA !== dateB && !isNaN(dateA) && !isNaN(dateB)) {
+          return dateB - dateA;
+        }
+        
+        // Fallback to request number comparison (numeric descending)
+        // This ensures ex_141 appears before ex_136
+        return (b.requestNumber || '').localeCompare(a.requestNumber || '', undefined, { numeric: true, sensitivity: 'base' });
+      } catch (e) {
+        return 0;
+      }
+    });
+
     return filtered;
+  }
+
+  setTab(tab: 'pending' | 'resolved') {
+    this.activeTab = tab;
+    this.currentPage = 1;
   }
 
   get paginatedRequests(): AssetRequest[] {
@@ -248,6 +289,18 @@ export class MyRequestsComponent implements OnInit {
           { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
         ];
 
+      case RequestType.SERVICE_MAINTENANCE:
+        // Service flow: 3 approval stages + lifecycle milestones
+        // Team Lead gets notification only — NO approval stage
+        return [
+          { name: 'Asset Manager', roles: ['stage_1'] },
+          { name: 'Allocation Team', roles: ['stage_2'] },
+          { name: 'Asset Manager (Final)', roles: ['stage_3'] },
+          { name: 'On Service', roles: ['on_service'] },
+          { name: 'Serviced', roles: ['serviced'] },
+          { name: 'Handover Complete', roles: ['closed'] }
+        ];
+
       default: // NEW_ASSET
         const newAssetStages = [
           { name: 'Team Lead', roles: ['team lead', 'approver'] },
@@ -275,7 +328,65 @@ export class MyRequestsComponent implements OnInit {
     try {
       let progressData: any[];
 
-      if (request.requestType === RequestType.RETURN_ASSET) {
+      if (request.requestType === RequestType.SERVICE_MAINTENANCE) {
+        // Fetch approvals from t_service_approvals
+        const serviceApprovals = await this.requestService.getServiceRequestApprovalChain(request.id);
+
+        // Fetch all users to resolve approver_id → name
+        let allUsers: any[] = [];
+        try {
+          allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        } catch (e) {
+          console.warn('Failed to fetch users for name resolution:', e);
+        }
+        const userMap = new Map(allUsers.map((u: any) => [u.id, u.name]));
+
+        progressData = serviceApprovals.map((a: any) => ({
+          stage: a.stage || a.role || 'Unknown',
+          status: a.status || 'Pending',
+          approverId: a.approver_id,
+          approverName: userMap.get(a.approver_id) || 'Assigned Approver',
+          timestamp: a.action_date,
+          comments: a.remarks
+        }));
+
+        // Add lifecycle milestone entries based on the service request's current status
+        const reqStatus = (request.status || '').toLowerCase();
+        const statusTimestamp = new Date().toISOString();
+
+        // On Service milestone
+        if (['onservice', 'on_service', 'serviced', 'closed', 'completed'].some(s => reqStatus.includes(s))) {
+          progressData.push({
+            stage: 'on_service',
+            status: 'Approved',
+            approverName: 'System',
+            timestamp: statusTimestamp,
+            comments: 'Asset sent to service center'
+          });
+        }
+
+        // Serviced milestone
+        if (['serviced', 'closed', 'completed'].some(s => reqStatus.includes(s))) {
+          progressData.push({
+            stage: 'serviced',
+            status: 'Approved',
+            approverName: 'System',
+            timestamp: statusTimestamp,
+            comments: 'Service completed'
+          });
+        }
+
+        // Handover / Closed milestone
+        if (['closed', 'completed'].some(s => reqStatus.includes(s))) {
+          progressData.push({
+            stage: 'closed',
+            status: 'Approved',
+            approverName: 'System',
+            timestamp: statusTimestamp,
+            comments: 'Original asset handed back to employee'
+          });
+        }
+      } else if (request.requestType === RequestType.RETURN_ASSET) {
         // Fetch ALL approvals from t_asset_return_approvals for return requests
         const returnApprovals = await this.requestService.getReturnRequestProgress(request.id);
 
@@ -296,6 +407,8 @@ export class MyRequestsComponent implements OnInit {
           timestamp: a.action_date,
           comments: a.remarks
         }));
+      } else if (request.requestType === RequestType.EXTEND_WARRANTY) {
+        progressData = await this.requestService.getWarrantyProgress(request.id);
       } else {
         progressData = await this.requestService.getRequestProgress(request.id);
       }
@@ -315,12 +428,20 @@ export class MyRequestsComponent implements OnInit {
 
         let foundIndex = -1;
         while (true) {
+          // Priority 1: Look for a completed record (Approved/Completed) for this stage
           foundIndex = availableProgress.findIndex(p =>
-            stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+            stage.roles.some(role => p.stage?.toLowerCase().includes(role)) &&
+            (p.status?.toLowerCase() === 'approved' || p.status?.toLowerCase() === 'completed')
           );
 
+          // Priority 2: Fallback to any record (Pending/Rejected) for this stage
+          if (foundIndex === -1) {
+            foundIndex = availableProgress.findIndex(p =>
+              stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+            );
+          }
+
           // If we found a match and it's rejected, check if there's a LATER record for the same role(s)
-          // This allows the tracker to skip historical rejections from previous resubmission cycles.
           if (foundIndex !== -1 && availableProgress[foundIndex].status === 'Rejected') {
             const hasLaterMatch = availableProgress.slice(foundIndex + 1).some(p =>
               stage.roles.some(role => p.stage?.toLowerCase().includes(role))
@@ -349,15 +470,15 @@ export class MyRequestsComponent implements OnInit {
           isCompleted = data.status === 'Approved' || data.status === 'Completed';
           isCurrent = data.status === 'Pending';
         } else {
-          // For return requests, only trust actual data - don't guess future steps
-          if (request.requestType !== RequestType.RETURN_ASSET) {
+          // For return/service requests, only trust actual data - don't guess future steps
+          if (request.requestType !== RequestType.RETURN_ASSET && request.requestType !== RequestType.SERVICE_MAINTENANCE) {
             isCompleted = request.status === 'Completed' || request.status === 'Approved';
           }
         }
 
         // Correctly handle 'Assigned Approver' or empty placeholders from the DB and lookups
         const dbName = data?.approverName?.trim();
-        const genericPlaceholders = ['assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
+        const genericPlaceholders = ['approver', 'assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
         const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
 
         let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[stage.name];
@@ -474,23 +595,26 @@ export class MyRequestsComponent implements OnInit {
   }
 
   calculateOverallProgress(requestStatus: string): number {
-    const status = requestStatus.toLowerCase();
-    if (status === 'completed') return 100;
+    const status = (requestStatus || '').toLowerCase();
+    if (status === 'completed' || status === 'approved') return 100;
 
     const completedCount = this.trackingSteps.filter(s => s.isCompleted && s.status !== 'Rejected').length;
     const totalSteps = this.trackingSteps.length;
 
+    if (totalSteps === 0) return 10;
+
     // For rejected requests, show how far it got before rejection
     if (status === 'rejected') {
-      if (totalSteps === 0) return 0;
       return Math.round((completedCount / totalSteps) * 100);
     }
 
     if (completedCount === 0) return 10;
-    if (completedCount === 1) return 33;
-    if (completedCount === 2) return 66;
-    if (completedCount === 3) return 90;
-    return 100;
+    
+    // Dynamic progress calculation based on steps
+    const progress = Math.round((completedCount / totalSteps) * 100);
+    
+    // Ensure we don't show 100% unless it's actually terminal
+    return Math.min(progress, 95);
   }
 
   // Confirmation Modal Variables
@@ -839,7 +963,7 @@ export class MyRequestsComponent implements OnInit {
       }
 
       await this.Getassetidbyapprovalid(this.selectedRequest.requestNumber);
-      
+
       // 2. API: UpdateT_request_approvals
       // This adds a new entry (column/row) for the same request ID to restart approval flow
       // Resolve dynamic approver IDs
@@ -910,12 +1034,13 @@ export class MyRequestsComponent implements OnInit {
   }
 
   getStatusClass(status: RequestStatus | string): string {
-    const s = status.toString();
-    if (s.includes('Pending')) return 'status-pending';
-    if (s.includes('Approved')) return 'status-approved';
-    if (s.includes('Rejected')) return 'status-rejected';
-    if (s.includes('Completed')) return 'status-completed';
-    if (s.includes('Progress')) return 'status-progress';
+    const s = (status || '').toString().toLowerCase();
+    if (s.includes('pending') || s.includes('movetoallocation')) return 'status-pending';
+    if (s.includes('approved')) return 'status-approved';
+    if (s.includes('rejected')) return 'status-rejected';
+    if (s.includes('completed') || s.includes('closed')) return 'status-completed';
+    if (s.includes('progress') || s.includes('onservice') || s.includes('on_service')) return 'status-progress';
+    if (s.includes('serviced') || s.includes('collected')) return 'status-approved';
     return '';
   }
 
@@ -925,6 +1050,8 @@ export class MyRequestsComponent implements OnInit {
     if (t.includes('hard') || t.includes('comp') || t.includes('laptop')) return 'laptop';
     if (t.includes('net') || t.includes('wifi') || t.includes('router')) return 'router';
     if (t.includes('periph') || t.includes('mouse') || t.includes('key')) return 'keyboard';
+    if (t.includes('service') || t.includes('maintenance')) return 'build';
+    if (t.includes('return')) return 'assignment_return';
     return 'inventory_2';
   }
 }
