@@ -73,7 +73,7 @@ export class MyAssetsComponent implements OnInit {
         const result = this.hs.xmltojson(resp, 'm_assets');
         const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
-        this.myAssets = rawData.map((item: any) => ({
+        const assetsFromGetAssetsByUser: Asset[] = rawData.map((item: any) => ({
           id: item.asset_id || item.id || '',
           assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
           name: item.asset_name || item.name || '',
@@ -84,8 +84,11 @@ export class MyAssetsComponent implements OnInit {
           status: item.status || 'Allocated',
           warrantyExpiry: item.warranty_expiry || item.warrantyExpiry || '',
           assignedTo: item.user_id || user.id || '',
-          purchaseDate: item.purchase_date || item.purchaseDate || ''
+          purchaseDate: item.purchase_date || item.purchaseDate || '',
+          allocatedDate: item.temp4 || ''
         } as any));
+
+        this.myAssets = assetsFromGetAssetsByUser;
       } catch (err) {
         console.error('Failed to fetch assets via GetAssetsByUser:', err);
         // Fallback
@@ -135,7 +138,13 @@ export class MyAssetsComponent implements OnInit {
         }
       }
 
-      this.myAssets = loadedAssets;
+      // Preserve allocatedDate from GetAssetsByUser (m_assets.temp4) if the allocation service
+      // doesn't return temp4 (common depending on join service implementation).
+      const byId = new Map<string, Asset>(this.myAssets.map(a => [a.id, a]));
+      this.myAssets = loadedAssets.map(a => ({
+        ...a,
+        allocatedDate: (a as any).allocatedDate || byId.get(a.id)?.allocatedDate || ''
+      }));
 
       // Fallback to mock data if no real data is found (for consistency with dashboard)
       if (this.myAssets.length === 0) {

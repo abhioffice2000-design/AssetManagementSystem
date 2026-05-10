@@ -642,12 +642,13 @@ export class ServiceRequestsComponent implements OnInit {
     this.isSaving = true;
     try {
       const currentUser = this.authService.getCurrentUser();
+      const assignedTo = this.selectedItem.user_id || this.selectedItem.requester_id || '';
       
       // 1. Call custom Java service to assign the asset
       await this.requestService.assignTempAssetService({
         service_request_id: this.selectedItem.service_request_id,
         temp_asset_id: this.selectedTempAssetId,
-        assigned_to: this.selectedItem.user_id || this.selectedItem.requester_id || '',
+        assigned_to: assignedTo,
         assigned_by: currentUser?.id || '',
         expected_return_date: this.tempExpectedReturnDate || '',
         remarks: 'Temporary asset assigned during service'
@@ -662,6 +663,23 @@ export class ServiceRequestsComponent implements OnInit {
         }
       };
       await this.requestService.createEntryForServiceRequest(updateRequest);
+
+      // 2.1 Ensure the temp asset has allocated metadata in m_assets (temp4 = allocated date).
+      // Some environments may not update temp4 inside the custom Java service, so we set it explicitly.
+      const updateTempAsset = {
+        tuple: {
+          old: { m_assets: { asset_id: this.selectedTempAssetId } },
+          new: {
+            m_assets: {
+              // Use dedicated status for temporary allocation during service
+              status: 'TempAllocate',
+              temp1: assignedTo,
+              temp4: new Date().toISOString().split('T')[0]
+            }
+          }
+        }
+      };
+      await this.requestService.updateAssetStatus(updateTempAsset as any);
 
       // 3. Update the item in local memory so the UI knows it's assigned
       this.selectedItem.req_temp3 = this.selectedTempAssetId;
@@ -818,6 +836,19 @@ export class ServiceRequestsComponent implements OnInit {
         service_request_id: this.servicedDrawerItem.service_request_id,
         remarks: 'Temporary asset returned'
       });
+
+      // Also clear allocated metadata on the temp asset (status/user/date).
+      const tempAssetId = this.tempAssetInfo?.temp_asset_id || this.servicedDrawerItem.req_temp3 || '';
+      if (tempAssetId) {
+        const clearTempAsset = {
+          tuple: {
+            old: { m_assets: { asset_id: tempAssetId } },
+            new: { m_assets: { status: 'Available', temp1: '', temp4: '' } }
+          }
+        };
+        await this.requestService.updateAssetStatus(clearTempAsset as any);
+      }
+
       const employee = await this.getServiceUserContact(this.servicedDrawerItem.user_id, this.servicedDrawerItem.requester_name, this.servicedDrawerItem.requester_email);
       const teamLead = await this.getServiceUserContact(this.servicedDrawerItem.tl_id, 'Team Lead', '');
       await this.mailService.sendServiceRequestNotification({

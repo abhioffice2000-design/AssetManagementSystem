@@ -180,6 +180,19 @@
     margin-bottom: 12px;
   }
 
+  .results-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+  }
+
+  .table-responsive {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+  }
+
   .table {
     margin: 0;
     thead th {

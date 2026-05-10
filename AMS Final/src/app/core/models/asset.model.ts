@@ -22,6 +22,7 @@ export interface Asset {
   notes?: string;
   requestId?: string;
   reminderDays?: number;
+  allocatedDate?: string;
 }
 
 export enum AssetType {

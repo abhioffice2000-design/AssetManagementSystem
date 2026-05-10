@@ -2,6 +2,17 @@ import { Component, HostListener, OnInit } from '@angular/core';
 import { NotificationService } from '../../../core/services/notification.service';
 import { WarrantySchedulerService } from '../../../core/services/warranty-scheduler.service';
 import { AssetService } from '../../../core/services/asset.service';
+import { AuthService } from '../../../core/services/auth.service';
+
+export interface WarrantyAllocatedRow {
+  assetId: string;
+  assetName: string;
+  typeId: string;
+  subCatId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+}
 
 @Component({
   selector: 'app-warranty-scheduler',
@@ -30,11 +41,14 @@ export class WarrantySchedulerComponent implements OnInit {
 
   manualDaysToExtend = 7;
   lastInstanceId: string = '';
+  allocatedAssets: WarrantyAllocatedRow[] = [];
+  isLoadingResults = false;
 
   constructor(
     private notificationService: NotificationService,
     private schedulerService: WarrantySchedulerService,
-    private assetService: AssetService
+    private assetService: AssetService,
+    private authService: AuthService
   ) {
     this.generateTimeOptions();
   }
@@ -121,6 +135,14 @@ export class WarrantySchedulerComponent implements OnInit {
     this.isTimeDropdownOpen = false;
   }
 
+  typeDisplayName(typeId: string): string {
+    return this.assetTypes.find(t => t.id === typeId)?.name || typeId || '—';
+  }
+
+  subCategoryDisplayName(subCatId: string): string {
+    return this.subCategories.find(s => s.id === subCatId)?.name || subCatId || '—';
+  }
+
   onTypeChange() {
     this.selectedSubCatId = '';
     this.filteredSubCategories = this.selectedTypeId
@@ -128,10 +150,73 @@ export class WarrantySchedulerComponent implements OnInit {
       : [];
 
     this.lastInstanceId = '';
+    this.allocatedAssets = [];
   }
 
   async onSelectionChange() {
     this.lastInstanceId = '';
+    await this.refreshAllocatedAssetsPreview();
+  }
+
+  /** Loads allocated assets for the selected type + subcategory and resolves assignee (temp1 → user). */
+  private async refreshAllocatedAssetsPreview(): Promise<void> {
+    if (!this.selectedTypeId || !this.selectedSubCatId) {
+      this.allocatedAssets = [];
+      return;
+    }
+
+    this.isLoadingResults = true;
+    this.allocatedAssets = [];
+    try {
+      const rows = await this.assetService.fetchAllocatedAssetsFromService();
+      const filtered = (rows || []).filter(
+        (r: any) =>
+          String(r.type_id || '').trim() === this.selectedTypeId &&
+          String(r.sub_category_id || '').trim() === this.selectedSubCatId &&
+          String(r.status || '').toLowerCase() !== 'available'
+      );
+
+      const userIds = [
+        ...new Set(
+          filtered
+            .map((r: any) => String(r.temp1 || '').trim())
+            .filter(Boolean)
+        )
+      ];
+      const userCache = new Map<string, { name: string; email: string }>();
+      await Promise.all(
+        userIds.map(async uid => {
+          try {
+            const u = await this.authService.getUserDetails(uid);
+            userCache.set(uid, {
+              name: u?.name || uid,
+              email: u?.email || ''
+            });
+          } catch {
+            userCache.set(uid, { name: uid, email: '' });
+          }
+        })
+      );
+
+      this.allocatedAssets = filtered.map((r: any) => {
+        const uid = String(r.temp1 || '').trim();
+        const u = uid ? userCache.get(uid) : undefined;
+        return {
+          assetId: String(r.asset_id || ''),
+          assetName: String(r.asset_name || ''),
+          typeId: String(r.type_id || ''),
+          subCatId: String(r.sub_category_id || ''),
+          userId: uid,
+          userName: u?.name || (uid || '—'),
+          userEmail: u?.email || ''
+        };
+      });
+    } catch (e) {
+      console.warn('[WarrantyScheduler] Failed to load allocated assets preview:', e);
+      this.allocatedAssets = [];
+    } finally {
+      this.isLoadingResults = false;
+    }
   }
 
   async saveSchedule() {
