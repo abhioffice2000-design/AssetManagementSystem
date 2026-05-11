@@ -491,9 +491,10 @@ export class RequestService {
               const latestStatus = this.mapToStatus(latest.status);
               const isAllocationStage = latest.stage?.toLowerCase().includes('allocation') || latest.stage?.toLowerCase().includes('team');
               
-              if (latestStatus === RequestStatus.APPROVED && !isAllocationStage) {
+              if (latestStatus === RequestStatus.APPROVED) {
                 // If manager approved but not allocation, keep it as Pending for the employee
-                req.status = RequestStatus.PENDING;
+                // If allocation approved, it becomes Resolved (Approved)
+                req.status = isAllocationStage ? RequestStatus.APPROVED : RequestStatus.PENDING;
               } else {
                 req.status = latestStatus;
               }

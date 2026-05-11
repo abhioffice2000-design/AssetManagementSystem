@@ -415,6 +415,107 @@ Allocation Team
   }
 
   /**
+   * Notifies the employee and asset manager when a warranty extension request is submitted.
+   */
+  async sendWarrantyRequestSubmissionNotification(params: {
+    employeeName: string;
+    assetName: string;
+    requestId: string;
+    justification: string;
+  }): Promise<void> {
+    console.log(`[MailService] Dispatching warranty extension submission for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `Warranty Extension Request Submitted: ${params.assetName} - ${params.requestId}`;
+    
+    // Employee Email
+    const employeeBody = `
+Dear ${params.employeeName},
+
+Your request to extend the warranty for ${params.assetName} has been successfully submitted and is now pending review by the Asset Manager.
+
+Request Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Asset Name: ${params.assetName}
+Reason: ${params.justification}
+Status: Pending
+---------------------------------------------
+
+You can track the progress in the "My Requests" dashboard.
+
+Best Regards,
+Asset Management System
+    `.trim();
+
+    // Manager Email
+    const managerBody = `
+Dear Asset Manager,
+
+A new warranty extension request has been submitted by ${params.employeeName}.
+
+Request Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Employee: ${params.employeeName}
+Asset: ${params.assetName}
+Reason: ${params.justification}
+---------------------------------------------
+
+Please log in to the Asset Manager dashboard to review this request.
+
+Best Regards,
+Asset Management System
+    `.trim();
+
+    try {
+      await this.sendSoapEmail(testEmail, params.employeeName, `[Employee Copy] ${subject}`, employeeBody);
+      await new Promise(res => setTimeout(res, 1000));
+      await this.sendSoapEmail(testEmail, 'Asset Manager', `[Manager Alert] ${subject}`, managerBody);
+    } catch (err) {
+      console.error('[MailService] Error in warranty submission notification:', err);
+    }
+  }
+
+  /**
+   * Notifies the allocation team when the manager approves a warranty extension.
+   */
+  async sendWarrantyManagerApprovalNotification(params: {
+    employeeName: string;
+    assetName: string;
+    requestId: string;
+    managerName: string;
+    remarks: string;
+    allocationMemberName: string;
+  }): Promise<void> {
+    console.log(`[MailService] Dispatching warranty manager approval for ${params.requestId}`);
+
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `[Allocation Task] Warranty Extension Approved: ${params.requestId}`;
+    const body = `
+Dear ${params.allocationMemberName},
+
+The Asset Manager (${params.managerName}) has approved the warranty extension request for ${params.employeeName}'s asset (${params.assetName}).
+
+Task Details:
+---------------------------------------------
+Request ID: ${params.requestId}
+Employee: ${params.employeeName}
+Asset: ${params.assetName}
+Manager Remarks: ${params.remarks}
+---------------------------------------------
+
+Action Required:
+Please update the asset record with the extended warranty details in the Allocation Team portal.
+
+Best Regards,
+Asset Management System
+    `.trim();
+
+    await this.sendSoapEmail(testEmail, params.allocationMemberName, subject, body);
+  }
+
+  /**
    * Notifies the employee that their warranty extension request has been rejected.
    */
   async sendWarrantyRejectionNotification(params: {

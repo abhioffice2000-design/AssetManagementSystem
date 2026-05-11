@@ -59,22 +59,6 @@
               {{ asset.warrantyExpiry | date }}
             </span>
           </td>
-          <td>
-            <div class="action-buttons justify-center">
-              <ng-container *ngIf="asset.status !== 'TempAllocated'">
-                <button class="btn btn-sm btn-outline-danger" (click)="openReturnModal(asset)">
-                  <span class="material-icons-outlined">assignment_return</span>
-                  Return Asset
-                </button>
-                <button class="btn btn-sm btn-outline-primary" (click)="openWarrantyModal(asset)">
-                  <span class="material-icons-outlined">security</span>
-                  Extend Warranty
-                </button>
-              </ng-container>
-              <span class="text-muted" *ngIf="asset.status === 'TempAllocated'" style="font-size: 12px;">Temporary
-                Asset</span>
-            </div>
-          </td>
         </tr>
         <tr *ngIf="totalFilteredCount === 0 && myAssets.length > 0">
           <td colspan="4" class="text-center text-muted p-24">

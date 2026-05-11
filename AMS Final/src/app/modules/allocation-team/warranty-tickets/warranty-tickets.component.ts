@@ -80,12 +80,15 @@ export class WarrantyTicketsComponent implements OnInit {
   }
 
   get resolvedWarrantyRequests(): AssetRequest[] {
-    return this.allWarrantyRequests.filter(req => 
-      req.status === 'Completed' || 
-      req.status === 'Approved' || 
-      req.status === 'Rejected' || 
-      req.status === 'Cancelled'
-    ).sort((a, b) => {
+    return this.allWarrantyRequests.filter(req => {
+      if (req.status === 'Rejected') {
+        // Only show rejected requests if they actually reached the allocation team
+        // We check if an approval record with role 'Asset Allocation Team' exists
+        // This is handled during enrichment in loadWarrantyTickets
+        return (req as any).involvedAllocationTeam === true;
+      }
+      return req.status === 'Completed' || req.status === 'Approved' || req.status === 'Cancelled';
+    }).sort((a, b) => {
       const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
       const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
       return dateB - dateA;
@@ -142,7 +145,22 @@ export class WarrantyTicketsComponent implements OnInit {
       }
 
       this.warrantyTickets = pendingWarrantyTickets;
-      this.allWarrantyRequests = allRes || [];
+      
+      // Enrich all requests to see if Allocation Team was involved (for Rejected filtering)
+      this.allWarrantyRequests = await Promise.all((allRes || []).map(async (req) => {
+        if (req.status === 'Rejected') {
+          try {
+            const progress = await this.requestService.getWarrantyProgress(req.id);
+            (req as any).involvedAllocationTeam = progress.some(p => 
+              (p.stage || '').toLowerCase().includes('allocation') || 
+              (p.stage || '').toLowerCase().includes('team')
+            );
+          } catch (e) {
+            (req as any).involvedAllocationTeam = false;
+          }
+        }
+        return req;
+      }));
 
       // Map employee names for both pending and resolved requests
       try {
@@ -245,8 +263,8 @@ export class WarrantyTicketsComponent implements OnInit {
         assetId
       );
 
-      // 2. Update status in t_extend_asset_requests to 'Approved'
-      await this.requestService.updateExtendAssetRequest(requestId, 'Approved');
+      // 2. Update master request status to 'Completed'
+      await this.requestService.updateExtendAssetRequest(requestId, 'Completed');
 
       // 3. Update m_assets with the new warranty date
       if (assetId) {
@@ -269,6 +287,15 @@ export class WarrantyTicketsComponent implements OnInit {
         newExpiryDate: newDate,
         requestId: requestId
       });
+
+      // 5. Complete BPM task
+      if (request.taskid) {
+        await this.requestService.completeUserTask({
+          TaskId: request.taskid,
+          Action: 'Approved' // Match BPM decision label
+        } as any);
+        console.log('[AllocationTeam] BPM Task completed for request:', requestId);
+      }
 
       this.notificationService.showToast('Warranty extension approved and updated successfully!', 'success');
       this.closeWarrantyModal();

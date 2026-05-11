@@ -68,7 +68,7 @@ export class WarrantyRequestsComponent implements OnInit {
         this.requestService.getAllocationTeamMemberAccordingtoManager(approverId)
       ]);
 
-      this.warrantyRequests = pendingReqs;
+      this.warrantyRequests = pendingReqs || [];
       
       // Enrich resolved requests to show 'Approved' even if main table is 'Pending'
       this.allWarrantyRequests = await Promise.all((allReqs || []).map(async (req) => {
@@ -86,132 +86,73 @@ export class WarrantyRequestsComponent implements OnInit {
         return req;
       }));
 
-      // Normalize team members to a flat structure
-      const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
-      this.allocationTeamMemberList = rawMembers.map((m: any) => ({
-        user_id: m?.old?.m_users?.user_id || m?.m_users?.user_id || m?.user_id || '',
-        name: m?.old?.m_users?.name || m?.m_users?.name || m?.name || 'Unknown',
-        email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
-      }));
+      const teamTuples = memberResult || [];
+      this.allocationTeamMemberList = teamTuples.map((t: any) => {
+        const user = t?.old?.m_users || t?.m_users || t;
+        return {
+          id: user.user_id,
+          name: user.user_name || user.name
+        };
+      });
 
-      if (this.allocationTeamMemberList.length > 0) {
-        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
-      }
-
-      this.applyFilters();
-    } catch (err: any) {
+      this.filterRequests();
+    } catch (err) {
       console.error('Failed to load warranty requests:', err);
-      this.loadError = 'Failed to load request data. Please try again.';
+      this.loadError = 'Failed to load requests. Please try again.';
     } finally {
       this.isLoading = false;
     }
   }
 
-  applyFilters(): void {
-    const source = this.activeTab === 'pending' ? this.warrantyRequests : this.resolvedWarrantyRequests;
+  filterRequests(): void {
+    let requests = this.activeTab === 'pending' ? this.warrantyRequests : this.allWarrantyRequests.filter(r => r.status !== RequestStatus.PENDING);
 
-    this.filteredWarrantyRequests = source.filter(req => {
-      const matchesSearch = !this.searchTerm ||
-        req.requestNumber.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
-        req.requesterName.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
-        req.assetName?.toLowerCase().includes(this.searchTerm.toLowerCase());
-      const matchesStatus = !this.selectedStatus || req.status === this.selectedStatus;
-      const matchesUrgency = !this.selectedUrgency || req.urgency === this.selectedUrgency;
-      return matchesSearch && matchesStatus && matchesUrgency;
-    }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+    if (this.searchTerm) {
+      const term = this.searchTerm.toLowerCase();
+      requests = requests.filter(r => 
+        r.id.toLowerCase().includes(term) ||
+        r.requesterName.toLowerCase().includes(term) ||
+        r.assetName?.toLowerCase().includes(term)
+      );
+    }
 
+    if (this.selectedStatus) {
+      requests = requests.filter(r => r.status === this.selectedStatus);
+    }
+
+    if (this.selectedUrgency) {
+      requests = requests.filter(r => r.urgency === this.selectedUrgency);
+    }
+
+    this.filteredWarrantyRequests = requests;
     this.currentPage = 1;
-  }
-
-  get resolvedWarrantyRequests(): AssetRequest[] {
-    return this.allWarrantyRequests.filter(req => 
-      req.status === RequestStatus.APPROVED ||
-      req.status === RequestStatus.COMPLETED || 
-      req.status === RequestStatus.REJECTED || 
-      req.status === RequestStatus.CANCELLED
-    );
   }
 
   setTab(tab: 'pending' | 'resolved'): void {
     this.activeTab = tab;
-    this.applyFilters();
+    this.filterRequests();
   }
 
-  get paginatedRequests(): AssetRequest[] {
-    const start = (this.currentPage - 1) * this.pageSize;
-    return this.filteredWarrantyRequests.slice(start, start + this.pageSize);
-  }
-
-  get totalPages(): number {
-    return Math.ceil(this.filteredWarrantyRequests.length / this.pageSize);
-  }
-
-  setPage(page: number): void {
-    if (page >= 1 && page <= this.totalPages) {
-      this.currentPage = page;
-    }
-  }
-
-  get paginationDisplayRange(): string {
-    if (this.filteredWarrantyRequests.length === 0) return '0 - 0 of 0';
-    const start = (this.currentPage - 1) * this.pageSize + 1;
-    const end = Math.min(this.currentPage * this.pageSize, this.filteredWarrantyRequests.length);
-    return `${start} - ${end} of ${this.filteredWarrantyRequests.length}`;
-  }
-
-  onSearchChange(): void {
-    this.applyFilters();
-  }
-
-  onFilterChange(): void {
-    this.applyFilters();
-  }
-
-  getUrgencyClass(urgency: RequestUrgency): string {
-    switch (urgency) {
-      case RequestUrgency.HIGH: return 'urgency-high';
-      case RequestUrgency.MEDIUM: return 'urgency-medium';
-      case RequestUrgency.LOW: return 'urgency-low';
-      default: return '';
-    }
-  }
-
-  async openDetailModal(request: AssetRequest): Promise<void> {
+  openDetailModal(request: AssetRequest): void {
     this.detailRequest = { ...request };
     this.actionComments = '';
-
-    try {
-      // Fetch fresh data from the main request table
-      const rawData = await this.requestService.getWarrantyRequestById(request.id);
-      if (rawData) {
-        // Merge fresh data while PRESERVING critical tracking IDs from the list item
-        this.detailRequest = {
-          ...this.detailRequest,
-          assetName: rawData.temp1 || this.detailRequest.assetName,
-          assignedSerial: rawData.temp2 || this.detailRequest.assignedSerial,
-          assignedWarrantyExpiry: rawData.temp3 || this.detailRequest.assignedWarrantyExpiry,
-          assignedAssetId: rawData.asset_id || rawData.asset_type || this.detailRequest.assignedAssetId,
-          justification: rawData.reason || this.detailRequest.justification,
-          // Ensure these are NEVER lost during refresh
-          approvalId: request.approvalId || this.detailRequest.approvalId,
-          taskid: request.taskid || this.detailRequest.taskid
-        };
-      }
-    } catch (err) {
-      console.warn('Error fetching fresh warranty details:', err);
-    }
-
+    this.selectedAllocationMemberId = '';
     this.showDetailModal = true;
   }
 
   closeDetailModal(): void {
     this.showDetailModal = false;
     this.detailRequest = null;
+    this.actionComments = '';
   }
 
-
-  async confirmAction(action: 'approve' | 'reject'): Promise<void> {
+  async handleAction(action: 'approve' | 'reject'): Promise<void> {
     if (!this.detailRequest) return;
+
+    if (action === 'approve' && !this.selectedAllocationMemberId) {
+      this.notificationService.showToast('Please select an allocation team member.', 'warning');
+      return;
+    }
 
     if (!this.actionComments || this.actionComments.trim() === '') {
       const actionText = action === 'approve' ? 'Approval' : 'Rejection';
@@ -230,12 +171,12 @@ export class WarrantyRequestsComponent implements OnInit {
         await this.requestService.updateWarrantyRequestApproval(
           this.detailRequest.approvalId as string,
           'Approved',
-          this.actionComments, // Correctly pass current action comments
+          this.actionComments,
           this.detailRequest.assignedAssetId as string
         );
 
-        // 1.1 [REMOVED] Main request status update moved to Allocation Team final confirmation
-        // await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Approved');
+        // 2. Update master request status to 'Approved'
+        await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Approved');
 
         // 2. Update status of the asset in m_assets table to MoveToAllocationTeam
         const req2 = {
@@ -263,29 +204,30 @@ export class WarrantyRequestsComponent implements OnInit {
 
         // 4. Complete BPM task
         if (this.detailRequest.taskid) {
-          // Pass the new approval_id as part of the task completion payload
-          // This allows the BPM to update its internal variable and correctly link to the new record
+          const TaskId = this.detailRequest.taskid;
           await this.requestService.completeUserTask({ 
-            TaskId: this.detailRequest.taskid, 
-            Action: 'COMPLETE',
-            approval_id: newapprovalid 
-          } as any);
+            TaskId: TaskId, 
+            Action: 'Approved',
+            Remarks: this.actionComments,
+            NextApproverId: this.selectedAllocationMemberId,
+            NextApprovalId: newapprovalid || ''
+          });
         }
 
-        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
-        this.mailService.sendAssetManagerStatusUpdate({
-          requestId: this.detailRequest.id,
+        this.notificationService.showToast('Request approved and moved to allocation team.', 'success');
+        
+        // 5. Send Email
+        this.mailService.sendWarrantyManagerApprovalNotification({
           employeeName: this.detailRequest.requesterName,
-          status: 'Approved',
+          assetName: this.detailRequest.assetName || 'Asset',
+          requestId: this.detailRequest.id,
           managerName: currentUser.name,
           remarks: this.actionComments,
-          allocationMemberName: member ? member.name : 'Allocation Team',
-          assetName: this.detailRequest.assetName || this.detailRequest.category
+          allocationMemberName: this.allocationTeamMemberList.find(m => m.id === this.selectedAllocationMemberId)?.name || 'Allocation Team Member'
         });
 
-        this.notificationService.showToast(`Warranty request approved.`, 'success');
       } else {
-        // Handle Rejection
+        console.log('Rejecting warranty request:', this.detailRequest);
         // 1. Update existing manager approval entry
         await this.requestService.updateWarrantyRequestApproval(
           this.detailRequest.approvalId as string,
@@ -294,51 +236,106 @@ export class WarrantyRequestsComponent implements OnInit {
           this.detailRequest.assignedAssetId as string
         );
 
-        // 2. Update master request status to 'Rejected'
+        // 2. Update master request status
         await this.requestService.updateExtendAssetRequest(this.detailRequest.id, 'Rejected');
 
-        // 3. Complete BPM task
+        // 3. Complete BPM task (to end the flow)
         if (this.detailRequest.taskid) {
-          await this.requestService.completeUserTask({ TaskId: this.detailRequest.taskid, Action: 'COMPLETE' } as any);
+          const TaskId = this.detailRequest.taskid;
+          await this.requestService.completeUserTask({ 
+            TaskId: TaskId, 
+            Action: 'Rejected',
+            Remarks: this.actionComments
+          });
         }
 
-        // 4. Send Rejection Email
-        this.mailService.sendWarrantyRejectionNotification({
-          requestId: this.detailRequest.id,
-          employeeName: this.detailRequest.requesterName,
-          managerName: currentUser.name,
-          remarks: this.actionComments,
-          assetName: this.detailRequest.assetName || this.detailRequest.category
-        });
+        this.notificationService.showToast('Request rejected successfully.', 'success');
 
-        this.notificationService.showToast(`Warranty request rejected and employee notified.`, 'info');
+        // 4. Send Email
+        this.mailService.sendWarrantyRejectionNotification({
+          employeeName: this.detailRequest.requesterName,
+          assetName: this.detailRequest.assetName || 'Asset',
+          requestId: this.detailRequest.id,
+          managerName: currentUser.name,
+          remarks: this.actionComments
+        });
       }
 
       this.closeDetailModal();
       this.loadData();
-    } catch (error) {
-      console.error('Action failed:', error);
-      this.notificationService.showToast('Action failed. Please try again.', 'error');
+    } catch (err) {
+      console.error('Failed to process warranty action:', err);
+      this.notificationService.showToast('Failed to process action. Please try again.', 'error');
     }
   }
 
-  getTimeSince(dateStr: string): string {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    return `${diff} days ago`;
+  get resolvedWarrantyRequests(): AssetRequest[] {
+    return this.allWarrantyRequests.filter(r => r.status !== RequestStatus.PENDING);
+  }
+
+  onSearchChange(): void {
+    this.filterRequests();
+  }
+
+  onFilterChange(): void {
+    this.filterRequests();
+  }
+
+  get paginationDisplayRange(): string {
+    if (this.filteredWarrantyRequests.length === 0) return '0-0 of 0';
+    const start = (this.currentPage - 1) * this.pageSize + 1;
+    const end = Math.min(this.currentPage * this.pageSize, this.filteredWarrantyRequests.length);
+    return `${start}-${end} of ${this.filteredWarrantyRequests.length}`;
+  }
+
+  setPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.goToPage(page);
+    }
   }
 
   getSelectedAllocationMemberName(): string {
-    if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
-      this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+    const member = this.allocationTeamMemberList.find(m => m.id === this.selectedAllocationMemberId);
+    return member ? member.name : 'Not assigned';
+  }
+
+  confirmAction(action: 'approve' | 'reject'): void {
+    this.handleAction(action);
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredWarrantyRequests.length / this.pageSize);
+  }
+
+  get paginatedRequests(): AssetRequest[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredWarrantyRequests.slice(start, start + this.pageSize);
+  }
+
+  get pageNumbers(): number[] {
+    return Array.from({ length: this.totalPages }, (_, i) => i + 1);
+  }
+
+  goToPage(page: number): void {
+    this.currentPage = page;
+  }
+
+  getUrgencyClass(urgency: RequestUrgency): string {
+    switch (urgency) {
+      case RequestUrgency.HIGH: return 'text-red-600 bg-red-100';
+      case RequestUrgency.MEDIUM: return 'text-amber-600 bg-amber-100';
+      case RequestUrgency.LOW: return 'text-emerald-600 bg-emerald-100';
+      default: return 'text-slate-600 bg-slate-100';
     }
-    
-    const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
-    if (!member) return 'Not Assigned';
-    
-    return member.email ? `${member.name} — ${member.email}` : member.name;
+  }
+
+  getStatusClass(status: RequestStatus): string {
+    switch (status) {
+      case RequestStatus.APPROVED: return 'text-emerald-600 bg-emerald-100';
+      case RequestStatus.REJECTED: return 'text-red-600 bg-red-100';
+      case RequestStatus.COMPLETED: return 'text-blue-600 bg-blue-100';
+      case RequestStatus.PENDING: return 'text-amber-600 bg-amber-100';
+      default: return 'text-slate-600 bg-slate-100';
+    }
   }
 }
