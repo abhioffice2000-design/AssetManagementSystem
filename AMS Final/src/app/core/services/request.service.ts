@@ -413,9 +413,9 @@ export class RequestService {
       let tuples = this.hs.xmltojson(resp, 'tuple');
       if (!tuples) {
         // Try direct object extraction or standard table name
-        tuples = this.hs.xmltojson(resp, 't_extend_asset_requests') || 
-                 this.hs.xmltojson(resp, 'old') || 
-                 this.hs.xmltojson(resp, 'new');
+        tuples = this.hs.xmltojson(resp, 't_extend_asset_requests') ||
+          this.hs.xmltojson(resp, 'old') ||
+          this.hs.xmltojson(resp, 'new');
       }
 
       if (!tuples) {
@@ -474,7 +474,7 @@ export class RequestService {
       console.log(`[RequestService] Fetching all warranty requests for user: ${userId} via client-side filtering`);
       const allRequests = await this.fetchAllWarrantyRequests();
       const userRequests = allRequests.filter(req => req.requesterId === userId);
-      
+
       // For each request, ensure we have the latest status from the approval chain
       const enrichedRequests = await Promise.all(userRequests.map(async (req) => {
         try {
@@ -486,11 +486,11 @@ export class RequestService {
               const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
               return idB - idA;
             })[0];
-            
+
             if (latest) {
               const latestStatus = this.mapToStatus(latest.status);
               const isAllocationStage = latest.stage?.toLowerCase().includes('allocation') || latest.stage?.toLowerCase().includes('team');
-              
+
               if (latestStatus === RequestStatus.APPROVED) {
                 // If manager approved but not allocation, keep it as Pending for the employee
                 // If allocation approved, it becomes Resolved (Approved)
@@ -498,7 +498,7 @@ export class RequestService {
               } else {
                 req.status = latestStatus;
               }
-              
+
               req.approvalId = latest.approvalId;
               req.taskid = latest.temp1;
             }
@@ -704,10 +704,10 @@ export class RequestService {
 
     // Prioritize type_name or type_id for assignment lookup, fallback to 'Hardware'
     const rawAssetType = this.getNullableValue(
-      assetInfo?.type_name || 
-      assetInfo?.type_id || 
-      assetInfo?.asset_type || 
-      reqData?.asset_type || 
+      assetInfo?.type_name ||
+      assetInfo?.type_id ||
+      assetInfo?.asset_type ||
+      reqData?.asset_type ||
       'Hardware'
     ) || 'Hardware';
 
@@ -1476,19 +1476,19 @@ export class RequestService {
   public normalizeAssetType(type: string | undefined): string {
     if (!type) return 'Hardware';
     const t = type.toLowerCase().trim();
-    
+
     // 1. Furniture detection (prioritized)
     if (t.includes('furn') || t.includes('chair') || t.includes('table') || t.includes('desk') || t === 'typ_05') return 'Furniture';
-    
+
     // 2. Software detection
     if (t.includes('soft') || t.includes('license') || t.includes('adobe') || t.includes('office') || t === 'typ_01') return 'Software';
-    
+
     // 3. Hardware detection
     if (t.includes('laptop') || t.includes('hard') || t.includes('comp') || t.includes('dell') || t.includes('hp') || t.includes('mouse') || t === 'typ_02') return 'Hardware';
-    
+
     // 4. Network detection
     if (t.includes('network') || t.includes('wifi') || t.includes('router') || t === 'typ_03') return 'Network';
-    
+
     // 5. Peripheral detection
     if (t.includes('periph') || t.includes('keyboard') || t === 'typ_04') return 'Peripheral';
 
@@ -2160,7 +2160,7 @@ ${fieldXml}
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log("response for all pending request...........",res);
+      console.log("response for all pending request...........", res);
       return this.hs.xmltojson(res, 'tuple');
     }).catch((err: any) => {
       console.log(err);
@@ -2378,8 +2378,11 @@ ${fieldXml}
       'http://schemas.cordys.com/AMS_Database_Metadata',
       request
     ).then((res: any) => {
-      console.log(res);
-      return this.hs.xmltojson(res, 'tuple');
+      console.log("response555555", res);
+      let response = this.hs.xmltojson(res, 'tuple');
+      // convert single object into array
+      response = Array.isArray(response) ? response : [response];
+      return response;
     }).catch((err: any) => {
       console.log(err);
       return err;
