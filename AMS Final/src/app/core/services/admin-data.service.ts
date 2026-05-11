@@ -447,9 +447,13 @@ export class AdminDataService {
     const normalizedProjectId = this.normalizeNullable(projectId, '');
     const normalizedTeamLeadUserId = this.normalizeNullable(teamLeadUserId, '');
 
-    if (!normalizedProjectId || !normalizedTeamLeadUserId) {
-      throw new Error('Project ID and team lead user ID are required.');
+    if (!normalizedProjectId) {
+      throw new Error('Project ID is required.');
     }
+
+    const teamLeadElement = normalizedTeamLeadUserId 
+      ? `<tl_id>${this.xmlEscape(normalizedTeamLeadUserId)}</tl_id>`
+      : `<tl_id xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />`;
 
     const assignLeadSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
@@ -463,7 +467,7 @@ export class AdminDataService {
         </old>
         <new>
           <m_projects qAccess="0" qConstraint="0" qInit="0" qValues="">
-            <tl_id>${this.xmlEscape(normalizedTeamLeadUserId)}</tl_id>
+            ${teamLeadElement}
           </m_projects>
         </new>
       </tuple>
@@ -472,6 +476,53 @@ export class AdminDataService {
 </SOAP:Envelope>`.trim();
 
     await this.heroService.ajax(null, null, {}, assignLeadSoap);
+  }
+
+  async clearAssetManagerFromType(typeId: string): Promise<void> {
+    const soap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_asset_types xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_asset_types qConstraint="0">
+            <type_id>${this.xmlEscape(typeId)}</type_id>
+          </m_asset_types>
+        </old>
+        <new>
+          <m_asset_types qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <am_id xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <asset_manager xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+          </m_asset_types>
+        </new>
+      </tuple>
+    </UpdateM_asset_types>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+    await this.heroService.ajax(null, null, {}, soap);
+  }
+
+  async updateAssetTypeTeamMembers(typeId: string, teamMembers: string): Promise<void> {
+    const soap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_asset_types xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_asset_types qConstraint="0">
+            <type_id>${this.xmlEscape(typeId)}</type_id>
+          </m_asset_types>
+        </old>
+        <new>
+          <m_asset_types qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <team_members>${this.xmlEscape(teamMembers)}</team_members>
+          </m_asset_types>
+        </new>
+      </tuple>
+    </UpdateM_asset_types>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+    await this.heroService.ajax(null, null, {}, soap);
   }
 
   async getRolesFromDB(): Promise<Role[]> {
@@ -605,6 +656,7 @@ export class AdminDataService {
     roleId?: string;
     projectId?: string;
     assetTypeId?: string;
+    status?: string;
   }): Promise<void> {
     const normalizedUserId = this.normalizeNullable(userId, '');
     if (!normalizedUserId) {
@@ -635,6 +687,9 @@ export class AdminDataService {
     }
     if (updates.assetTypeId !== undefined) {
       updateFields += `<asset_type_id>${this.xmlEscape(updates.assetTypeId)}</asset_type_id>`;
+    }
+    if (updates.status !== undefined) {
+      updateFields += `<status>${this.xmlEscape(updates.status)}</status>`;
     }
 
     if (!updateFields) {
@@ -671,7 +726,8 @@ export class AdminDataService {
         ...(updates.email ? { email: updates.email } : {}),
         ...(updates.roleId ? { roleId: updates.roleId } : {}),
         ...(updates.projectId !== undefined ? { projectId: updates.projectId } : {}),
-        ...(updates.assetTypeId !== undefined ? { assetTypeId: updates.assetTypeId } : {})
+        ...(updates.assetTypeId !== undefined ? { assetTypeId: updates.assetTypeId } : {}),
+        ...(updates.status !== undefined ? { status: updates.status } : {})
       });
     }
   }

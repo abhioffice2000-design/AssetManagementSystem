@@ -6,6 +6,7 @@ import { AssetService } from '../../../core/services/asset.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
 import { UserService } from '../../../core/services/user.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 @Component({
   selector: 'app-warranty-requests',
@@ -45,6 +46,7 @@ export class WarrantyRequestsComponent implements OnInit {
     private authService: AuthService,
     private assetService: AssetService,
     private userService: UserService,
+    private adminService: AdminDataService,
     private notificationService: NotificationService,
     private mailService: MailService
   ) { }
@@ -86,7 +88,31 @@ export class WarrantyRequestsComponent implements OnInit {
         return req;
       }));
 
-      const teamTuples = memberResult || [];
+      // 🚀 BPM Discovery Fallback: If taskid is missing from DB, find it in active tasks
+      try {
+        const activeTasks = await this.requestService.fetchActiveTasks();
+        if (activeTasks && activeTasks.length > 0) {
+          [...this.warrantyRequests, ...this.allWarrantyRequests].forEach(req => {
+            if (!req.taskid) {
+              const matchingTask = activeTasks.find(t => {
+                const dataStr = JSON.stringify(t.data || {}).toLowerCase();
+                const subjectStr = (t.subject || '').toLowerCase();
+                const reqIdLower = (req.id || '').toLowerCase();
+                return reqIdLower && (dataStr.includes(reqIdLower) || subjectStr.includes(reqIdLower));
+              });
+              if (matchingTask) {
+                console.log(`[WarrantyRequests] Discovered missing taskId ${matchingTask.taskId} for request ${req.id}`);
+                req.taskid = matchingTask.taskId;
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[WarrantyRequests] Task discovery failed:', e);
+      }
+
+      const teamTuples = memberResult ? (Array.isArray(memberResult) ? memberResult : [memberResult]) : [];
+      
       this.allocationTeamMemberList = teamTuples.map((t: any) => {
         const user = t?.old?.m_users || t?.m_users || t;
         return {
@@ -133,11 +159,54 @@ export class WarrantyRequestsComponent implements OnInit {
     this.filterRequests();
   }
 
-  openDetailModal(request: AssetRequest): void {
-    this.detailRequest = { ...request };
+  async openDetailModal(req: AssetRequest): Promise<void> {
+    this.detailRequest = req;
+    this.showDetailModal = true;
     this.actionComments = '';
     this.selectedAllocationMemberId = '';
-    this.showDetailModal = true;
+    
+    // Dynamically load allocation members based on THIS request's asset type
+    try {
+      const assetType = req.assetType || 'Hardware';
+      const assignment = await this.adminService.getAssignmentByAssetType(assetType);
+      
+      if (assignment && assignment.teamMembers) {
+        const memberIds = assignment.teamMembers.split(',').map(id => id.trim());
+        const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        
+        this.allocationTeamMemberList = allUsers
+          .filter((u: any) => memberIds.includes(u.id))
+          .map((u: any) => ({
+            id: u.id,
+            name: u.name
+          }));
+          
+        console.log(`[WarrantyRequests] Loaded ${this.allocationTeamMemberList.length} allocation members for ${assetType}`);
+      } else {
+        // Fallback to manager-level members if type-specific lookup fails
+        const currentUser = this.authService.getCurrentUser();
+        const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(currentUser?.id || 'usr_004');
+        const teamTuples = memberResult ? (Array.isArray(memberResult) ? memberResult : [memberResult]) : [];
+        this.allocationTeamMemberList = teamTuples.map((t: any) => {
+          const user = t?.old?.m_users || t?.m_users || t;
+          return { id: user.user_id, name: user.user_name || user.name };
+        });
+      }
+
+      // Final fallback: if list is still empty, load ALL users with 'Asset Allocation Team' role
+      if (!this.allocationTeamMemberList || this.allocationTeamMemberList.length === 0) {
+        console.warn('[WarrantyRequests] No specific allocation members found. Loading all users with Allocation Team role.');
+        const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        this.allocationTeamMemberList = allUsers
+          .filter((u: any) => (u.role || '').toLowerCase().includes('allocation'))
+          .map((u: any) => ({
+            id: u.id,
+            name: u.name
+          }));
+      }
+    } catch (err) {
+      console.error('Failed to load dynamic allocation members:', err);
+    }
   }
 
   closeDetailModal(): void {
@@ -207,10 +276,13 @@ export class WarrantyRequestsComponent implements OnInit {
           const TaskId = this.detailRequest.taskid;
           await this.requestService.completeUserTask({ 
             TaskId: TaskId, 
-            Action: 'Approved',
-            Remarks: this.actionComments,
-            NextApproverId: this.selectedAllocationMemberId,
-            NextApprovalId: newapprovalid || ''
+            Action: 'COMPLETE',
+            Variables: {
+              Status: "Approved",
+              NextApproverId: this.selectedAllocationMemberId,
+              NextApprovalId: newapprovalid || '',
+              Remarks: this.actionComments
+            }
           });
         }
 
@@ -244,8 +316,11 @@ export class WarrantyRequestsComponent implements OnInit {
           const TaskId = this.detailRequest.taskid;
           await this.requestService.completeUserTask({ 
             TaskId: TaskId, 
-            Action: 'Rejected',
-            Remarks: this.actionComments
+            Action: 'COMPLETE',
+            Variables: {
+              Status: "Rejected",
+              Remarks: this.actionComments
+            }
           });
         }
 

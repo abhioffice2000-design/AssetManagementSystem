@@ -8,6 +8,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { Asset } from '../../../core/models/asset.model';
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
 import { HeroService } from '../../../core/services/hero.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 @Component({
   selector: 'app-extend-warranty',
@@ -27,7 +28,8 @@ export class ExtendWarrantyComponent implements OnInit {
     private authService: AuthService,
     private notificationService: NotificationService,
     private router: Router,
-    private hs: HeroService
+    private hs: HeroService,
+    private adminService: AdminDataService
   ) { }
 
   ngOnInit(): void {
@@ -105,6 +107,7 @@ export class ExtendWarrantyComponent implements OnInit {
           id: item.asset_id || item.id || '',
           assetTag: item.serial_number || item.asset_tag || item.asset_id || '',
           name: item.asset_name || item.name || '',
+          type: item.type_id || item.asset_type || item.type || '',
           vendor: item.m_asset_vendors?.name || item.m_asset_vendors?.Name || '',
           category: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || item.category || item.asset_type || '',
           subCategory: item.m_asset_subcategories?.name || item.m_asset_subcategories?.Name || '',
@@ -138,20 +141,18 @@ export class ExtendWarrantyComponent implements OnInit {
     this.isLoading = true;
     const formVal = this.warrantyForm.value;
     console.log("formval", formVal);
-    var reqAss = {
-      assetid: formVal.assetId
-    }
-    var assetResp = await this.requestService.getAssetTypeFromAssetId(reqAss)
-    console.log(assetResp)
-    var assetTypeId = assetResp.old.m_assets.type_id
+    const assignment = await this.adminService.getAssignmentByAssetType(this.selectedAsset?.type || '');
+    const rs = assignment?.assetManagerId;
 
-    var assetReq = {
-      Asset_type_id: assetTypeId
+    if (!rs) {
+      this.notificationService.showToast('No manager assigned for this asset type. Please contact administrator.', 'error');
+      this.isLoading = false;
+      return;
     }
-    var assetresp: any = await this.requestService.getAssetManagerByAssetTypeId(assetReq)
-    console.log(assetresp);
-    console.log("assetresp", assetresp[0].old.m_users.user_id)
-    var rs = assetresp[0].old.m_users.user_id
+    // var assetresp: any = await this.requestService.getAssetManagerByAssetTypeId(assetReq)
+    // console.log(assetresp);
+    // console.log("assetresp", assetresp[0].old.m_users.user_id)
+    // var rs = assetresp[0].old.m_users.user_id
     const soapData = {
       tuple: {
         new: {
