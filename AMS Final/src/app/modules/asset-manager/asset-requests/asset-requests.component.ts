@@ -738,7 +738,8 @@ export class AssetRequestsComponent implements OnInit {
                 const updateAssetReq = {
                   tuple: {
                     old: { m_assets: { asset_id: this.selectedRequest.assignedAssetId } },
-                    new: { m_assets: { status: 'Available', temp1: '' } }
+                    // Clear assignment + allocated date (temp4) on successful return completion
+                    new: { m_assets: { status: 'Available', temp1: '', temp4: '' } }
                   }
                 };
                 await this.requestService.updateAssetStatus(updateAssetReq as any);

@@ -866,7 +866,8 @@ export class AllocationTicketsComponent implements OnInit {
           m_assets: {
             status: "Allocated",
             temp1: ticket.rawRequest.requesterId,
-            temp2: 'Allocate'
+            // Store allocated date in m_assets.temp4 (YYYY-MM-DD)
+            temp4: new Date().toISOString().split('T')[0]
           }
         }
       }

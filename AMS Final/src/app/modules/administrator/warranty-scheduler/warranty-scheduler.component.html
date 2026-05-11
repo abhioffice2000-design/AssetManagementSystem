@@ -52,6 +52,44 @@
           </div>
         </div>
 
+        <div class="results mt-32" *ngIf="selectedTypeId && selectedSubCatId">
+          <div class="results-header">
+            <h4 class="results-title">Allocated assets (this type + subcategory)</h4>
+            <span class="text-muted" *ngIf="isLoadingResults">Loading…</span>
+          </div>
+          <div class="table-responsive" *ngIf="!isLoadingResults && allocatedAssets.length">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Asset</th>
+                  <th>Type</th>
+                  <th>Subcategory</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of allocatedAssets">
+                  <td>{{ row.userName }}</td>
+                  <td>{{ row.userEmail || '—' }}</td>
+                  <td>{{ row.assetName }} <span class="text-muted">({{ row.assetId }})</span></td>
+                  <td>{{ typeDisplayName(row.typeId) }}</td>
+                  <td>{{ subCategoryDisplayName(row.subCatId) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-muted" *ngIf="!isLoadingResults && !allocatedAssets.length">
+            No allocated assets found for this combination (or assignee not set on asset).
+          </p>
+        </div>
+
+        <div class="scheduler-preview mt-24" *ngIf="lastInstanceId">
+          <div class="preview-info">
+            <span class="material-icons-outlined">check_circle</span>
+            <p>Last BPM instance ID: <strong>{{ lastInstanceId }}</strong></p>
+          </div>
+        </div>
 
         <hr class="divider mt-32 mb-32" />
 
