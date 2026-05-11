@@ -161,7 +161,7 @@ export class ServiceAssetComponent implements OnInit {
       });
 
       this.notificationService.showToast('Service request submitted successfully!', 'success');
-      this.router.navigate(['/employee/dashboard']);
+      this.router.navigate(['/employee/my-requests']);
     } catch (err) {
       console.error('[ServiceAsset] Failed to submit service request:', err);
       this.notificationService.showToast('Failed to submit service request', 'error');

@@ -331,7 +331,11 @@ export class AssetRequestsComponent implements OnInit {
       const matchesStatus = this.matchesSelectedStatus(req.status);
       const matchesUrgency = !this.selectedUrgency || req.urgency === this.selectedUrgency;
       return matchesSearch && matchesStatus && matchesUrgency;
-    }).sort((a, b) => this.getRequestSortTime(b) - this.getRequestSortTime(a));
+    }).sort((a, b) => {
+      const idA = (a.id || a.requestNumber || '').toLowerCase();
+      const idB = (b.id || b.requestNumber || '').toLowerCase();
+      return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     console.log(`[AssetRequests] applyFilters: tab=${this.activeTab}, sourceCount=${source.length}, filteredCount=${this.filteredRequests.length}`);
     if (this.selectedStatus) {
@@ -343,7 +347,11 @@ export class AssetRequestsComponent implements OnInit {
         req.id.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.requesterName.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase()) ||
         req.category.toLowerCase().includes(this.confirmationSearchTerm.toLowerCase());
-    }).sort((a, b) => this.getRequestSortTime(b) - this.getRequestSortTime(a));
+    }).sort((a, b) => {
+      const idA = (a.id || a.requestNumber || '').toLowerCase();
+      const idB = (b.id || b.requestNumber || '').toLowerCase();
+      return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     this.currentPage = 1; // Reset page on filter change
   }

@@ -150,7 +150,11 @@ export class WarrantyRequestsComponent implements OnInit {
       requests = requests.filter(r => r.urgency === this.selectedUrgency);
     }
 
-    this.filteredWarrantyRequests = requests;
+    this.filteredWarrantyRequests = requests.sort((a, b) => {
+      const idA = (a.id || '').toLowerCase();
+      const idB = (b.id || '').toLowerCase();
+      return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+    });
     this.currentPage = 1;
   }
 
