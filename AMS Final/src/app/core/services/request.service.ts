@@ -492,9 +492,10 @@ export class RequestService {
               const isAllocationStage = latest.stage?.toLowerCase().includes('allocation') || latest.stage?.toLowerCase().includes('team');
 
               if (latestStatus === RequestStatus.APPROVED) {
-                // If manager approved but not allocation, keep it as Pending for the employee
-                // If allocation approved, it becomes Resolved (Approved)
-                req.status = isAllocationStage ? RequestStatus.APPROVED : RequestStatus.PENDING;
+                // For Warranty: 
+                // 1. If Manager approved (isAllocationStage = false), status is Pending (waiting for Allocation)
+                // 2. If Allocation Team approved (isAllocationStage = true), status is Completed (terminal for employee)
+                req.status = isAllocationStage ? RequestStatus.COMPLETED : RequestStatus.PENDING;
               } else {
                 req.status = latestStatus;
               }
@@ -702,14 +703,16 @@ export class RequestService {
     const expiryDate = this.getNullableValue(reqData?.temp3 || reqData?.Temp3 || assetInfo?.warranty_expiry || assetInfo?.Warranty_expiry || assetInfo?.warrantyExpiry) || 'N/A';
     const assetId = this.getNullableValue(reqData?.asset_id || reqData?.Asset_id || assetInfo?.asset_id || assetInfo?.Asset_id || approvalData?.temp4 || approvalData?.Temp4 || reqData?.asset_type) || 'N/A';
 
-    // Prioritize type_name or type_id for assignment lookup, fallback to 'Hardware'
+    // Prioritize asset name for keyword detection, then fallback to type info
     const rawAssetType = this.getNullableValue(
+      assetName ||
       assetInfo?.type_name ||
       assetInfo?.type_id ||
       assetInfo?.asset_type ||
       reqData?.asset_type ||
       'Hardware'
     ) || 'Hardware';
+
 
     const statusStr = this.getNullableValue(approvalData?.status || approvalData?.Status || reqData?.status || reqData?.Status || '') || '';
     const status = this.mapToStatus(statusStr);
@@ -950,7 +953,9 @@ export class RequestService {
             approverName: this.getNullableValue(userInfo?.name || userInfo?.Name || userInfo?.NAME || approvalData?.approver_name || approvalData?.Approver_name),
             timestamp: this.getNullableValue(approvalData?.action_date || approvalData?.Action_date || approvalData?.ACTION_DATE || approvalData?.created_at || approvalData?.Created_at || approvalData?.CREATED_AT),
             comments: this.getNullableValue(approvalData?.remarks || approvalData?.Remarks || approvalData?.REMARKS || ''),
-            requestId: this.getNullableValue(approvalData?.request_id || approvalData?.Request_id)
+            requestId: this.getNullableValue(approvalData?.request_id || approvalData?.Request_id),
+            approvalId: this.getNullableValue(approvalData?.approval_id || approvalData?.Approval_id),
+            temp1: this.getNullableValue(approvalData?.temp1 || approvalData?.Temp1)
           };
         })
         .filter(r => r.requestId === requestId);
@@ -1481,10 +1486,10 @@ export class RequestService {
     if (t.includes('furn') || t.includes('chair') || t.includes('table') || t.includes('desk') || t === 'typ_05') return 'Furniture';
 
     // 2. Software detection
-    if (t.includes('soft') || t.includes('license') || t.includes('adobe') || t.includes('office') || t === 'typ_01') return 'Software';
+    if (t.includes('soft') || t.includes('license') || t.includes('adobe') || t.includes('office') || t.includes('avast') || t.includes('vpn') || t.includes('client') || t === 'typ_01') return 'Software';
 
     // 3. Hardware detection
-    if (t.includes('laptop') || t.includes('hard') || t.includes('comp') || t.includes('dell') || t.includes('hp') || t.includes('mouse') || t === 'typ_02') return 'Hardware';
+    if (t.includes('laptop') || t.includes('hard') || t.includes('comp') || t.includes('dell') || t.includes('hp') || t.includes('mouse') || t.includes('macbook') || t === 'typ_02') return 'Hardware';
 
     // 4. Network detection
     if (t.includes('network') || t.includes('wifi') || t.includes('router') || t === 'typ_03') return 'Network';
@@ -2141,6 +2146,37 @@ ${fieldXml}
       return err;
     })
   }
+  /**
+   * Fetches all active tasks for the currently logged-in user from Cordys.
+   * Useful for discovering Task IDs that weren't correctly persisted in the DB.
+   */
+  async fetchActiveTasks(): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetTasks xmlns="http://schemas.cordys.com/notification/workflow/1.0" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tasks = this.hs.xmltojson(response, 'Task');
+      if (!tasks) return [];
+      const taskArray = Array.isArray(tasks) ? tasks : [tasks];
+
+      return taskArray.map((t: any) => ({
+        taskId: t.TaskId || t.TaskId?.['#text'] || t.taskid,
+        taskName: t.TaskName || t.TaskName?.['#text'] || t.taskname,
+        subject: t.Subject || t.Subject?.['#text'] || t.subject,
+        status: t.State || t.State?.['#text'] || t.status,
+        data: t.Data || t.data || {}
+      }));
+    } catch (err) {
+      console.error('[RequestService] fetchActiveTasks failed:', err);
+      return [];
+    }
+  }
+
   completeUserTask(request: any) {
     return this.hs.ajax(
       'PerformTaskAction',

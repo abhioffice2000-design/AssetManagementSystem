@@ -378,7 +378,7 @@ export class UserManagementComponent implements OnInit {
       email: user.email,
       roleName: user.role,
       projectId: user.projectId || '',
-      assetTypeId: ''
+      assetTypeId: user.assetTypeId ? user.assetTypeId.split(',')[0].trim() : ''
     };
     this.editUserEmailError = '';
     this.isSavingEdit = false;
@@ -611,12 +611,33 @@ export class UserManagementComponent implements OnInit {
 
       await this.adminDataService.updateUserDetails(this.editingUser.id, updates);
 
-      // IMPORTANT: If user was a Team Lead and their role changed, we must clear their TL assignment from the project
-      if (this.editingUser.role === this.teamLeadRoleName && this.editUserForm.roleName !== this.teamLeadRoleName) {
-        // Find if they were leading any project and clear it
-        const ledProject = this.projects.find(p => p.teamLeadId === this.editingUser?.id);
-        if (ledProject) {
-           await this.adminDataService.assignTeamLeadToProject(ledProject.id, ''); 
+      // 4. Role Change Cleanup (If role changed, remove from previous functional assignments)
+      if (this.editUserForm.roleName !== this.editingUser.role) {
+        // Clear Team Lead assignment
+        if (this.editingUser.role === this.teamLeadRoleName) {
+          const ledProject = this.projects.find(p => p.teamLeadId === this.editingUser?.id);
+          if (ledProject) await this.adminDataService.assignTeamLeadToProject(ledProject.id, ''); 
+        }
+
+        // Clear Asset Manager assignment
+        if (this.editingUser.role === this.assetManagerRoleName) {
+          const managedType = this.assetTypes.find(t => t.assetManagerId === this.editingUser?.id);
+          if (managedType) await this.adminDataService.clearAssetManagerFromType(managedType.id);
+        }
+
+        // Clear Allocation Team assignment
+        if (this.editingUser.role === this.assetTeamMemberRoleName) {
+          const allocationType = this.assetTypes.find(t => 
+            (t.teamMembers || '').split(',').map(m => m.trim()).includes(this.editingUser?.name || '')
+          );
+          if (allocationType) {
+            const updatedMembers = (allocationType.teamMembers || '')
+              .split(',')
+              .map(m => m.trim())
+              .filter(m => m !== this.editingUser?.name)
+              .join(', ');
+            await this.adminDataService.updateAssetTypeTeamMembers(allocationType.id, updatedMembers);
+          }
         }
       }
 
@@ -828,11 +849,54 @@ export class UserManagementComponent implements OnInit {
           }
         }
 
-        // 2. Update user status in DB
-        await this.adminDataService.updateUserActiveStatus(this.userToDeactivate.id, nextStatus);
+        // 1.5 Release roles/assignments if user is being deactivated
+        if (!nextStatus) {
+          // Releasing Team Lead assignment from projects
+          const ledProjects = this.projects.filter(p => p.teamLeadId === this.userToDeactivate?.id);
+          for (const project of ledProjects) {
+            await this.adminDataService.assignTeamLeadToProject(project.id, '');
+            project.teamLeadId = '';
+            project.teamLead = '';
+          }
+
+          // Releasing Asset Manager assignment from asset types
+          const managedTypes = this.assetTypes.filter(t => t.assetManagerId === this.userToDeactivate?.id);
+          for (const type of managedTypes) {
+            await this.adminDataService.clearAssetManagerFromType(type.id);
+            type.assetManagerId = '';
+            type.assetManager = '';
+          }
+
+          // Releasing Allocation Team assignment from asset types
+          const allocationTypes = this.assetTypes.filter(t => 
+            (t.teamMembers || '').split(',').map(m => m.trim()).includes(this.userToDeactivate?.name || '')
+          );
+          for (const type of allocationTypes) {
+            const updatedMembers = (type.teamMembers || '')
+              .split(',')
+              .map(m => m.trim())
+              .filter(m => m !== this.userToDeactivate?.name)
+              .join(', ');
+            await this.adminDataService.updateAssetTypeTeamMembers(type.id, updatedMembers);
+            type.teamMembers = updatedMembers;
+          }
+        }
+
+        // 2. Update user status in DB AND clear their own assignments
+        const nextStatusStr = nextStatus ? 'Active' : 'Inactive';
+        await this.adminDataService.updateUserDetails(this.userToDeactivate.id, {
+          status: nextStatusStr,
+          projectId: !nextStatus ? '' : undefined,
+          assetTypeId: !nextStatus ? '' : undefined
+        });
 
         // 3. Update local state
-        const updatedUser = { ...this.userToDeactivate, isActive: nextStatus };
+        const updatedUser = { 
+          ...this.userToDeactivate, 
+          isActive: nextStatus,
+          projectId: !nextStatus ? undefined : this.userToDeactivate.projectId,
+          assetTypeId: !nextStatus ? undefined : this.userToDeactivate.assetTypeId
+        };
         this.users = this.users.map(user => user.id === updatedUser.id ? updatedUser : user);
         this.filterUsers();
         this.notificationService.showToast(`User status marked as ${nextStatus ? 'Active' : 'Inactive'} successfully.`, 'success');

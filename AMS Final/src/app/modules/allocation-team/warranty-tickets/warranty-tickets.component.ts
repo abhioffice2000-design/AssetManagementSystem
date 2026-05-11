@@ -117,10 +117,12 @@ export class WarrantyTicketsComponent implements OnInit {
 
       // Robust discovery fallback
       if (pendingWarrantyTickets.length === 0) {
-        console.log('[WarrantyTickets] Direct pending service returned 0. Trying robust discovery via asset status...');
-        const allAssets = await this.assetService.fetchAssetsFromService();
-        const allocationAssetIds = new Set(allAssets.filter(a => a.status === 'MoveToAllocationTeam').map(a => a.assetId || a.id));
-        const candidateReqs = (allRes || []).filter(req => allocationAssetIds.has(req.assignedAssetId || ''));
+        console.log('[WarrantyTickets] Direct pending service returned 0. Trying robust discovery...');
+        
+        // Broaden candidate search: check ALL non-terminal requests for pending stages for this user
+        const terminalStatuses = ['Completed', 'Rejected', 'Cancelled', 'Resolved'];
+        const candidateReqs = (allRes || []).filter(req => !terminalStatuses.includes(req.status));
+        const userIdLower = userId.toLowerCase();
         
         const discoveredReqs: AssetRequest[] = [];
         for (const req of candidateReqs) {
@@ -132,7 +134,8 @@ export class WarrantyTicketsComponent implements OnInit {
                 const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
                 return idB - idA;
               })[0];
-              if (latest && latest.status === 'Pending' && latest.approverId === userId) {
+              
+              if (latest && latest.status === 'Pending' && (latest.approverId || '').toLowerCase() === userIdLower) {
                 req.approvalId = latest.approvalId;
                 req.taskid = latest.temp1;
                 req.status = 'Pending' as any;
@@ -146,18 +149,39 @@ export class WarrantyTicketsComponent implements OnInit {
 
       this.warrantyTickets = pendingWarrantyTickets;
       
-      // Enrich all requests to see if Allocation Team was involved (for Rejected filtering)
+      // 🚀 BPM Discovery Fallback: If taskid is missing, find it in active tasks
+      try {
+        const activeTasks = await this.requestService.fetchActiveTasks();
+        if (activeTasks && activeTasks.length > 0) {
+          this.warrantyTickets.forEach(req => {
+            if (!req.taskid) {
+              const matchingTask = activeTasks.find(t => {
+                const dataStr = JSON.stringify(t.data || {}).toLowerCase();
+                const subjectStr = (t.subject || '').toLowerCase();
+                const reqIdLower = (req.id || '').toLowerCase();
+                return reqIdLower && (dataStr.includes(reqIdLower) || subjectStr.includes(reqIdLower));
+              });
+              if (matchingTask) {
+                console.log(`[WarrantyTickets] Discovered missing taskId ${matchingTask.taskId} for request ${req.id}`);
+                req.taskid = matchingTask.taskId;
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[WarrantyTickets] Task discovery failed:', e);
+      }
+      
+      // Enrich all requests to see if Allocation Team was involved (for Resolved tab filtering)
       this.allWarrantyRequests = await Promise.all((allRes || []).map(async (req) => {
-        if (req.status === 'Rejected') {
-          try {
-            const progress = await this.requestService.getWarrantyProgress(req.id);
-            (req as any).involvedAllocationTeam = progress.some(p => 
-              (p.stage || '').toLowerCase().includes('allocation') || 
-              (p.stage || '').toLowerCase().includes('team')
-            );
-          } catch (e) {
-            (req as any).involvedAllocationTeam = false;
-          }
+        try {
+          const progress = await this.requestService.getWarrantyProgress(req.id);
+          (req as any).involvedAllocationTeam = progress.some(p => 
+            (p.stage || '').toLowerCase().includes('allocation') || 
+            (p.stage || '').toLowerCase().includes('team')
+          );
+        } catch (e) {
+          (req as any).involvedAllocationTeam = false;
         }
         return req;
       }));
@@ -213,6 +237,23 @@ export class WarrantyTicketsComponent implements OnInit {
           timestamp: p.timestamp
         }));
         console.log(`[WarrantyTickets] Updated approval chain. Manager remarks: "${this.managerRemarks}"`);
+        
+        // 🚀 On-demand BPM Task Discovery: Ensure we have the taskId before the user acts
+        if (!this.selectedWarrantyRequest.taskid) {
+          try {
+            const activeTasks = await this.requestService.fetchActiveTasks();
+            const reqIdLower = (this.selectedWarrantyRequest.id || '').toLowerCase();
+            const matchingTask = activeTasks.find(t => {
+              const dataStr = JSON.stringify(t.data || {}).toLowerCase();
+              const subjectStr = (t.subject || '').toLowerCase();
+              return reqIdLower && (dataStr.includes(reqIdLower) || subjectStr.includes(reqIdLower));
+            });
+            if (matchingTask) {
+              console.log(`[WarrantyTickets] On-demand discovery found taskId ${matchingTask.taskId}`);
+              this.selectedWarrantyRequest.taskid = matchingTask.taskId;
+            }
+          } catch (e) { console.warn('[WarrantyTickets] On-demand discovery failed:', e); }
+        }
       }
     } catch (err) {
       console.warn('Failed to fetch warranty progress:', err);
@@ -290,11 +331,11 @@ export class WarrantyTicketsComponent implements OnInit {
 
       // 5. Complete BPM task
       if (request.taskid) {
+        console.log(`[AllocationTeam] Completing BPM Task ${request.taskid} for request ${requestId}`);
         await this.requestService.completeUserTask({
           TaskId: request.taskid,
-          Action: 'Approved' // Match BPM decision label
+          Action: 'COMPLETE'
         } as any);
-        console.log('[AllocationTeam] BPM Task completed for request:', requestId);
       }
 
       this.notificationService.showToast('Warranty extension approved and updated successfully!', 'success');

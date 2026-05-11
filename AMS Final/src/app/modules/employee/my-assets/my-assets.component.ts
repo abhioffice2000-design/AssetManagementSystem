@@ -403,51 +403,59 @@ export class MyAssetsComponent implements OnInit {
         this.notificationService.showToast('Failed to submit return request', 'error');
       }
     } else if (type === RequestType.EXTEND_WARRANTY) {
-      const soapData = {
-        tuple: {
-          new: {
-            t_extend_asset_requests: {
-              user_id: user.id,
-              asset_type: this.selectedAsset.id, // Maps to assetId internally
-              reason: formVal.justification,
-              urgency: 'Medium',
-              email_approval: 'false',
-              status: "Pending",
-              created_at: new Date().toISOString()
-            }
-          }
-        }
-      };
-
-      this.hs.ajax('UpdateT_extend_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData)
-        .then((resp: any) => {
-          const requestId =
-            resp?.tuple?.new?.t_extend_asset_requests?.request_id ||
-            resp?.tuple?.old?.t_extend_asset_requests?.request_id ||
-            resp?.request_id;
-
-          if (!requestId) {
-            this.notificationService.showToast('Request saved but approval record could not be created.', 'error');
-            this.closeModals();
-            return;
+      // Resolve the manager dynamically based on asset type
+      this.adminService.getAssignmentByAssetType(this.selectedAsset.type)
+        .then((assignment) => {
+          const resolvedManagerId = assignment?.assetManagerId;
+          
+          if (!resolvedManagerId) {
+            throw new Error(`No manager assigned for asset type: ${this.selectedAsset?.type}`);
           }
 
-          const approvalData = {
+          const soapData = {
             tuple: {
               new: {
-                t_extend_request_approvals: {
-                  request_id: requestId,
-                  approver_id: 'usr_004',
-                  role: 'Asset Manager',
-                  status: 'Pending',
-                  remarks: formVal.justification,
-                  action_date: new Date().toISOString()
+                t_extend_asset_requests: {
+                  user_id: user.id,
+                  asset_type: this.selectedAsset?.id || '', // Asset ID stored in asset_type column
+                  reason: formVal.justification,
+                  urgency: 'Medium',
+                  email_approval: 'false',
+                  status: "Pending",
+                  created_at: new Date().toISOString()
                 }
               }
             }
           };
 
-          return this.hs.ajax('UpdateT_extend_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalData);
+          return this.hs.ajax('UpdateT_extend_asset_requests', 'http://schemas.cordys.com/AMS_Database_Metadata', soapData)
+            .then((resp: any) => {
+              const requestId =
+                resp?.tuple?.new?.t_extend_asset_requests?.request_id ||
+                resp?.tuple?.old?.t_extend_asset_requests?.request_id ||
+                resp?.request_id;
+
+              if (!requestId) {
+                throw new Error('Request saved but approval record could not be created.');
+              }
+
+              const approvalData = {
+                tuple: {
+                  new: {
+                    t_extend_request_approvals: {
+                      request_id: requestId,
+                      approver_id: resolvedManagerId,
+                      role: 'Asset Manager',
+                      status: 'Pending',
+                      remarks: formVal.justification,
+                      action_date: new Date().toISOString()
+                    }
+                  }
+                }
+              };
+
+              return this.hs.ajax('UpdateT_extend_request_approvals', 'http://schemas.cordys.com/AMS_Database_Metadata', approvalData);
+            });
         })
         .then((approvalResp: any) => {
           if (!approvalResp) return;
@@ -483,7 +491,7 @@ export class MyAssetsComponent implements OnInit {
         })
         .catch((err: any) => {
           console.error(err);
-          this.notificationService.showToast('Request submitted but approval record may have failed.', 'error');
+          this.notificationService.showToast('Failed to submit warranty request. Please try again.', 'error');
           this.closeModals();
         });
     }
