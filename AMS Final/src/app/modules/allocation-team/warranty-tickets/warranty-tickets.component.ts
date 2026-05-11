@@ -16,7 +16,7 @@ import { AdminDataService } from '../../../core/services/admin-data.service';
 export class WarrantyTicketsComponent implements OnInit {
   loading = true;
   warrantyTickets: AssetRequest[] = [];
-  
+
   isWarrantyModalOpen = false;
   activeTab: 'pending' | 'resolved' = 'pending';
   allWarrantyRequests: AssetRequest[] = [];
@@ -61,16 +61,16 @@ export class WarrantyTicketsComponent implements OnInit {
     const source = this.activeTab === 'pending' ? this.warrantyTickets : this.resolvedWarrantyRequests;
 
     return source.filter(req => {
-      const matchesSearch = !this.searchTerm || 
+      const matchesSearch = !this.searchTerm ||
         (req.id?.toLowerCase().includes(this.searchTerm.toLowerCase())) ||
         (req.requesterName?.toLowerCase().includes(this.searchTerm.toLowerCase())) ||
         (req.assetName?.toLowerCase().includes(this.searchTerm.toLowerCase()));
-      
+
       const matchesType = !this.selectedAssetType || req.assetType === this.selectedAssetType;
-      
-      const matchesStatus = this.activeTab === 'pending' ? true : 
+
+      const matchesStatus = this.activeTab === 'pending' ? true :
         (!this.selectedResolvedStatus || (this.selectedResolvedStatus === 'Approved' ? (req.status === 'Approved' || req.status === 'Completed') : req.status === this.selectedResolvedStatus));
-      
+
       return matchesSearch && matchesType && matchesStatus;
     });
   }
@@ -89,9 +89,9 @@ export class WarrantyTicketsComponent implements OnInit {
       }
       return req.status === 'Completed' || req.status === 'Approved' || req.status === 'Cancelled';
     }).sort((a, b) => {
-      const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
-      const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
-      return dateB - dateA;
+      const idA = (a.id || '').toLowerCase();
+      const idB = (b.id || '').toLowerCase();
+      return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
     });
   }
 
@@ -107,7 +107,7 @@ export class WarrantyTicketsComponent implements OnInit {
     try {
       const currentUser = this.authService.getCurrentUser();
       const userId = currentUser?.id ?? 'usr_007';
-      
+
       const [pendingRes, allRes] = await Promise.all([
         this.requestService.fetchPendingWarrantyApprovalsFromService(userId),
         this.requestService.fetchAllWarrantyRequests()
@@ -118,12 +118,12 @@ export class WarrantyTicketsComponent implements OnInit {
       // Robust discovery fallback
       if (pendingWarrantyTickets.length === 0) {
         console.log('[WarrantyTickets] Direct pending service returned 0. Trying robust discovery...');
-        
+
         // Broaden candidate search: check ALL non-terminal requests for pending stages for this user
         const terminalStatuses = ['Completed', 'Rejected', 'Cancelled', 'Resolved'];
         const candidateReqs = (allRes || []).filter(req => !terminalStatuses.includes(req.status));
         const userIdLower = userId.toLowerCase();
-        
+
         const discoveredReqs: AssetRequest[] = [];
         for (const req of candidateReqs) {
           try {
@@ -134,7 +134,7 @@ export class WarrantyTicketsComponent implements OnInit {
                 const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
                 return idB - idA;
               })[0];
-              
+
               if (latest && latest.status === 'Pending' && (latest.approverId || '').toLowerCase() === userIdLower) {
                 req.approvalId = latest.approvalId;
                 req.taskid = latest.temp1;
@@ -147,8 +147,12 @@ export class WarrantyTicketsComponent implements OnInit {
         pendingWarrantyTickets = discoveredReqs;
       }
 
-      this.warrantyTickets = pendingWarrantyTickets;
-      
+      this.warrantyTickets = pendingWarrantyTickets.sort((a, b) => {
+        const idA = (a.id || '').toLowerCase();
+        const idB = (b.id || '').toLowerCase();
+        return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
       // 🚀 BPM Discovery Fallback: If taskid is missing, find it in active tasks
       try {
         const activeTasks = await this.requestService.fetchActiveTasks();
@@ -171,13 +175,13 @@ export class WarrantyTicketsComponent implements OnInit {
       } catch (e) {
         console.warn('[WarrantyTickets] Task discovery failed:', e);
       }
-      
+
       // Enrich all requests to see if Allocation Team was involved (for Resolved tab filtering)
       this.allWarrantyRequests = await Promise.all((allRes || []).map(async (req) => {
         try {
           const progress = await this.requestService.getWarrantyProgress(req.id);
-          (req as any).involvedAllocationTeam = progress.some(p => 
-            (p.stage || '').toLowerCase().includes('allocation') || 
+          (req as any).involvedAllocationTeam = progress.some(p =>
+            (p.stage || '').toLowerCase().includes('allocation') ||
             (p.stage || '').toLowerCase().includes('team')
           );
         } catch (e) {
@@ -191,7 +195,7 @@ export class WarrantyTicketsComponent implements OnInit {
         const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
         if (allUsers && allUsers.length > 0) {
           const userMap = new Map(allUsers.map((u: any) => [u.id || u.user_id, u.name]));
-          
+
           const mapNames = (reqs: AssetRequest[]) => reqs.forEach(req => {
             if (!req.requesterName || req.requesterName === 'Unknown') {
               req.requesterName = userMap.get(req.requesterId) || req.requesterName || 'Employee';
@@ -204,7 +208,7 @@ export class WarrantyTicketsComponent implements OnInit {
       } catch (userErr) {
         console.warn('[WarrantyTickets] Failed to enrich requester names:', userErr);
       }
-      
+
       console.log('Pending Warranty Tickets:', this.warrantyTickets.length);
       console.log('All Warranty Requests:', this.allWarrantyRequests.length);
     } catch (err) {
@@ -227,7 +231,7 @@ export class WarrantyTicketsComponent implements OnInit {
       console.log(`[WarrantyTickets] Fetching progress for request: ${request.id}`);
       const progress = await this.requestService.getWarrantyProgress(request.id);
       console.log(`[WarrantyTickets] Progress records found:`, progress.length);
-      
+
       if (this.selectedWarrantyRequest) {
         this.selectedWarrantyRequest.approvalChain = progress.map(p => ({
           stage: p.stage as any,
@@ -237,7 +241,7 @@ export class WarrantyTicketsComponent implements OnInit {
           timestamp: p.timestamp
         }));
         console.log(`[WarrantyTickets] Updated approval chain. Manager remarks: "${this.managerRemarks}"`);
-        
+
         // 🚀 On-demand BPM Task Discovery: Ensure we have the taskId before the user acts
         if (!this.selectedWarrantyRequest.taskid) {
           try {

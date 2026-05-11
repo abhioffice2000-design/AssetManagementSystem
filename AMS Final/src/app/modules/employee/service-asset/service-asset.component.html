@@ -54,7 +54,7 @@
       </label>
 
       <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
-        <button type="button" class="btn btn-outline" routerLink="/employee/dashboard">Cancel</button>
+        <button type="button" class="btn btn-outline" routerLink="/employee/my-requests">Cancel</button>
         <button type="submit" class="btn btn-primary" [disabled]="serviceForm.invalid || isSubmitting">
           {{ isSubmitting ? 'Submitting...' : 'Submit Service Request' }}
         </button>

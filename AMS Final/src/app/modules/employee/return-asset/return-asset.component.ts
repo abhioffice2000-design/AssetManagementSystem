@@ -161,7 +161,7 @@ export class ReturnAssetComponent implements OnInit {
 
       this.requestService.addRequest(newReq as any);
       this.notificationService.showToast('Return request submitted successfully!', 'success');
-      this.router.navigate(['/employee/dashboard']);
+      this.router.navigate(['/employee/my-requests']);
     } catch (err) {
       console.error(err);
       this.notificationService.showToast('Failed to submit return request', 'error');

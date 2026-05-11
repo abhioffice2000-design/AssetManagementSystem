@@ -91,7 +91,7 @@ export class ExtendWarrantyComponent implements OnInit {
     this.submitextendwarranty()
     this.requestService.addRequest(newReq as any);
     this.notificationService.showToast('Warranty extension request submitted successfully!', 'success');
-    this.router.navigate(['/employee/dashboard']);
+    this.router.navigate(['/employee/my-requests']);
   }
 
   getAssetsByUser(userId?: string): void {
