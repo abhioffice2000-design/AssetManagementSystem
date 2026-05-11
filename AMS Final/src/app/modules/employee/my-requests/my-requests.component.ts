@@ -766,7 +766,7 @@ export class MyRequestsComponent implements OnInit {
         const updateReq = {
           tuple: {
             old: { t_asset_requests: { request_id: request.requestNumber } },
-            new: { t_asset_requests: { status: 'Rejected' } }
+            new: { t_asset_requests: { status: 'Cancelled' } }
           }
         };
         await this.Getassetidbyapprovalid(request.requestNumber);
@@ -1028,9 +1028,9 @@ export class MyRequestsComponent implements OnInit {
   }
 
   isFullyApproved(): boolean {
-    if (!this.selectedRequest || this.trackingSteps.length < 3) return false;
-    // For New Asset, first 3 steps must be completed
-    return this.trackingSteps.slice(0, 3).every(s => s.isCompleted);
+    if (!this.selectedRequest || this.trackingSteps.length === 0) return false;
+    // All approval stages must be completed before showing confirmation button
+    return this.trackingSteps.every(s => s.isCompleted);
   }
 
   getStatusClass(status: RequestStatus | string): string {

@@ -156,10 +156,15 @@ export class UserManagementComponent implements OnInit {
     // Supplement with Asset Type names if needed
     if (role.name === this.assetManagerRoleName || role.name === this.assetTeamMemberRoleName) {
       this.roleMembersList.forEach(user => {
-        if (user.assetTypeId && !user.assetTypeName) {
-          const type = this.assetTypes.find(t => t.id === user.assetTypeId);
-          if (type) {
-             user.assetTypeName = type.name;
+        if (user.assetTypeId) {
+          const ids = user.assetTypeId.split(',').map(id => id.trim()).filter(Boolean);
+          const names = ids.map(id => {
+            const type = this.assetTypes.find(t => t.id === id);
+            return type ? type.name : null;
+          }).filter(Boolean);
+          
+          if (names.length > 0) {
+            user.assetTypeName = names.join(', ');
           }
         }
       });
@@ -587,7 +592,21 @@ export class UserManagementComponent implements OnInit {
       if (!this.editRequiresAssetType) {
         updates.assetTypeId = '';
       } else if (this.editUserForm.assetTypeId) {
-        updates.assetTypeId = this.editUserForm.assetTypeId;
+        const existing = this.editingUser.assetTypeId || '';
+        const newId = this.editUserForm.assetTypeId;
+        
+        if (existing) {
+          const existingIds = existing.split(',').map(id => id.trim()).filter(Boolean);
+          if (!existingIds.includes(newId)) {
+            updates.assetTypeId = [...existingIds, newId].join(',');
+          } else {
+            // Already assigned, no change needed to this field
+            // But we keep it in updates to be safe or just skip if no change
+            updates.assetTypeId = existing;
+          }
+        } else {
+          updates.assetTypeId = newId;
+        }
       }
 
       await this.adminDataService.updateUserDetails(this.editingUser.id, updates);
@@ -915,12 +934,17 @@ export class UserManagementComponent implements OnInit {
     try {
       this.users = (await this.adminDataService.GetAllUserRoleProjectDetails()).reverse();
       
-      // Enrich with asset type names for table display if not already populated
+      // Enrich with asset type names for table display
       this.users.forEach(user => {
-        if (user.assetTypeId && !user.assetTypeName) {
-          const type = this.assetTypes.find(t => t.id === user.assetTypeId);
-          if (type) {
-            user.assetTypeName = type.name;
+        if (user.assetTypeId) {
+          const ids = user.assetTypeId.split(',').map(id => id.trim()).filter(Boolean);
+          const names = ids.map(id => {
+            const type = this.assetTypes.find(t => t.id === id);
+            return type ? type.name : null;
+          }).filter(Boolean);
+          
+          if (names.length > 0) {
+            user.assetTypeName = names.join(', ');
           }
         }
       });
