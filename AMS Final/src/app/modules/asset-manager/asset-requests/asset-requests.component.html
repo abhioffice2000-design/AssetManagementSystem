@@ -432,10 +432,12 @@
                 </div>
                 <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation'">
                   <label>Allocation Team Member</label>
-                  <span style="display: block; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; color: #1e293b; font-weight: 600; border: 1px solid #e2e8f0;">
-                    <span class="material-icons-outlined" style="font-size: 16px; vertical-align: middle; margin-right: 6px; color: var(--primary);">person</span>
-                    {{ getSelectedAllocationMemberName() }}
-                  </span>
+                  <select class="asset-select" [(ngModel)]="selectedAllocationMemberId">
+                    <option value="">-- Select Allocation Team Member --</option>
+                    <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
+                      {{ member.name }} — {{ member.email }}
+                    </option>
+                  </select>
                 </div>
               </ng-container>
 

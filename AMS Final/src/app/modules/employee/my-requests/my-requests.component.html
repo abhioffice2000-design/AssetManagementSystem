@@ -376,7 +376,7 @@
             </div>
           </div>
 
-          <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; gap: 12px;">
+          <div class="mt-24 pt-16" style="border-top: 1px solid var(--border-color); display: flex; gap: 12px;" *ngIf="!loading">
             <button class="btn btn-danger" style="flex: 1; padding: 12px; font-weight: 600;"
               (click)="withdrawRequest(selectedRequest!)">
               <span class="material-icons-outlined">delete_forever</span>
@@ -384,8 +384,8 @@
             </button>
             <button class="btn btn-primary" style="flex: 1; padding: 12px; font-weight: 600;" (click)="submitResubmit()"
               [disabled]="loading">
-              <span class="material-icons-outlined">{{ loading ? 'sync' : 'send' }}</span>
-              {{ loading ? 'Resubmitting...' : 'Resubmit Request' }}
+              <span class="material-icons-outlined">send</span>
+              Resubmit Request
             </button>
           </div>
         </form>
