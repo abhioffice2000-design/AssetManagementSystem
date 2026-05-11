@@ -160,7 +160,19 @@
             <label>Serial Number</label>
             <span class="mono-text">{{ detailRequest.assignedSerial }}</span>
           </div>
-          <div class="detail-item full-col">
+          <div class="detail-item full-col" *ngIf="detailRequest.status === 'Pending'">
+            <label class="required">Assign to Allocation Team Member *</label>
+            <select class="form-control" [(ngModel)]="selectedAllocationMemberId" style="width: 100%; border: 1.5px solid var(--border-color); border-radius: 10px; padding: 10px 14px; margin-top: 8px; font-family: inherit; cursor: pointer; background: #fff;">
+              <option value="" disabled>Select a team member...</option>
+              <option *ngFor="let member of allocationTeamMemberList" [value]="member.id">
+                {{ member.name }}
+              </option>
+            </select>
+            <small class="text-muted" style="font-size: 0.75rem; margin-top: 4px; display: block;">
+              Select who will perform the actual warranty extension update
+            </small>
+          </div>
+          <div class="detail-item full-col" *ngIf="detailRequest.status !== 'Pending'">
             <label>Allocation Team Member</label>
             <select class="form-control" [(ngModel)]="selectedAllocationMemberId" style="width: 100%; border: 1.5px solid var(--border-color); border-radius: 10px; padding: 10px; margin-top: 8px; font-family: inherit;">
               <option value="">-- Select Allocation Team Member --</option>

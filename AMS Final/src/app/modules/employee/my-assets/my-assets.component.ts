@@ -9,6 +9,7 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { HeroService } from '../../../core/services/hero.service';
 import { Router } from '@angular/router';
 import { AdminDataService } from '../../../core/services/admin-data.service';
+import { MailService } from '../../../core/services/mail.service';
 
 interface AssetTypeOption {
   type_id: string;
@@ -50,7 +51,8 @@ export class MyAssetsComponent implements OnInit {
     private fb: FormBuilder,
     private hs: HeroService,
     private router: Router,
-    private adminService: AdminDataService
+    private adminService: AdminDataService,
+    private mailService: MailService
   ) { }
 
   async ngOnInit(): Promise<void> {
@@ -455,6 +457,14 @@ export class MyAssetsComponent implements OnInit {
             Inputrequestid: `${newrequestid}`
           };
           this.requestService.callBPMForwarrantyexpiry(request3 as any);
+
+          // Notify Employee and Manager
+          this.mailService.sendWarrantyRequestSubmissionNotification({
+            employeeName: user.name,
+            assetName: this.selectedAsset?.name || 'Asset',
+            requestId: newrequestid,
+            justification: formVal.justification
+          });
 
           const newReq = this.buildMockPayload(user, type, formVal.justification);
           this.requestService.addRequest(newReq as any);

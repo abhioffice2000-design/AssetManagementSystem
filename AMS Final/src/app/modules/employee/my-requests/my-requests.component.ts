@@ -149,10 +149,15 @@ export class MyRequestsComponent implements OnInit {
   get filteredRequests(): AssetRequest[] {
     const filtered = this.requests.filter(req => {
       // 1. Tab filtering
-      const isResolved = req.status === RequestStatus.APPROVED ||
-        req.status === RequestStatus.COMPLETED ||
+      let isResolved = req.status === RequestStatus.COMPLETED ||
         req.status === RequestStatus.REJECTED ||
         req.status === RequestStatus.CANCELLED;
+      
+      // For non-warranty requests, 'Approved' can be considered resolved (terminal for employee)
+      // but for warranty, it still needs Allocation Team confirmation.
+      if (req.requestType !== RequestType.EXTEND_WARRANTY && req.status === RequestStatus.APPROVED) {
+        isResolved = true;
+      }
 
       const tabMatch = this.activeTab === 'resolved' ? isResolved : !isResolved;
       if (!tabMatch) return false;
@@ -510,7 +515,7 @@ export class MyRequestsComponent implements OnInit {
         }
 
         // Don't mark rejected steps as "current" — they are terminal
-        if (!currentStepFound && !step.isCompleted && step.status !== 'Rejected') {
+        if (!currentStepFound && !step.isCompleted && step.status?.toLowerCase() !== 'rejected') {
           step.isCurrent = true;
           currentStepFound = true;
         }
@@ -522,7 +527,7 @@ export class MyRequestsComponent implements OnInit {
       );
 
       // 6. If any step was rejected, remove all subsequent steps (they were never reached)
-      const rejectedIndex = this.trackingSteps.findIndex(s => s.status === 'Rejected');
+      const rejectedIndex = this.trackingSteps.findIndex(s => s.status?.toLowerCase() === 'rejected');
       if (rejectedIndex !== -1) {
         this.trackingSteps = this.trackingSteps.slice(0, rejectedIndex + 1);
       }
@@ -541,7 +546,7 @@ export class MyRequestsComponent implements OnInit {
         this.rejectionInfo = null;
       }
 
-      this.overallProgress = this.calculateOverallProgress(request.status);
+      this.overallProgress = this.calculateOverallProgress(request);
     } catch (error) {
       console.error('Error tracking request:', error);
     } finally {
@@ -594,19 +599,24 @@ export class MyRequestsComponent implements OnInit {
     return details;
   }
 
-  calculateOverallProgress(requestStatus: string): number {
-    const status = (requestStatus || '').toLowerCase();
-    if (status === 'completed' || status === 'approved') return 100;
+  calculateOverallProgress(request: AssetRequest): number {
+    const status = (request.status || '').toLowerCase();
+    
+    // For Extend Warranty, 'Approved' means Manager approved, but still pending Allocation Team.
+    // Only 'Completed' or 'Rejected' are terminal.
+    if (request.requestType === RequestType.EXTEND_WARRANTY) {
+      if (status === 'completed' || status === 'rejected') return 100;
+      if (status === 'approved') return 95;
+    } else {
+      if (status === 'completed' || status === 'approved' || status === 'rejected') return 100;
+    }
 
-    const completedCount = this.trackingSteps.filter(s => s.isCompleted && s.status !== 'Rejected').length;
+    const completedCount = this.trackingSteps.filter(s => s.isCompleted || s.status?.toLowerCase() === 'rejected').length;
     const totalSteps = this.trackingSteps.length;
 
     if (totalSteps === 0) return 10;
 
-    // For rejected requests, show how far it got before rejection
-    if (status === 'rejected') {
-      return Math.round((completedCount / totalSteps) * 100);
-    }
+    if (completedCount === totalSteps && totalSteps > 0) return 100;
 
     if (completedCount === 0) return 10;
     
