@@ -152,7 +152,7 @@ export class MyRequestsComponent implements OnInit {
       let isResolved = req.status === RequestStatus.COMPLETED ||
         req.status === RequestStatus.REJECTED ||
         req.status === RequestStatus.CANCELLED;
-      
+
       // For non-warranty requests, 'Approved' can be considered resolved (terminal for employee)
       // but for warranty, it still needs Allocation Team confirmation.
       if (req.requestType !== RequestType.EXTEND_WARRANTY && req.status === RequestStatus.APPROVED) {
@@ -179,12 +179,12 @@ export class MyRequestsComponent implements OnInit {
       try {
         const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
         const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
-        
+
         // If dates are different, sort by date descending
         if (dateA !== dateB && !isNaN(dateA) && !isNaN(dateB)) {
           return dateB - dateA;
         }
-        
+
         // Fallback to request number comparison (numeric descending)
         // This ensures ex_141 appears before ex_136
         return (b.requestNumber || '').localeCompare(a.requestNumber || '', undefined, { numeric: true, sensitivity: 'base' });
@@ -601,7 +601,7 @@ export class MyRequestsComponent implements OnInit {
 
   calculateOverallProgress(request: AssetRequest): number {
     const status = (request.status || '').toLowerCase();
-    
+
     // For Extend Warranty, 'Approved' means Manager approved, but still pending Allocation Team.
     // Only 'Completed' or 'Rejected' are terminal.
     if (request.requestType === RequestType.EXTEND_WARRANTY) {
@@ -619,10 +619,10 @@ export class MyRequestsComponent implements OnInit {
     if (completedCount === totalSteps && totalSteps > 0) return 100;
 
     if (completedCount === 0) return 10;
-    
+
     // Dynamic progress calculation based on steps
     const progress = Math.round((completedCount / totalSteps) * 100);
-    
+
     // Ensure we don't show 100% unless it's actually terminal
     return Math.min(progress, 95);
   }

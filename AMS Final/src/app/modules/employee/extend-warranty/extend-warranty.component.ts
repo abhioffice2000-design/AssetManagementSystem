@@ -148,9 +148,10 @@ export class ExtendWarrantyComponent implements OnInit {
     var assetReq = {
       Asset_type_id: assetTypeId
     }
-    var assetresp = await this.requestService.getAssetManagerByAssetTypeId(assetReq)
+    var assetresp: any = await this.requestService.getAssetManagerByAssetTypeId(assetReq)
     console.log(assetresp);
-    var rs = assetresp.old.m_users.user_id
+    console.log("assetresp", assetresp[0].old.m_users.user_id)
+    var rs = assetresp[0].old.m_users.user_id
     const soapData = {
       tuple: {
         new: {
