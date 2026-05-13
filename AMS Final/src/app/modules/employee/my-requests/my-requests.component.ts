@@ -216,6 +216,30 @@ export class MyRequestsComponent implements OnInit {
     return this.filteredRequests.length;
   }
 
+  get pendingCount(): number {
+    return this.requests.filter(req => {
+      let isResolved = req.status === RequestStatus.COMPLETED ||
+        req.status === RequestStatus.REJECTED ||
+        req.status === RequestStatus.CANCELLED;
+      if (req.requestType !== RequestType.EXTEND_WARRANTY && req.status === RequestStatus.APPROVED) {
+        isResolved = true;
+      }
+      return !isResolved;
+    }).length;
+  }
+
+  get resolvedCount(): number {
+    return this.requests.filter(req => {
+      let isResolved = req.status === RequestStatus.COMPLETED ||
+        req.status === RequestStatus.REJECTED ||
+        req.status === RequestStatus.CANCELLED;
+      if (req.requestType !== RequestType.EXTEND_WARRANTY && req.status === RequestStatus.APPROVED) {
+        isResolved = true;
+      }
+      return isResolved;
+    }).length;
+  }
+
   /**
    * Returns a windowed set of page numbers for professional pagination.
    * Shows at most 5 page buttons, with ellipsis ('...') for gaps and always
