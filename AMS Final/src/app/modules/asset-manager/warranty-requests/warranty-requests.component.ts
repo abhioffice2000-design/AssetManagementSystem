@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+﻿import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetRequest, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
@@ -28,6 +28,7 @@ export class WarrantyRequestsComponent implements OnInit {
 
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
+  assignedAllocationMemberName = ''; // Name of the AT member who approved (for resolved tab)
 
   showDetailModal = false;
   detailRequest: AssetRequest | null = null;
@@ -62,33 +63,93 @@ export class WarrantyRequestsComponent implements OnInit {
     try {
       const currentUser = this.authService.getCurrentUser();
       const approverId = currentUser?.id || 'usr_004';
-      console.log("user id", currentUser?.id)
 
-      const [pendingReqs, allReqs, memberResult] = await Promise.all([
+      const [pendingReqs, allReqs, memberResult, allUsers, assignments] = await Promise.all([
         this.requestService.fetchPendingWarrantyApprovalsFromService(approverId),
         this.requestService.fetchAllWarrantyRequests(),
-        this.requestService.getAllocationTeamMemberAccordingtoManager(approverId)
+        this.requestService.getAllocationTeamMemberAccordingtoManager(approverId),
+        this.adminService.GetAllUserRoleProjectDetails(),
+        this.adminService.getAssetTypeAssignmentDetails()
       ]);
 
-      this.warrantyRequests = pendingReqs || [];
+      // Resolve the manager's assigned asset types
+      const myAssignments = assignments.filter((a: any) => a.assetManagerId === approverId);
+      const myAssetTypes = myAssignments.map((a: any) => a.name.toLowerCase());
       
-      // Enrich resolved requests to show 'Approved' even if main table is 'Pending'
-      this.allWarrantyRequests = await Promise.all((allReqs || []).map(async (req) => {
-        // If it's already Approved/Rejected/Completed, keep it
-        if (req.status !== RequestStatus.PENDING) return req;
-        
-        // If it's Pending in main table, check if THIS manager already approved it
+      this.warrantyRequests = pendingReqs || [];
+
+      // Filter and Enrich ALL requests (Resolved tab)
+      const filteredAllReqs = (allReqs || []).filter(req => {
+        const type = (req.assetType || '').toLowerCase();
+        return myAssetTypes.length === 0 || myAssetTypes.includes(type);
+      });
+
+      this.allWarrantyRequests = await Promise.all(filteredAllReqs.map(async (req) => {
         try {
+          // ── ENRICHMENT: Resolve Requester Name/Email if missing (common in Resolved tab) ──
+          if (!req.requesterName || req.requesterName === 'Unknown' || !req.requesterEmail) {
+            const requester = allUsers.find((u: any) => u.id === req.requesterId || (u as any).user_id === req.requesterId);
+            if (requester) {
+              req.requesterName = requester.name || req.requesterName;
+              req.requesterEmail = requester.email || req.requesterEmail;
+            }
+          }
+
           const progress = await this.requestService.getWarrantyProgress(req.id);
-          const myAction = progress.find(p => p.approverId === approverId && (p.status?.toLowerCase() === 'approved' || p.status?.toLowerCase() === 'rejected'));
-          if (myAction) {
+          
+          // 1. Check manager action
+          const myAction = progress.find((p: any) => p.approverId === approverId && 
+            (p.status?.toLowerCase() === 'approved' || p.status?.toLowerCase() === 'rejected'));
+          if (myAction && req.status === RequestStatus.PENDING) {
             req.status = myAction.status === 'Approved' ? RequestStatus.APPROVED : RequestStatus.REJECTED;
+          }
+
+          // 2. Resolve AT Member
+          const atEntry = progress.find((p: any) => (p.stage || '').toLowerCase().includes('allocation'));
+          if (atEntry) {
+            req.assignedAllocationTeamId = atEntry.approverId;
+            (req as any).assignedAllocationTeamName = atEntry.approverName;
+          }
+
+          // 3. Asset Type fallback for AT Member
+          if (!(req as any).assignedAllocationTeamName && req.assetType) {
+            const assignment = await this.adminService.getAssignmentByAssetType(req.assetType);
+            if (assignment && assignment.teamMembers) {
+              const memberId = assignment.teamMembers.split(',')[0].trim();
+              const matched = allUsers.find((u: any) => u.id === memberId);
+              if (matched) {
+                req.assignedAllocationTeamId = matched.id;
+                (req as any).assignedAllocationTeamName = matched.name;
+              }
+            }
           }
         } catch (e) { /* ignore */ }
         return req;
       }));
 
-      // 🚀 BPM Discovery Fallback: If taskid is missing from DB, find it in active tasks
+      // Enrich pending requests too
+      await Promise.all(this.warrantyRequests.map(async (req) => {
+        // Also ensure requester info is present here
+        if (!req.requesterName || req.requesterName === 'Unknown') {
+          const requester = allUsers.find((u: any) => u.id === req.requesterId || (u as any).user_id === req.requesterId);
+          if (requester) {
+            req.requesterName = requester.name || req.requesterName;
+            req.requesterEmail = requester.email || req.requesterEmail;
+          }
+        }
+        
+        if ((req as any).assignedAllocationTeamName) return;
+        try {
+          const progress = await this.requestService.getWarrantyProgress(req.id);
+          const atEntry = progress.find((p: any) => (p.stage || '').toLowerCase().includes('allocation'));
+          if (atEntry) {
+            req.assignedAllocationTeamId = atEntry.approverId;
+            (req as any).assignedAllocationTeamName = atEntry.approverName;
+          }
+        } catch (e) { /* ignore */ }
+      }));
+
+      // BPM Task Discovery
       try {
         const activeTasks = await this.requestService.fetchActiveTasks();
         if (activeTasks && activeTasks.length > 0) {
@@ -101,30 +162,23 @@ export class WarrantyRequestsComponent implements OnInit {
                 return reqIdLower && (dataStr.includes(reqIdLower) || subjectStr.includes(reqIdLower));
               });
               if (matchingTask) {
-                console.log(`[WarrantyRequests] Discovered missing taskId ${matchingTask.taskId} for request ${req.id}`);
                 req.taskid = matchingTask.taskId;
               }
             }
           });
         }
-      } catch (e) {
-        console.warn('[WarrantyRequests] Task discovery failed:', e);
-      }
+      } catch (e) { console.warn('[WarrantyRequests] Task discovery failed:', e); }
 
       const teamTuples = memberResult ? (Array.isArray(memberResult) ? memberResult : [memberResult]) : [];
-      
       this.allocationTeamMemberList = teamTuples.map((t: any) => {
         const user = t?.old?.m_users || t?.m_users || t;
-        return {
-          id: user.user_id,
-          name: user.user_name || user.name
-        };
+        return { id: user.user_id, name: user.name };
       });
 
       this.filterRequests();
     } catch (err) {
       console.error('Failed to load warranty requests:', err);
-      this.loadError = 'Failed to load requests. Please try again.';
+      this.loadError = 'Failed to load requests.';
     } finally {
       this.isLoading = false;
     }
@@ -167,49 +221,59 @@ export class WarrantyRequestsComponent implements OnInit {
     this.detailRequest = req;
     this.showDetailModal = true;
     this.actionComments = '';
-    this.selectedAllocationMemberId = '';
-    
-    // Dynamically load allocation members based on THIS request's asset type
+    this.selectedAllocationMemberId = req.assignedAllocationTeamId || '';
+    this.assignedAllocationMemberName = (req as any).assignedAllocationTeamName || '';
+
+    // ── NEW SOURCE: Resolve AT member from the GetTeamAllocationMemberByAssetManager service ──
     try {
+      const currentUser = this.authService.getCurrentUser();
+      const managerId = currentUser?.id || 'usr_004';
+      const members = await this.requestService.getTeamAllocationMemberByAssetManager(managerId);
+      
+      if (members && members.length > 0) {
+        // Check if any member specifically matches this request's asset type (via temp1 or similar if available)
+        // Otherwise, take the first one as the primary contact
+        const member = members[0];
+        this.assignedAllocationMemberName = member.name || '';
+        this.selectedAllocationMemberId = member.user_id || member.id || '';
+        console.log(`[WarrantyRequests] Resolved AT from Service Response: "${this.assignedAllocationMemberName}"`);
+      }
+    } catch (e) {
+      console.warn('[WarrantyRequests] Failed to resolve AT from specific service:', e);
+    }
+
+    if (this.assignedAllocationMemberName) {
+       console.log(`[WarrantyRequests] Modal opened for ${req.id} | AT resolved: ${this.assignedAllocationMemberName}`);
+       return; 
+    }
+
+    // ── FALLBACK 1: Resolve by Asset Type Assignment ──
+    let allUsers: any[] = [];
+    try {
+      allUsers = await this.adminService.GetAllUserRoleProjectDetails();
       const assetType = req.assetType || 'Hardware';
       const assignment = await this.adminService.getAssignmentByAssetType(assetType);
       
       if (assignment && assignment.teamMembers) {
-        const memberIds = assignment.teamMembers.split(',').map(id => id.trim());
-        const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
-        
-        this.allocationTeamMemberList = allUsers
-          .filter((u: any) => memberIds.includes(u.id))
-          .map((u: any) => ({
-            id: u.id,
-            name: u.name
-          }));
-          
-        console.log(`[WarrantyRequests] Loaded ${this.allocationTeamMemberList.length} allocation members for ${assetType}`);
-      } else {
-        // Fallback to manager-level members if type-specific lookup fails
-        const currentUser = this.authService.getCurrentUser();
-        const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(currentUser?.id || 'usr_004');
-        const teamTuples = memberResult ? (Array.isArray(memberResult) ? memberResult : [memberResult]) : [];
-        this.allocationTeamMemberList = teamTuples.map((t: any) => {
-          const user = t?.old?.m_users || t?.m_users || t;
-          return { id: user.user_id, name: user.user_name || user.name };
-        });
+        const memberIds = assignment.teamMembers.split(',').map((id: string) => id.trim());
+        const matched = allUsers.find(u => memberIds.includes(u.id));
+        if (matched) {
+          this.assignedAllocationMemberName = matched.name;
+          this.selectedAllocationMemberId = matched.id;
+        }
       }
+    } catch (e) { /* ignore */ }
 
-      // Final fallback: if list is still empty, load ALL users with 'Asset Allocation Team' role
-      if (!this.allocationTeamMemberList || this.allocationTeamMemberList.length === 0) {
-        console.warn('[WarrantyRequests] No specific allocation members found. Loading all users with Allocation Team role.');
-        const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
-        this.allocationTeamMemberList = allUsers
-          .filter((u: any) => (u.role || '').toLowerCase().includes('allocation'))
-          .map((u: any) => ({
-            id: u.id,
-            name: u.name
-          }));
-      }
-    } catch (err) {
-      console.error('Failed to load dynamic allocation members:', err);
+    // ── FALLBACK 2: Resolve from Progress Tracker ──
+    if (!this.assignedAllocationMemberName) {
+      try {
+        const progress = await this.requestService.getWarrantyProgress(req.id);
+        const atEntry = progress.find((p: any) => (p.stage || '').toLowerCase().includes('allocation'));
+        if (atEntry?.approverId) {
+          this.assignedAllocationMemberName = atEntry.approverName || 'Assigned Member';
+          this.selectedAllocationMemberId = atEntry.approverId;
+        }
+      } catch (e) { /* ignore */ }
     }
   }
 
@@ -217,6 +281,7 @@ export class WarrantyRequestsComponent implements OnInit {
     this.showDetailModal = false;
     this.detailRequest = null;
     this.actionComments = '';
+    this.assignedAllocationMemberName = '';
   }
 
   async handleAction(action: 'approve' | 'reject'): Promise<void> {

@@ -114,6 +114,24 @@ export class AssetRequestsComponent implements OnInit {
       const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
       this.pendingRequests = pendingReqs.filter((r: AssetRequest) => !confirmationIds.has(r.id));
 
+      // ── Fix: Reconcile allRequests statuses against the approvals table ──
+      // The main request table (t_asset_requests) keeps status="Pending" until the full
+      // workflow completes. But the approvals table is authoritative for what the manager
+      // has already acted on. If a request is Pending in allRequests but NOT in pendingRequests
+      // and NOT in confirmationRequests, the manager has already approved it → show Approved.
+      const pendingIds = new Set(this.pendingRequests.map((r: AssetRequest) => r.id));
+      this.allRequests = this.allRequests.map((req: AssetRequest) => {
+        if (
+          req.status === RequestStatus.PENDING &&
+          !pendingIds.has(req.id) &&
+          !confirmationIds.has(req.id)
+        ) {
+          // Manager has already acted — show as Approved in the All Requests view
+          return { ...req, status: RequestStatus.APPROVED };
+        }
+        return req;
+      });
+
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
       const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
       this.allocationTeamMemberList = rawMembers.map((m: any) => ({
@@ -312,7 +330,10 @@ export class AssetRequestsComponent implements OnInit {
   applyFilters(): void {
     let source: AssetRequest[] = [];
     if (this.activeTab === 'pending') {
-      source = this.mergeRequests(this.allRequests, this.pendingRequests);
+      // Use ONLY pendingRequests (from SOAP approval service) — not merged with allRequests.
+      // allRequests comes from the main DB table whose status may lag behind the approval table,
+      // causing already-approved requests to still appear as Pending here.
+      source = [...this.pendingRequests];
     } else if (this.activeTab === 'return') {
       source = this.returnRequests;
     } else if (this.activeTab === 'confirmation') {
@@ -862,7 +883,7 @@ export class AssetRequestsComponent implements OnInit {
 
         // Send Mail
         const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
-        this.mailService.sendAssetManagerStatusUpdate({
+        await this.mailService.sendAssetManagerStatusUpdate({
           requestId: this.selectedRequest.id,
           employeeName: this.selectedRequest.requesterName,
           status: 'Approved',

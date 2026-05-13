@@ -112,21 +112,21 @@
           <span class="material-icons-outlined">pie_chart</span>
           <h3>Assets by Type</h3>
         </div>
-        <span class="section-subtitle">Distribution of {{ grandTotal }} assets across types</span>
+        <span class="section-subtitle">Sub-category distribution of {{ managerAssetTypeName || 'your' }} assets ({{ grandTotal }} total)</span>
       </div>
       <div class="section-body">
         <!-- Empty state when no types -->
-        <div class="empty-state" *ngIf="typeBreakdown.length === 0">
+        <div class="empty-state" *ngIf="chartBreakdown.length === 0">
           <span class="material-icons-outlined">inventory_2</span>
           <p>No asset data available</p>
         </div>
 
-        <div class="pie-chart-wrapper" *ngIf="typeBreakdown.length > 0">
+        <div class="pie-chart-wrapper" *ngIf="chartBreakdown.length > 0">
           <div class="pie-chart-container"
             (mouseleave)="onTypeLeave()">
             <!-- SVG Donut Chart with interactive slices -->
             <svg class="pie-svg" viewBox="0 0 240 240">
-              <path *ngFor="let item of typeBreakdown; let i = index"
+              <path *ngFor="let item of chartBreakdown; let i = index"
                 [attr.d]="getSlicePath(i)"
                 [attr.fill]="item.color"
                 [class.slice-hovered]="hoveredTypeIndex === i"
@@ -138,31 +138,31 @@
             <div class="donut-hole">
               <ng-container *ngIf="hoveredTypeIndex === -1">
                 <span class="donut-total">{{ grandTotal }}</span>
-                <span class="donut-label">Total</span>
+                <span class="donut-label">{{ managerAssetTypeName.includes('&') ? 'My Assets' : (managerAssetTypeName || 'Total') }}</span>
               </ng-container>
               <ng-container *ngIf="hoveredTypeIndex !== -1">
-                <span class="donut-total donut-total-sm">{{ typeBreakdown[hoveredTypeIndex].count }}</span>
-                <span class="donut-label">{{ typeBreakdown[hoveredTypeIndex].type }}</span>
+                <span class="donut-total donut-total-sm">{{ chartBreakdown[hoveredTypeIndex].count }}</span>
+                <span class="donut-label">{{ chartBreakdown[hoveredTypeIndex].type }}</span>
               </ng-container>
             </div>
 
             <!-- Tooltip on hover -->
-            <div class="pie-tooltip" *ngIf="hoveredTypeIndex !== -1"
-              [style.borderColor]="typeBreakdown[hoveredTypeIndex].color">
+              <div class="pie-tooltip" *ngIf="hoveredTypeIndex !== -1"
+              [style.borderColor]="chartBreakdown[hoveredTypeIndex].color">
               <div class="tooltip-header">
                 <div class="type-icon-wrap"
-                  [style.background]="typeBreakdown[hoveredTypeIndex].bgColor"
-                  [style.color]="typeBreakdown[hoveredTypeIndex].color">
-                  <span class="material-icons-outlined">{{ typeBreakdown[hoveredTypeIndex].icon }}</span>
+                  [style.background]="chartBreakdown[hoveredTypeIndex].bgColor"
+                  [style.color]="chartBreakdown[hoveredTypeIndex].color">
+                  <span class="material-icons-outlined">{{ chartBreakdown[hoveredTypeIndex].icon }}</span>
                 </div>
                 <div class="tooltip-title">
-                  <span class="tooltip-name">{{ typeBreakdown[hoveredTypeIndex].type }}</span>
-                  <span class="tooltip-stats">{{ typeBreakdown[hoveredTypeIndex].count }} assets · {{ getTypePercentage(typeBreakdown[hoveredTypeIndex].count) }}%</span>
+                  <span class="tooltip-name">{{ chartBreakdown[hoveredTypeIndex].type }}</span>
+                  <span class="tooltip-stats">{{ chartBreakdown[hoveredTypeIndex].count }} assets · {{ getTypePercentage(chartBreakdown[hoveredTypeIndex].count) }}%</span>
                 </div>
               </div>
-              <div class="tooltip-subcats" *ngIf="typeBreakdown[hoveredTypeIndex].subCategories.length > 0">
-                <div class="tooltip-subcat" *ngFor="let sub of typeBreakdown[hoveredTypeIndex].subCategories">
-                  <span class="tooltip-subcat-dot" [style.background]="typeBreakdown[hoveredTypeIndex].color"></span>
+              <div class="tooltip-subcats" *ngIf="chartBreakdown[hoveredTypeIndex].subCategories.length > 0">
+                <div class="tooltip-subcat" *ngFor="let sub of chartBreakdown[hoveredTypeIndex].subCategories">
+                  <span class="tooltip-subcat-dot" [style.background]="chartBreakdown[hoveredTypeIndex].color"></span>
                   <span class="tooltip-subcat-name">{{ sub.name }}</span>
                   <span class="tooltip-subcat-count">{{ sub.count }}</span>
                 </div>
@@ -172,7 +172,7 @@
           
           <div class="pie-legend-list">
             <div class="pie-legend-item"
-              *ngFor="let item of typeBreakdown; let i = index"
+              *ngFor="let item of chartBreakdown; let i = index"
               [class.legend-highlighted]="hoveredTypeIndex === i"
               [class.legend-dimmed]="hoveredTypeIndex !== -1 && hoveredTypeIndex !== i"
               (mouseenter)="onTypeHover(i)"

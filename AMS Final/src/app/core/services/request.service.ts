@@ -978,6 +978,32 @@ export class RequestService {
   }
 
   /**
+   * Fetches the allocation team member(s) assigned to a specific asset manager.
+   * Based on GetTeamAllocationMemberByAssetManager SOAP service.
+   */
+  async getTeamAllocationMemberByAssetManager(approverId: string): Promise<any[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetTeamAllocationMemberByAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <Approver_id>${approverId}</Approver_id>
+    </GetTeamAllocationMemberByAssetManager>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const data = this.hs.xmltojson(response, 'tuple');
+      const results = data ? (Array.isArray(data) ? data : [data]) : [];
+      return results.map((t: any) => t.old?.m_users || t.m_users || t);
+    } catch (err) {
+      console.error('Error fetching allocation members by manager:', err);
+      return [];
+    }
+  }
+
+
+  /**
    * Fetches specific confirmation details (task_id, asset_id) dynamically for the employee confirmation step.
    * This retrieves the latest approval record where the task was assigned to the employee.
    */

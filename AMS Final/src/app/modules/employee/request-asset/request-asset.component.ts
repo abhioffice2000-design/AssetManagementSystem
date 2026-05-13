@@ -270,7 +270,7 @@ export class RequestAssetComponent implements OnInit {
       await this.requestService.callBPMForRequest(request3 as any);
 
       // 5. Finalize
-      this.mailService.sendAssetRequestConfirmation({
+      await this.mailService.sendAssetRequestConfirmation({
         employeeName: user.name,
         employeeEmail: user.email,
         assetType: typeName,
