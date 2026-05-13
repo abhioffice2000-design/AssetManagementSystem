@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+﻿import { Component, OnInit } from '@angular/core';
 import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -93,7 +93,7 @@ export class ManagerDashboardComponent implements OnInit {
       const currentUser = this.authService.getCurrentUser();
       const managerId = currentUser?.id || 'usr_004';
 
-      // Fetch everything we need in parallel for efficiency
+      // 1. Fetch all data in parallel
       const [
         typeCounts, 
         allAssets, 
@@ -103,7 +103,8 @@ export class ManagerDashboardComponent implements OnInit {
         confirmReqs,
         returnReqs,
         warrantyReqs,
-        maintenanceReqs
+        maintenanceReqs,
+        allAssignments
       ] = await Promise.all([
         this.assetService.fetchAssetTypeWiseCount(),
         this.assetService.fetchAssetsFromService(),
@@ -113,42 +114,55 @@ export class ManagerDashboardComponent implements OnInit {
         this.requestService.fetchConfirmationRequestsFromService(managerId),
         this.requestService.fetchPendingReturnApprovalsFromService(managerId),
         this.requestService.fetchPendingWarrantyApprovalsFromService(managerId),
-        this.requestService.fetchPendingServiceApprovals(managerId)
+        this.requestService.fetchPendingServiceApprovals(managerId),
+        this.adminDataService.getAssetTypeAssignmentDetails()
       ]);
 
+      // 2. Resolve manager's assigned types
+      const myAssignments = allAssignments.filter(a =>
+        a.assetManagerId && a.assetManagerId.toLowerCase().trim() === managerId.toLowerCase().trim()
+      );
+      const managerTypeNames = myAssignments.map(a => a.name.toLowerCase().trim());
+      console.log(`[Dashboard] Manager ${managerId} assigned to types:`, managerTypeNames);
 
-      // 1. Calculate Top-Level Stat Cards
-      this.totalInventory = allAssets.length;
-      this.allocatedAssets = allocatedAssets.length;
-      this.allocationTeamAssets = allocationTeamAssets.length;
-      
-      // Calculate Available from the full asset list
-      this.availableAssets = allAssets.filter(
-        a => a.status && a.status.toLowerCase() === 'available'
-      ).length;
+      const isMyType = (item: any) => {
+        const type = (item.type || item.assetType || '').toString().toLowerCase().trim();
+        return managerTypeNames.length === 0 || managerTypeNames.includes(type);
+      };
 
-      // Combine all pending categories
+      // 3. Filter ALL data based on assignments
+      const filteredAllAssets = allAssets.filter(isMyType);
+      const filteredAllocated = allocatedAssets.filter(isMyType);
+      const filteredATAssets = allocationTeamAssets.filter(isMyType);
+      const filteredPending = pendingReqs.filter(isMyType);
+      const filteredConfirm = confirmReqs.filter(isMyType);
+      const filteredReturn = returnReqs.filter(isMyType);
+      const filteredWarranty = warrantyReqs.filter(isMyType);
+      const filteredMaintenance = maintenanceReqs.filter(isMyType);
+
+      // 4. Calculate Top-Level Stat Cards (using filtered data)
+      this.totalInventory = filteredAllAssets.length;
+      this.allocatedAssets = filteredAllocated.length;
+      this.allocationTeamAssets = filteredATAssets.length;
+      this.availableAssets = filteredAllAssets.filter(a => a.status?.toLowerCase() === 'available').length;
+
       const allPending = [
-        ...pendingReqs.map(r => ({ ...r, displayType: 'New Asset' })),
-        ...confirmReqs.map(r => ({ ...r, displayType: 'Confirmation' })),
-        ...returnReqs.map(r => ({ ...r, displayType: 'Return' })),
-        ...warrantyReqs.map(r => ({ ...r, displayType: 'Warranty' })),
-        ...maintenanceReqs.map(r => ({ ...r, displayType: 'Maintenance' }))
+        ...filteredPending.map(r => ({ ...r, displayType: 'New Asset' })),
+        ...filteredConfirm.map(r => ({ ...r, displayType: 'Confirmation' })),
+        ...filteredReturn.map(r => ({ ...r, displayType: 'Return' })),
+        ...filteredWarranty.map(r => ({ ...r, displayType: 'Warranty' })),
+        ...filteredMaintenance.map(r => ({ ...r, displayType: 'Maintenance' }))
       ];
 
       this.pendingRequestsCount = allPending.length;
-      
-      // Assign individual counts
-      this.newRequestsPendingCount = pendingReqs.length + confirmReqs.length; // New Asset + Confirmation are both "New" requests
-      this.returnRequestsPendingCount = returnReqs.length;
-      this.extendRequestsPendingCount = warrantyReqs.length;
-      this.maintenanceRequestsPendingCount = maintenanceReqs.length;
+      this.newRequestsPendingCount = filteredPending.length + filteredConfirm.length;
+      this.returnRequestsPendingCount = filteredReturn.length;
+      this.extendRequestsPendingCount = filteredWarranty.length;
+      this.maintenanceRequestsPendingCount = filteredMaintenance.length;
 
-      // 2. Build the Breakdown Data
-      // Group assets by type and then by subcategory for the breakdown section
+      // 5. Build Breakdown Data
       const breakdownMap: Record<string, { count: number, subCats: Record<string, number> }> = {};
-      
-      allAssets.forEach(asset => {
+      filteredAllAssets.forEach(asset => {
         const type = (asset.type || 'Other').toString();
         const typeKey = type.toLowerCase().trim();
         const subCat = asset.subCategory || 'Uncategorized';
@@ -156,69 +170,40 @@ export class ManagerDashboardComponent implements OnInit {
         if (!breakdownMap[typeKey]) {
           breakdownMap[typeKey] = { count: 0, subCats: {} };
         }
-        
         breakdownMap[typeKey].count++;
         breakdownMap[typeKey].subCats[subCat] = (breakdownMap[typeKey].subCats[subCat] || 0) + 1;
       });
 
-      // 3. Map to TypeBreakdown array using typeCounts from DB as the master list
       let fallbackIndex = 0;
-      this.typeBreakdown = typeCounts.map(tc => {
-        const typeName = tc.type_name;
-        const key = typeName.toLowerCase().trim();
-        const style = this.typeStyleMap[key] || this.fallbackColors[fallbackIndex++ % this.fallbackColors.length];
-        
-        // Use data from our calculated breakdownMap if available
-        const calculatedData = breakdownMap[key];
-        
-        // Convert subCats record to an array of {name, count}
-        const subCategoriesArray = calculatedData 
-          ? Object.keys(calculatedData.subCats).map(name => ({
-              name: name,
-              count: calculatedData.subCats[name]
-            })).sort((a, b) => b.count - a.count)
-          : [];
+      this.typeBreakdown = typeCounts
+        .filter(tc => managerTypeNames.length === 0 || managerTypeNames.includes(tc.type_name.toLowerCase().trim()))
+        .map(tc => {
+          const typeName = tc.type_name;
+          const key = typeName.toLowerCase().trim();
+          const style = this.typeStyleMap[key] || this.fallbackColors[fallbackIndex++ % this.fallbackColors.length];
+          const calculatedData = breakdownMap[key];
+          
+          const subCategoriesArray = calculatedData 
+            ? Object.keys(calculatedData.subCats).map(name => ({
+                name: name,
+                count: calculatedData.subCats[name]
+              })).sort((a, b) => b.count - a.count)
+            : [];
 
-        return {
-          type: typeName,
-          icon: style.icon,
-          color: style.color,
-          bgColor: style.bgColor,
-          count: tc.asset_count, // Use DB aggregate for header total
-          subCategories: subCategoriesArray
-        };
-      });
+          return {
+            type: typeName,
+            icon: style.icon,
+            color: style.color,
+            bgColor: style.bgColor,
+            count: tc.asset_count,
+            subCategories: subCategoriesArray
+          };
+        });
 
-      // Sort types by count descending
       this.typeBreakdown.sort((a, b) => b.count - a.count);
-
-      // ── Dynamically resolve ALL asset types managed by this manager from the DB ──
-      let managerTypeNames: string[] = [];
-      try {
-        const allAssignments = await this.adminDataService.getAssetTypeAssignmentDetails();
-        const myAssignments = allAssignments.filter(a =>
-          a.assetManagerId && a.assetManagerId.toLowerCase().trim() === managerId.toLowerCase().trim()
-        );
-        managerTypeNames = myAssignments.map(a => a.name.toLowerCase().trim());
-        console.log(`[Dashboard] Manager ${managerId} is assigned to types:`, managerTypeNames);
-      } catch (e) {
-        // Fallback to single type from auth profile if DB lookup fails
-        const fallbackType = currentUser?.assetTypeName || '';
-        if (fallbackType) managerTypeNames = [fallbackType.toLowerCase().trim()];
-        console.warn('[Dashboard] Could not fetch type assignments from DB, using auth fallback:', managerTypeNames);
-      }
-
-      if (managerTypeNames.length > 0) {
-        // Filter typeBreakdown to ALL types this manager is responsible for
-        this.typeBreakdown = this.typeBreakdown.filter(
-          tb => managerTypeNames.includes(tb.type.toLowerCase().trim())
-        );
-      }
-
-      // Update the display label (comma-joined list for multi-type managers)
       this.managerAssetTypeName = this.typeBreakdown.map(tb => tb.type).join(' & ');
 
-      // ── Build chartBreakdown: subcategories from ALL matched types as individual slices ──
+      // 6. Build chartBreakdown (Donut chart)
       const subColors = [
         { icon: 'devices',      color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)' },
         { icon: 'laptop',       color: '#8b5cf6', bgColor: 'rgba(139, 92, 246, 0.1)' },
@@ -227,13 +212,10 @@ export class ManagerDashboardComponent implements OnInit {
         { icon: 'tablet_mac',   color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.1)' },
         { icon: 'dns',          color: '#6366f1', bgColor: 'rgba(99, 102, 241, 0.1)' },
         { icon: 'category',     color: '#14b8a6', bgColor: 'rgba(20, 184, 166, 0.1)' },
-        { icon: 'inventory_2',  color: '#f97316', bgColor: 'rgba(249, 115, 22, 0.1)' },
-        { icon: 'chair',        color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.1)' },
-        { icon: 'code',         color: '#a855f7', bgColor: 'rgba(168, 85, 247, 0.1)' }
+        { icon: 'inventory_2',  color: '#f97316', bgColor: 'rgba(249, 115, 22, 0.1)' }
       ];
       let subColorIdx = 0;
 
-      // Flatten all subcategories from all matched types into one chart
       const allSubCategorySlices: TypeBreakdown[] = [];
       this.typeBreakdown.forEach(parentType => {
         parentType.subCategories.forEach(sub => {
@@ -248,23 +230,12 @@ export class ManagerDashboardComponent implements OnInit {
           });
         });
       });
+      this.chartBreakdown = allSubCategorySlices.sort((a, b) => b.count - a.count).slice(0, 8);
+      this.grandTotal = this.chartBreakdown.reduce((sum, item) => sum + item.count, 0);
 
-      if (allSubCategorySlices.length > 0) {
-        this.chartBreakdown = allSubCategorySlices.sort((a, b) => b.count - a.count);
-        this.grandTotal = this.chartBreakdown.reduce((sum, s) => sum + s.count, 0);
-      } else if (this.typeBreakdown.length > 0) {
-        // No subcategories — show parent types directly
-        this.chartBreakdown = [...this.typeBreakdown];
-        this.grandTotal = this.typeBreakdown.reduce((sum, t) => sum + t.count, 0);
-      } else {
-        this.chartBreakdown = [];
-        this.grandTotal = this.totalInventory;
-      }
-
-
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to load dashboard data:', err);
-      this.loadError = err?.message || err?.errorThrown || 'Failed to load dashboard data. Please try again.';
+      this.loadError = 'Failed to load dashboard statistics.';
     } finally {
       this.isLoading = false;
     }

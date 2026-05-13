@@ -80,34 +80,48 @@ export class AllocationTicketsComponent implements OnInit {
   ) { }
 
 
-  async ngOnInit(): Promise<void> {      // ✅ made async
+  private typeToManagerMap = new Map<string, string>();
+  private myAssetTypes: string[] = [];
+
+  async ngOnInit(): Promise<void> {
     this.currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
     const userId = this.currentUser?.id ?? null;
-    console.log("User ID is ", userId);
-    const request = { Approver_id: userId };
-
+    
     try {
-      const res = await this.hs.ajax(
-        'GetAssetManagerByTeamAllocationMember',
-        'http://schemas.cordys.com/AMS_Database_Metadata',
-        request
-      );
+      // 1. Fetch ALL Asset Type Assignments to resolve managers and my assigned types
+      const assignmentsSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetNAssetManagerDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
 
-
-      const tuples = this.hs.xmltojson(res, 'tuple');
-      console.log('Raw tuples:', tuples);
-      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
-      const firstTuple = tupleArray[0];
-      const mUsers = firstTuple?.old?.m_roles?.m_users ?? firstTuple?.m_roles?.m_users ?? {};
-
-      this.assetManagerNameForThisUser = this.getVal(mUsers?.name) ?? '';  // ✅ assigned
-      this.assetManagerIDForThisUser = this.getVal(mUsers?.user_id) ?? '';  // ✅ assigned
-      console.log("Asset Manager Name For This User", this.assetManagerNameForThisUser);
-      console.log("Asset Manager ID For This User", this.assetManagerIDForThisUser);
+      const resp = await this.hs.ajax(null, null, {}, assignmentsSoap);
+      let typesData = this.hs.xmltojson(resp, 'm_asset_types');
+      if (typesData) {
+        const typeArray = Array.isArray(typesData) ? typesData : [typesData];
+        
+        typeArray.forEach((t: any) => {
+          const typeName = (t.type_name || t.name || '').toLowerCase().trim();
+          const managerName = t.asset_manager || '—';
+          const teamMembers = (t.team_members || t.at_members || '').toString();
+          
+          if (typeName) {
+            this.typeToManagerMap.set(typeName, managerName);
+            if (teamMembers.includes(userId)) {
+              this.myAssetTypes.push(typeName);
+            }
+          }
+        });
+        
+        console.log('[AllocationTickets] My Assigned Types:', this.myAssetTypes);
+        console.log('[AllocationTickets] Type to Manager Map:', Array.from(this.typeToManagerMap.entries()));
+      }
     } catch (err) {
-      console.error('Failed to fetch asset manager info:', err);
+      console.error('[AllocationTickets] Failed to resolve assignments:', err);
     }
 
+    // 2. Load subcategories for mapping
     try {
       const subCats = await this.assetService.getAllSubcategoriesCordys();
       subCats.forEach(sc => {
@@ -115,67 +129,77 @@ export class AllocationTicketsComponent implements OnInit {
         const name = sc.sub_category_name || sc.SUB_CATEGORY_NAME || sc.name;
         if (id && name) this.subCategoryMap.set(id, name);
       });
-      console.log('Subcategory Map initialized:', this.subCategoryMap.size, 'items');
-    } catch (err) {
-      console.warn('Failed to load subcategories for mapping:', err);
-    }
+    } catch (err) { console.warn('Subcategory load failed:', err); }
 
+    // 3. Load dynamic asset types for filters
     try {
       const typeCounts = await this.assetService.fetchAssetTypeWiseCount();
-      // Extract unique type names from master data, excluding 'Infrastructure' as per user request
       this.assetTypeOptions = typeCounts
         .map(t => t.type_name)
         .filter(name => name && name.toLowerCase() !== 'infrastructure');
-      console.log('Dynamic Asset Type Options loaded:', this.assetTypeOptions);
-    } catch (err) {
-      console.warn('Failed to load dynamic asset types, falling back to defaults:', err);
-    }
+    } catch (err) { console.warn('Asset types load failed:', err); }
 
     this.loadTickets();
   }
 
-
-
   async loadTickets(): Promise<void> {
+
     this.loading = true;
     try {
       const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
       const userId = currentUser?.id;
-      if (!userId) {
-        this.allTickets = [];
-        console.warn('[AllocationTickets] Current user is missing. Cannot load tickets.');
-        return;
-      }
+      if (!userId) return;
 
+      // 1. Fetch using specialized service
       const resRequests = await this.hs.ajax(
         'GetallpendingrequestsForAllocationTeamMemberwithTeamLead',
         'http://schemas.cordys.com/AMS_Database_Metadata',
         { Approver_id: userId }
       );
 
-      console.log('Raw response:', resRequests);
       const tuples = this.hs.xmltojson(resRequests, 'tuple');
-      console.log('Parsed tuples:', tuples);
+      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
+      this.allTickets = tupleArray.map((t: any) => this.mapTupleToEnrichedTicket(t));
 
-      if (!tuples) {
-        console.warn('No tuples found in response');
-        this.allTickets = [];
-      } else {
-        const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
-        this.allTickets = tupleArray.map((t: any) => this.mapTupleToEnrichedTicket(t));
-        console.log(`Loaded ${this.allTickets.length} tickets`);
-      }
+      // 2. FALLBACK: If specialized service missed some tickets (common with multi-type users)
+      // Discover tasks from the BPM engine directly
+      try {
+        const activeTasks = await this.requestService.fetchActiveTasks();
+        const myTasks = activeTasks.filter(t => t.assigneeId === userId);
+        
+        // Find tickets that are in myTasks but NOT in allTickets
+        for (const task of myTasks) {
+           const existing = this.allTickets.find(ticket => ticket.taskid === task.taskId || ticket.ticketId === (task.data?.requestId || task.data?.Request_id));
+           if (!existing) {
+              console.log('[AllocationTickets] Discovered missing task:', task.taskId);
+              // Try to fetch full details for this request
+              const reqId = task.data?.requestId || task.data?.Request_id;
+              if (reqId) {
+                 const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
+                 const fullReq = allReqs.find(r => r.id === reqId);
+                 if (fullReq) {
+                    const ticket = this.mapWarrantyToEnrichedTicket(fullReq); // Close enough for enrichment
+                    ticket.taskid = task.taskId;
+                    this.allTickets.push(ticket);
+                 }
+              }
+           }
+        }
+      } catch (discoveryErr) { console.warn('Task discovery failed:', discoveryErr); }
 
-      // Sync return tickets load
       await this.loadReturnTickets();
-      // Sync warranty tickets load
       await this.loadPendingWarrantyTickets();
 
-      // Merge return and warranty tickets into allTickets so they appear in the table
       this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
-      // Load resolved history
+      
+      // Post-load filtering: Ensure everything matches my assigned types
+      if (this.myAssetTypes.length > 0) {
+        this.allTickets = this.allTickets.filter(t => 
+          this.myAssetTypes.includes(t.assetType.toLowerCase().trim())
+        );
+      }
+
       await this.loadResolvedTickets();
-      // Load resolved return history
       await this.loadResolvedReturnTickets();
     } catch (err) {
       console.error('Failed to load allocation tickets:', err);
@@ -184,7 +208,6 @@ export class AllocationTicketsComponent implements OnInit {
       this.loading = false;
     }
   }
-
   async loadReturnTickets(): Promise<void> {
     const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
     const approverId = currentUser?.id;
@@ -321,18 +344,17 @@ export class AllocationTicketsComponent implements OnInit {
 
             if (!isResolved) return false;
 
-            // Filter by asset type assignment (if any)
+                        // Filter by asset type assignment (handles multiple categories joined by & or ,)
             if (this.currentUser?.assetTypeName) {
               const assignedTypes = this.currentUser.assetTypeName
-                .split(',')
+                .split(/[&,]/)
                 .map((s: string) => s.trim().toLowerCase());
               
               if (assignedTypes.length > 0) {
                 return assignedTypes.includes(t.assetType.toLowerCase());
               }
             }
-            
-            return true; // If no types assigned or user missing, show all (fallback)
+            return true;
           });
 
         // Enrich with asset details in parallel
@@ -555,22 +577,22 @@ export class AllocationTicketsComponent implements OnInit {
 
     const statusStr = this.getVal(reqData?.status) ?? this.getVal(approval?.status) ?? 'Pending';
     const status = this.mapToStatus(statusStr);
+    const assetType = this.getVal(reqData?.asset_type) ?? '—';
+    const managerName = this.typeToManagerMap.get(assetType.toLowerCase().trim()) || '—';
 
     return {
       taskid: this.getVal(approval?.temp2) ?? '—',
       approvalid: this.getVal(approval?.approval_id) ?? '—',
       ticketId: this.getVal(reqData?.request_id) ?? this.getVal(approval?.request_id) ?? '—',
       requestorName: this.getVal(userData?.name) ?? '—',
-      assetType: this.getVal(reqData?.asset_type) ?? '—',
+      assetType,
       subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? this.getVal(reqData?.temp1) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',
-
-      // Reference from resolved return tickets: use temp1 for assetId if missing
       assetId: this.getVal(assetData?.asset_id) ?? this.getVal(reqData?.asset_id) ?? this.getVal(reqData?.temp1) ?? this.getVal(parent?.asset_id) ?? '—',
       warrantyExpiry: this.getVal(assetData?.warranty_expiry) ?? '—',
       availabilityStatus: this.getVal(assetData?.status) ?? '—',
       assignedDate: this.getVal(reqData?.created_at) ?? '',
-      assetManagerName: '—',
+      assetManagerName: managerName,
       teamLeadName: this.getVal(userData?.team_lead) ?? '—',
       urgency: this.getVal(reqData?.urgency) ?? '—',
       reason: this.getVal(reqData?.reason) ?? '—',
@@ -583,7 +605,7 @@ export class AllocationTicketsComponent implements OnInit {
         requesterName: this.getVal(userData?.name) ?? '',
         requesterDepartment: '',
         requesterTeam: '',
-        assetType: this.getVal(reqData?.asset_type) ?? '',
+        assetType,
         category: this.getVal(assetData?.asset_name) ?? '',
         justification: this.getVal(reqData?.reason) ?? '',
         urgency: this.mapToUrgency(this.getVal(reqData?.urgency) ?? '') as any,
@@ -599,9 +621,6 @@ export class AllocationTicketsComponent implements OnInit {
     };
   }
 
-  /**
-   * Maps an AssetRequest (typically from Warranty Extension table) to EnrichedTicket.
-   */
   private mapWarrantyToEnrichedTicket(req: AssetRequest): EnrichedTicket {
     return {
       taskid: req.taskid || '—',

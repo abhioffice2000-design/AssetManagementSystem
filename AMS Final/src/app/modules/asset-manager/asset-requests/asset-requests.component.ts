@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+﻿import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetRequest, ApprovalEntry, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
@@ -7,6 +7,8 @@ import { AssetService } from '../../../core/services/asset.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
 import { HeroService } from '../../../core/services/hero.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
+
 
 
 
@@ -65,15 +67,16 @@ export class AssetRequestsComponent implements OnInit {
     private assetService: AssetService,
     private notificationService: NotificationService,
     private mailService: MailService,
-    private hs: HeroService
+    private hs: HeroService,
+    private adminDataService: AdminDataService
   ) { }
-
 
   ngOnInit(): void {
     this.loadAllData();
   }
 
   async loadAllData(): Promise<void> {
+
     this.isLoading = true;
     this.loadError = '';
 
@@ -91,34 +94,40 @@ export class AssetRequestsComponent implements OnInit {
         return;
       }
 
-      // Fetch all three in parallel: all requests, pending requests, and available assets
-      // const [allReqs, pendingReqs, returnReqs] = await Promise.all([
-      //   this.requestService.fetchAllRequestsFromService(approverId),
-      //   this.requestService.fetchPendingRequestsFromService(approverId),
-      //   this.requestService.fetchPendingReturnApprovalsFromService(approverId),
-      // Fetch all in parallel: all requests, pending requests, confirmation requests, and available assets
-      // Fetch all in parallel with individual error handling to prevent dashboard crash if one service fails
-      const [allReqs, pendingReqs, confirmReqs, returnReqs, allReturnReqs] = await Promise.all([
+      // Fetch all data including assignments in parallel
+      const [allReqs, pendingReqs, confirmReqs, returnReqs, allReturnReqs, allAssignments] = await Promise.all([
         this.requestService.fetchAllRequestsFromService(approverId).catch(err => { console.error('All Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingRequestsFromService(approverId).catch(err => { console.error('Pending Req fetch failed:', err); return []; }),
         this.requestService.fetchConfirmationRequestsFromService(approverId).catch(err => { console.error('Confirm Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingReturnApprovalsFromService(approverId).catch(err => { console.error('Return Req fetch failed:', err); return []; }),
         this.requestService.fetchAllReturnRequestsFromService().catch(err => { console.error('All Return Req fetch failed:', err); return []; }),
+        this.adminDataService.getAssetTypeAssignmentDetails().catch(err => { console.error('Assignment fetch failed:', err); return []; }),
         this.loadAvailableAssets().catch(err => { console.error('Assets load failed:', err); return []; })
       ] as any[]);
 
-      this.allRequests = allReqs;
-      this.confirmationRequests = confirmReqs;
+      // Resolve manager's assigned types for strict filtering
+      const myAssignments = (allAssignments || []).filter((a: any) =>
+        a.assetManagerId && a.assetManagerId.toLowerCase().trim() === approverId.toLowerCase().trim()
+      );
+      const managerTypeNames = myAssignments.map((a: any) => a.name.toLowerCase().trim());
+      console.log(`[AssetRequests] Manager ${approverId} assigned to types:`, managerTypeNames);
+
+      const isMyType = (item: any) => {
+        const type = (item.type || item.assetType || '').toString().toLowerCase().trim();
+        return managerTypeNames.length === 0 || managerTypeNames.includes(type);
+      };
+
+      // Filter ALL data arrays based on these assignments
+      this.allRequests = (allReqs || []).filter(isMyType);
+      this.confirmationRequests = (confirmReqs || []).filter(isMyType);
+      const filteredPending = (pendingReqs || []).filter(isMyType);
+      const filteredReturn = (returnReqs || []).filter(isMyType);
 
       // Filter out confirmation requests from the pending approvals list to prevent duplication
       const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
-      this.pendingRequests = pendingReqs.filter((r: AssetRequest) => !confirmationIds.has(r.id));
+      this.pendingRequests = filteredPending.filter((r: AssetRequest) => !confirmationIds.has(r.id));
 
-      // ── Fix: Reconcile allRequests statuses against the approvals table ──
-      // The main request table (t_asset_requests) keeps status="Pending" until the full
-      // workflow completes. But the approvals table is authoritative for what the manager
-      // has already acted on. If a request is Pending in allRequests but NOT in pendingRequests
-      // and NOT in confirmationRequests, the manager has already approved it → show Approved.
+      // Reconcile allRequests statuses against the approvals table
       const pendingIds = new Set(this.pendingRequests.map((r: AssetRequest) => r.id));
       this.allRequests = this.allRequests.map((req: AssetRequest) => {
         if (
@@ -126,7 +135,6 @@ export class AssetRequestsComponent implements OnInit {
           !pendingIds.has(req.id) &&
           !confirmationIds.has(req.id)
         ) {
-          // Manager has already acted — show as Approved in the All Requests view
           return { ...req, status: RequestStatus.APPROVED };
         }
         return req;
@@ -143,10 +151,8 @@ export class AssetRequestsComponent implements OnInit {
       if (this.allocationTeamMemberList.length > 0) {
         this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
       }
-      console.log('Allocation Team Members:', this.allocationTeamMemberList);
-      this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, returnReqs, approverId);
-      console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
+      this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, filteredReturn, approverId);
       this.requestStats = this.requestService.getAllRequestStats(this.getDashboardStatsRequests());
 
       this.applyFilters();
@@ -154,12 +160,9 @@ export class AssetRequestsComponent implements OnInit {
       console.error('Failed to load requests:', err);
       this.loadError = err?.message || err?.errorThrown || 'Failed to load request data. Please try again.';
       this.allRequests = [];
-      this.filteredRequests = [];
       this.pendingRequests = [];
       this.confirmationRequests = [];
-      this.filteredConfirmationRequests = [];
       this.returnRequests = [];
-      this.requestStats = this.getEmptyRequestStats();
     } finally {
       this.isLoading = false;
     }

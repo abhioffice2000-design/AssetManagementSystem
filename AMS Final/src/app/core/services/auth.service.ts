@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+﻿import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { User, UserRole } from '../models/user.model';
 import { Router } from '@angular/router';
@@ -278,11 +278,19 @@ export class AuthService {
           matchingType = typesData.find((t: any) => (t.type_id || t.Type_id) === user.assetTypeId);
         }
 
-        // 2. If no match and it's an asset role, try matching by manager ID
-        if (!matchingType && isAssetRole) {
-          matchingType = typesData.find((t: any) => 
-            (t.asset_manager_id || t.am_id || t.manager_id || t.temp1) === user.id
-          );
+        // 2. If it's an asset role (Manager or AT), find ALL matching categories
+        if (isAssetRole) {
+          const myTypes = typesData.filter((t: any) => {
+            const managerId = (t.asset_manager_id || t.am_id || t.manager_id || t.temp1 || '').toString().trim();
+            const teamMembers = (t.team_members || t.at_members || '').toString().trim();
+            return (managerId === user.id) || teamMembers.includes(user.id);
+          });
+
+          if (myTypes.length > 0) {
+            user.assetTypeId = myTypes.map((t: any) => t.type_id || t.Type_id).join(',');
+            user.assetTypeName = myTypes.map((t: any) => t.type_name || t.asset_type_name || t.name).join(' & ');
+            matchingType = myTypes[0]; // Set this to trigger the update block below
+          }
         }
 
         if (matchingType) {
