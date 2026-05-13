@@ -76,7 +76,13 @@ export class WarrantyRequestsComponent implements OnInit {
       const myAssignments = assignments.filter((a: any) => a.assetManagerId === approverId);
       const myAssetTypes = myAssignments.map((a: any) => a.name.toLowerCase());
       
-      this.warrantyRequests = pendingReqs || [];
+      console.log(`[WarrantyRequests] Manager ${approverId} assigned types:`, myAssetTypes);
+
+      // Filter Pending requests by assigned asset types
+      this.warrantyRequests = (pendingReqs || []).filter(req => {
+        const type = (req.assetType || '').toLowerCase();
+        return myAssetTypes.length === 0 || myAssetTypes.includes(type);
+      });
 
       // Filter and Enrich ALL requests (Resolved tab)
       const filteredAllReqs = (allReqs || []).filter(req => {
@@ -86,7 +92,7 @@ export class WarrantyRequestsComponent implements OnInit {
 
       this.allWarrantyRequests = await Promise.all(filteredAllReqs.map(async (req) => {
         try {
-          // ── ENRICHMENT: Resolve Requester Name/Email if missing (common in Resolved tab) ──
+          // ── ENRICHMENT: Resolve Requester Name/Email if missing ──
           if (!req.requesterName || req.requesterName === 'Unknown' || !req.requesterEmail) {
             const requester = allUsers.find((u: any) => u.id === req.requesterId || (u as any).user_id === req.requesterId);
             if (requester) {
@@ -129,7 +135,6 @@ export class WarrantyRequestsComponent implements OnInit {
 
       // Enrich pending requests too
       await Promise.all(this.warrantyRequests.map(async (req) => {
-        // Also ensure requester info is present here
         if (!req.requesterName || req.requesterName === 'Unknown') {
           const requester = allUsers.find((u: any) => u.id === req.requesterId || (u as any).user_id === req.requesterId);
           if (requester) {

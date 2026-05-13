@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { HeroService } from '../../../core/services/hero.service';
 import { Asset, AssetCondition } from '../../../core/models/asset.model';
-import { AssetRequest } from '../../../core/models/request.model';
+import { AssetRequest, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -36,6 +36,9 @@ export class AllocationDashboardComponent implements OnInit {
   inventoryTypeName = '';
   inventoryRows: DashboardCategoryRow[] = [];
   readyAssets: Asset[] = [];
+  private myAssetTypes: string[] = [];
+  private typeIdToNameMap = new Map<string, string>();
+  private typeNameToIdMap = new Map<string, string>();
   
   // Charts
   public assetTypeChartOptions: ChartConfiguration['options'] = {
@@ -89,108 +92,209 @@ export class AllocationDashboardComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
+    await this.resolveMyAssetTypes();
     await this.loadTaskConsole();
+  }
+
+  private async resolveMyAssetTypes(): Promise<void> {
+    const currentUser = this.authService.getCurrentUser();
+    const userId = currentUser?.id;
+    if (!userId) return;
+
+    try {
+      // 1. First, check if AuthService already has it (fastest)
+      if (currentUser?.assetTypeName) {
+        const authTypes = currentUser.assetTypeName.split(/[&,]/).map((s: string) => s.trim().toLowerCase());
+        authTypes.forEach((at: string) => {
+          if (at && !this.myAssetTypes.includes(at)) {
+            this.myAssetTypes.push(at);
+          }
+        });
+      }
+
+      // 2. Fetch fresh assignments and build ID mapping
+      const assignmentsSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAssetNAssetManagerDetails xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+      const resp = await this.hs.ajax(null, null, {}, assignmentsSoap);
+      // The service might return types directly or inside tuples
+      let typesData = this.hs.xmltojson(resp, 'm_asset_types') || this.hs.xmltojson(resp, 'tuple');
+      
+      if (typesData) {
+        const typeArray = Array.isArray(typesData) ? typesData : [typesData];
+        typeArray.forEach((item: any) => {
+          // Extract data from tuple or direct object
+          const t = item?.old?.m_asset_types ?? item?.m_asset_types ?? item;
+          const typeName = (t.type_name || t.name || '').trim();
+          const typeId = this.getVal(t.asset_type_id) || this.getVal(t.id) || '';
+          
+          if (typeName) {
+            const lowerName = typeName.toLowerCase();
+            this.typeIdToNameMap.set(typeId, lowerName);
+            this.typeNameToIdMap.set(lowerName, typeId);
+            
+            // Check all possible assignment fields
+            const assignments = (t.team_members || t.at_members || t.asset_manager || t.manager_id || '').toString();
+            if (assignments.includes(userId)) {
+              if (!this.myAssetTypes.includes(lowerName)) {
+                this.myAssetTypes.push(lowerName);
+              }
+            }
+          }
+        });
+      }
+      console.log('[AllocationDashboard] Final Resolved Types:', this.myAssetTypes);
+    } catch (err) {
+      console.error('[AllocationDashboard] Failed to resolve asset types:', err);
+    }
   }
 
   async loadTaskConsole(): Promise<void> {
     this.loading = true;
     try {
       const currentUser = this.authService.getCurrentUser();
-      const approverId = currentUser?.id;
-
-      if (!approverId) {
+      const userId = currentUser?.id;
+      if (!userId) {
         this.resetDashboard();
-        this.notificationService.showToast('Current user is missing. Please log in again.', 'error');
         return;
       }
 
+      if (this.myAssetTypes.length === 0) {
+        await this.resolveMyAssetTypes();
+      }
+
       const [resRequests, resInventory, resWarranty] = await Promise.all([
-        this.hs.ajax('GetallpendingrequestsForAllocationTeamMemberwithTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: approverId }),
-        this.fetchAllocationInventoryByUser(approverId),
-        this.requestService.fetchPendingWarrantyApprovalsFromService(approverId)
+        this.hs.ajax('GetallpendingrequestsForAllocationTeamMemberwithTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: userId }),
+        this.fetchAllocationInventoryByUser(userId),
+        this.requestService.fetchPendingWarrantyApprovalsFromService(userId)
       ]);
 
       const requestTuples = this.hs.xmltojson(resRequests, 'tuple');
-      const allRequests = Array.isArray(requestTuples) ? requestTuples : (requestTuples ? [requestTuples] : []);
-      const allAssets: Asset[] = resInventory || [];
+      let allRequests = Array.isArray(requestTuples) ? requestTuples : (requestTuples ? [requestTuples] : []);
+      let allAssets: Asset[] = resInventory || [];
       this.pendingWarrantyRequests = resWarranty || [];
+
+      if (this.myAssetTypes.length > 0) {
+        if (allAssets.length === 0) {
+          console.log('[AllocationDashboard] Fallback scan for assets...');
+          const allRes = await this.hs.ajax('GetallAssets', 'http://schemas.cordys.com/AMS_Database_Metadata', {});
+          const tuples = this.hs.xmltojson(allRes, 'tuple');
+          const tupleArray = Array.isArray(tuples) ? tuples : (tuples ? [tuples] : []);
+          allAssets = tupleArray
+            .map((t: any) => this.mapAllocationInventoryTupleToAsset(t))
+            .filter(a => this.myAssetTypes.includes((a.type || '').toLowerCase().trim()));
+        }
+
+        if (allRequests.length === 0) {
+           try {
+             const activeTasks = await this.requestService.fetchActiveTasks();
+             const myTasks = activeTasks.filter(t => t.assigneeId === userId);
+             for (const task of myTasks) {
+                const reqId = task.data?.requestId || task.data?.Request_id;
+                if (reqId) {
+                   const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
+                   const fullReq = allReqs.find(r => r.id === reqId);
+                   if (fullReq && this.myAssetTypes.includes((fullReq.assetType || '').toLowerCase().trim())) {
+                      allRequests.push({ t_asset_requests: fullReq, m_users: { name: fullReq.requesterName } });
+                   }
+                }
+             }
+           } catch (e) { console.warn('BPM Fallback failed:', e); }
+        }
+      }
+
+      if (this.myAssetTypes.length > 0) {
+        allRequests = allRequests.filter((t: any) => {
+          const r = t?.old?.t_asset_requests || t?.t_asset_requests || t;
+          const type = (this.getVal(r.asset_type) || '').toLowerCase().trim();
+          return this.myAssetTypes.includes(type);
+        });
+      }
+
       this.stats.totalPending = allRequests.length;
       this.buildInventorySummary(allAssets);
-
-      const categoryMap = new Map<string, number>();
-      allAssets.forEach(a => {
-        const category = a.category || 'Uncategorized';
-        categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
-      });
-      const categories = Array.from(categoryMap.keys());
-      this.assetTypeChartData.labels = categories;
-      this.assetTypeChartData.datasets[0].data = categories.map(t => categoryMap.get(t)!);
-      this.assetTypeChartData = { ...this.assetTypeChartData };
-
-      const demandMap = new Map<string, number>();
-      allRequests.forEach((t: any) => {
-        const r = t?.old?.t_asset_requests || t?.t_asset_requests || {};
-        const cat = this.getVal(r.sub_category_id) || this.getVal(r.asset_type) || 'Uncategorized';
-        demandMap.set(cat, (demandMap.get(cat) || 0) + 1);
-      });
-
-      const availableMap = new Map<string, number>();
-      allAssets.forEach(a => {
-        if (String(a.status).toLowerCase() === 'available') {
-          const category = a.category || 'Uncategorized';
-          availableMap.set(category, (availableMap.get(category) || 0) + 1);
-        }
-      });
-
-      this.stockAlerts = Array.from(demandMap.keys())
-        .map(cat => ({
-          category: cat,
-          waiting: demandMap.get(cat) || 0,
-          available: availableMap.get(cat) || 0
-        }))
-        .filter(alert => alert.available < alert.waiting)
-        .sort((a,b) => b.waiting - a.waiting);
-
-      const now = new Date();
-      const thirtyDaysLater = new Date();
-      thirtyDaysLater.setDate(now.getDate() + 30);
-
-      this.expiringAssets = allAssets
-        .filter(a => {
-          if (!a.warrantyExpiry) return false;
-          const expiry = new Date(a.warrantyExpiry);
-          return expiry >= now && expiry <= thirtyDaysLater;
-        })
-        .map(a => ({
-          tag: a.assetTag,
-          name: a.name,
-          expiry: a.warrantyExpiry,
-          assignedTo: a.assignedToName || 'Not Assigned',
-          days: Math.round((new Date(a.warrantyExpiry).getTime() - now.getTime()) / (1000 * 3600 * 24))
-        }))
-        .sort((a,b) => a.days - b.days);
-      
-      this.stats.warrantyAlerts = this.expiringAssets.length;
-      
-      this.pendingAllocations = allRequests
-        .map((t: any) => {
-          const r = t?.old?.t_asset_requests || t?.t_asset_requests || {};
-          const u = t?.old?.m_users || t?.m_users || {};
-          return {
-            id: this.getVal(r.request_id) || this.getVal(r.Request_id) || 'REQ',
-            requester: this.getVal(u.name) || this.getVal(r.requester_name) || this.getVal(r.user_name) || 'Unknown',
-            assetType: this.getVal(r.sub_category_id) || this.getVal(r.asset_type) || 'Hardware',
-            urgency: this.getVal(r.urgency) || 'Medium',
-            date: this.getVal(r.created_at)
-          };
-        })
-        .slice(0, 5);
+      this.updateDashboardVisuals(allAssets, allRequests);
 
     } catch (err) {
-      console.error('Final Dashboard Load Error:', err);
+      console.error('Dashboard Load Error:', err);
     } finally {
       this.loading = false;
     }
+  }
+
+  private updateDashboardVisuals(allAssets: Asset[], allRequests: any[]): void {
+    const categoryMap = new Map<string, number>();
+    allAssets.forEach(a => {
+      const category = a.category || 'Uncategorized';
+      categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+    });
+    const categories = Array.from(categoryMap.keys());
+    this.assetTypeChartData.labels = categories;
+    this.assetTypeChartData.datasets[0].data = categories.map(t => categoryMap.get(t)!);
+    this.assetTypeChartData = { ...this.assetTypeChartData };
+
+    const demandMap = new Map<string, number>();
+    allRequests.forEach((t: any) => {
+      const r = t?.old?.t_asset_requests || t?.t_asset_requests || t;
+      const cat = this.getVal(r.sub_category_id) || this.getVal(r.asset_type) || 'Uncategorized';
+      demandMap.set(cat, (demandMap.get(cat) || 0) + 1);
+    });
+
+    const availableMap = new Map<string, number>();
+    allAssets.forEach(a => {
+      if (String(a.status).toLowerCase() === 'available') {
+        const category = a.category || 'Uncategorized';
+        availableMap.set(category, (availableMap.get(category) || 0) + 1);
+      }
+    });
+
+    this.stockAlerts = Array.from(demandMap.keys())
+      .map(cat => ({
+        category: cat,
+        waiting: demandMap.get(cat) || 0,
+        available: availableMap.get(cat) || 0
+      }))
+      .filter(alert => alert.available < alert.waiting)
+      .sort((a,b) => b.waiting - a.waiting);
+
+    const now = new Date();
+    const thirtyDaysLater = new Date();
+    thirtyDaysLater.setDate(now.getDate() + 30);
+
+    this.expiringAssets = allAssets
+      .filter(a => {
+        if (!a.warrantyExpiry) return false;
+        const expiry = new Date(a.warrantyExpiry);
+        return expiry >= now && expiry <= thirtyDaysLater;
+      })
+      .map(a => ({
+        tag: a.assetTag,
+        name: a.name,
+        expiry: a.warrantyExpiry,
+        assignedTo: a.assignedToName || 'Not Assigned',
+        days: Math.round((new Date(a.warrantyExpiry).getTime() - now.getTime()) / (1000 * 3600 * 24))
+      }))
+      .sort((a,b) => a.days - b.days);
+    
+    this.stats.warrantyAlerts = this.expiringAssets.length;
+    
+    this.pendingAllocations = allRequests
+      .map((t: any) => {
+        const r = t?.old?.t_asset_requests || t?.t_asset_requests || t;
+        const u = t?.old?.m_users || t?.m_users || {};
+        return {
+          id: this.getVal(r.request_id) || this.getVal(r.Request_id) || 'REQ',
+          requester: this.getVal(u.name) || this.getVal(r.requester_name) || this.getVal(r.user_name) || 'Unknown',
+          assetType: this.getVal(r.sub_category_id) || this.getVal(r.asset_type) || 'Hardware',
+          urgency: this.getVal(r.urgency) || 'Medium',
+          date: this.getVal(r.created_at)
+        };
+      })
+      .slice(0, 5);
   }
 
   private async fetchAllocationInventoryByUser(userId: string): Promise<Asset[]> {
@@ -211,7 +315,13 @@ export class AllocationDashboardComponent implements OnInit {
     const assignedUserInfo = data?.m_users ?? {};
     const assetId = this.getVal(data?.asset_id) ?? '';
     const serialNumber = this.getVal(data?.serial_number) ?? '';
-    const typeName = this.getVal(typeInfo?.type_name) ?? this.getVal(data?.type_id) ?? 'Assigned Type';
+    const typeId = this.getVal(data?.type_id) ?? '';
+    let typeName = this.getVal(typeInfo?.type_name) ?? this.typeIdToNameMap.get(typeId) ?? typeId ?? 'Assigned Type';
+    
+    if (typeName === typeId && this.typeIdToNameMap.has(typeId)) {
+       typeName = this.typeIdToNameMap.get(typeId)!;
+    }
+
     const categoryName = this.getVal(subCategoryInfo?.name) ?? this.getVal(data?.sub_category_id) ?? 'Uncategorized';
     const status = this.getVal(data?.status) ?? 'Unknown';
     const assignedUserId = this.getVal(data?.temp1) ?? '';
@@ -279,9 +389,14 @@ export class AllocationDashboardComponent implements OnInit {
       else row.other++;
     });
 
-    this.inventoryTypeName = allAssets[0]?.type as string || '';
+    if (this.myAssetTypes.length > 1) {
+      this.inventoryTypeName = this.myAssetTypes.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(' & ');
+    } else {
+      this.inventoryTypeName = allAssets[0]?.type as string || (this.myAssetTypes[0] ? (this.myAssetTypes[0].charAt(0).toUpperCase() + this.myAssetTypes[0].slice(1)) : 'Assigned Type');
+    }
+
     this.inventoryRows = Array.from(summaryMap.values())
-      .sort((a, b) => b.moveToAllocation - a.moveToAllocation || b.available - a.available || a.categoryName.localeCompare(b.categoryName));
+      .sort((a: DashboardCategoryRow, b: DashboardCategoryRow) => b.moveToAllocation - a.moveToAllocation || b.available - a.available || a.categoryName.localeCompare(b.categoryName));
     this.readyAssets = allAssets
       .filter(asset => (asset.status || '').toLowerCase().trim() === 'movetoallocationteam')
       .slice(0, 6);
@@ -357,7 +472,7 @@ export class AllocationDashboardComponent implements OnInit {
 
   openWarrantyModal(request: AssetRequest): void {
     this.selectedWarrantyRequest = request;
-    this.newWarrantyDate = ''; // Reset date
+    this.newWarrantyDate = '';
     this.isWarrantyModalOpen = true;
   }
 
@@ -372,47 +487,28 @@ export class AllocationDashboardComponent implements OnInit {
       alert('Please select a new warranty date.');
       return;
     }
-
     try {
       const requestId = this.selectedWarrantyRequest.id;
       const approvalId = this.selectedWarrantyRequest.approvalId;
       const assetId = this.selectedWarrantyRequest.assignedAssetId;
-
       if (!approvalId) {
-        this.notificationService.showToast('Approval context missing. Cannot proceed.', 'error');
+        this.notificationService.showToast('Approval context missing.', 'error');
         return;
       }
-
-      // 1. Update status in t_extend_request_approvals to 'Approved'
-      await this.requestService.updateWarrantyRequestApproval(
-        approvalId,
-        'Approved',
-        'Warranty extended by Allocation Team',
-        assetId
-      );
-
-      // 2. Update status in t_extend_asset_requests to 'Approved'
+      await this.requestService.updateWarrantyRequestApproval(approvalId, 'Approved', 'Warranty extended', assetId);
       await this.requestService.updateExtendAssetRequest(requestId, 'Approved');
-
-      // 3. Update m_assets with the new warranty date
-      if (assetId) {
-        await this.requestService.updateAssetWarrantyDate(assetId, this.newWarrantyDate);
-      }
-
-      // 4. Send email to employee
+      if (assetId) await this.requestService.updateAssetWarrantyDate(assetId, this.newWarrantyDate);
       await this.mailService.sendWarrantyExtensionConfirmation({
         employeeName: this.selectedWarrantyRequest.requesterName,
         assetName: this.selectedWarrantyRequest.assetName || 'Asset',
         newExpiryDate: this.newWarrantyDate,
         requestId: requestId
       });
-
-      this.notificationService.showToast('Warranty extension approved and updated successfully!', 'success');
+      this.notificationService.showToast('Warranty extension approved!', 'success');
       this.closeWarrantyModal();
-      await this.loadTaskConsole(); // Refresh dashboard
+      await this.loadTaskConsole();
     } catch (error) {
-      console.error('Failed to approve warranty extension:', error);
-      this.notificationService.showToast('Failed to complete approval. Please try again.', 'error');
+      this.notificationService.showToast('Failed to complete approval.', 'error');
     }
   }
 }
