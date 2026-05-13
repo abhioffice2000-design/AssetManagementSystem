@@ -20,6 +20,7 @@ export class AssetTransactionComponent implements OnInit {
   pagedRequests: AssetRequest[] = [];
 
   selectedStatus = 'All';
+  selectedRequestType = 'All';
   searchTerm = '';
   currentPage = 1;
   pageSize = 10;
@@ -29,8 +30,8 @@ export class AssetTransactionComponent implements OnInit {
   errorMessage = '';
 
   totalTransactions = 0;
-  pendingAllocations = 0;
-  pendingReturns = 0;
+  pendingCount = 0;
+  approvedCount = 0;
   rejectedCount = 0;
 
 
@@ -76,7 +77,8 @@ export class AssetTransactionComponent implements OnInit {
     }
   };
 
-  statusOptions: string[] = ['All', 'Pending', 'Approved', 'Rejected', 'Completed'];
+  statusOptions: string[] = ['All', 'Approved', 'Pending', 'Rejected'];
+  requestTypeOptions: string[] = ['All', 'New Asset Requests', 'Extend Warranty Requests', 'Return Requests', 'Service Requests'];
 
   constructor(
     private adminDataService: AdminDataService,
@@ -93,9 +95,108 @@ export class AssetTransactionComponent implements OnInit {
     this.isLoading = true;
     this.errorMessage = '';
     try {
-      this.allRequests = await this.adminDataService.getAllRequests();
+      // 1. Fetch all data sources + user master list in parallel
+      const [newAssetRequests, warrantyRequests, returnRequests, serviceRequests, allUsers] = await Promise.all([
+        this.adminDataService.getAllRequests(),
+        this.requestService.fetchAllWarrantyRequests(),
+        this.requestService.fetchAllReturnRequestsFromService(),
+        this.requestService.getAllServiceRequests(),
+        this.adminDataService.GetAllUserRoleProjectDetails()
+      ]);
+
+      // Create a lookup map for resolving missing user info
+      const userMap = new Map<string, { name: string, email: string }>();
+      allUsers.forEach(u => {
+        if (u.id) userMap.set(u.id.toString().trim().toLowerCase(), { name: u.name, email: u.email });
+      });
+
+      const resolveInfo = (id: any, name: string, email: string) => {
+        const key = (id || '').toString().trim().toLowerCase();
+        const info = userMap.get(key);
+        return {
+          name: (name && name !== 'System User') ? name : (info?.name || name || 'Unknown User'),
+          email: email || (info?.email || '')
+        };
+      };
+
+      // 2. Add type identifiers and normalize New Asset requests
+      const normalizedNewAssets = newAssetRequests.map(r => ({
+        ...r,
+        requestType: 'New Asset Requests'
+      }));
+
+      // 3. Map Warranty Requests
+      const mappedWarranty = warrantyRequests.map((r: any) => {
+        const user = resolveInfo(r.requesterId, r.requesterName, r.requesterEmail);
+        return {
+          requestId: r.id || r.requestNumber,
+          userId: r.requesterId,
+          userName: user.name,
+          userEmail: user.email,
+          assetType: r.assetType || 'Hardware',
+          reason: r.justification || '',
+          urgency: r.urgency || 'Medium',
+          status: r.status || 'Pending',
+          emailApproval: r.hasEmailApproval || false,
+          document: r.document || '',
+          createdAt: r.requestDate || '',
+          subCategory: 'Warranty Extension',
+          requestType: 'Extend Warranty Requests'
+        };
+      });
+
+      // 4. Map Return Requests
+      const mappedReturns = returnRequests.map((r: any) => {
+        const user = resolveInfo(r.requesterId, r.requesterName, r.requesterEmail);
+        return {
+          requestId: r.id || r.requestNumber,
+          userId: r.requesterId,
+          userName: user.name,
+          userEmail: user.email,
+          assetType: r.assetType || 'Hardware',
+          reason: r.justification || '',
+          urgency: r.urgency || 'Low',
+          status: r.status || 'Pending',
+          emailApproval: r.hasEmailApproval || false,
+          document: r.document || '',
+          createdAt: r.requestDate || '',
+          subCategory: 'Asset Return',
+          requestType: 'Return Requests'
+        };
+      });
+
+      // 5. Map Service Requests
+      const mappedService = serviceRequests.map((r: any) => {
+        const user = resolveInfo(r.user_id, '', '');
+        return {
+          requestId: r.service_request_id,
+          userId: r.user_id,
+          userName: user.name,
+          userEmail: user.email,
+          assetType: r.asset_type_id || 'Hardware',
+          reason: r.issue_description || '',
+          urgency: r.urgency || 'Medium',
+          status: r.status || r.current_status || 'Pending',
+          emailApproval: false,
+          document: r.document || '',
+          createdAt: r.created_at || '',
+          subCategory: 'Service / Maintenance',
+          requestType: 'Service Requests'
+        };
+      });
+
+      // 6. Normalize and Combine all requests
+      this.allRequests = [
+        ...normalizedNewAssets,
+        ...mappedWarranty,
+        ...mappedReturns,
+        ...mappedService
+      ].map(r => ({
+        ...r,
+        status: this.normalizeStatus(r.status)
+      }));
+
       this.allRequests.sort((a, b) => this.toMillis(b.createdAt) - this.toMillis(a.createdAt));
-      this.updateStatusOptions();
       this.updateDashboardCards();
       this.updateCharts();
       this.applyFilters();
@@ -108,6 +209,12 @@ export class AssetTransactionComponent implements OnInit {
     } finally {
       this.isLoading = false;
     }
+  }
+
+  onRequestTypeChange(value: string): void {
+    this.selectedRequestType = value;
+    this.setPage(1);
+    this.applyFilters();
   }
 
   onSearchChange(value: string): void {
@@ -172,31 +279,49 @@ export class AssetTransactionComponent implements OnInit {
     return Math.min(this.currentPage * this.pageSize, this.filteredRequests.length);
   }
 
+  private normalizeStatus(status: any): string {
+    if (!status) return 'Pending';
+    const s = status.toString().trim().toLowerCase();
+    
+    // Approved statuses
+    if (s === 'approved' || s === 'completed' || s === 'closed' || s === 'success' || s === 'resolved') return 'Approved';
+    
+    // Rejected statuses
+    if (s === 'rejected' || s === 'failed' || s === 'declined' || s === 'cancelled') return 'Rejected';
+    
+    // Everything else is Pending
+    return 'Pending';
+  }
+
   getStatusClass(status: string): string {
-    const normalizedStatus = status.trim().toLowerCase();
-    switch (normalizedStatus) {
-      case 'approved':
-      case 'completed':
-        return 'status-completed';
-      case 'pending':
-        return 'status-pending';
-      case 'rejected':
-        return 'status-rejected';
-      default:
-        return '';
-    }
+    const s = (status || '').toString().trim().toLowerCase();
+    if (s === 'approved') return 'status-completed';
+    if (s === 'pending') return 'status-pending';
+    if (s === 'rejected') return 'status-rejected';
+    return '';
   }
 
   private applyFilters(): void {
     const statusFilter = this.selectedStatus.trim().toLowerCase();
+    const typeFilter = this.selectedRequestType;
     const search = this.searchTerm.trim().toLowerCase();
 
     this.filteredRequests = this.allRequests.filter((request) => {
-      const matchesStatus = statusFilter === 'all' || request.status.trim().toLowerCase() === statusFilter;
+      // 1. Status Filter
+      const matchesStatus = statusFilter === 'all' || 
+                           (request.status && request.status.toString().trim().toLowerCase() === statusFilter);
+
       if (!matchesStatus) {
         return false;
       }
 
+      // 2. Request Type Filter
+      const matchesType = typeFilter === 'All' || request.requestType === typeFilter;
+      if (!matchesType) {
+        return false;
+      }
+
+      // 3. Search Filter
       if (!search) {
         return true;
       }
@@ -207,7 +332,8 @@ export class AssetTransactionComponent implements OnInit {
         request.userEmail.toLowerCase().includes(search) ||
         request.subCategory.toLowerCase().includes(search) ||
         request.reason.toLowerCase().includes(search) ||
-        request.urgency.toLowerCase().includes(search)
+        request.urgency.toLowerCase().includes(search) ||
+        (request.requestType && request.requestType.toLowerCase().includes(search))
       );
     });
 
@@ -224,21 +350,26 @@ export class AssetTransactionComponent implements OnInit {
 
   private updateDashboardCards(): void {
     this.totalTransactions = this.allRequests.length;
-    this.pendingAllocations = this.allRequests.filter(r => r.status.toLowerCase() === 'pending').length;
-    this.pendingReturns = this.allRequests.filter(r => r.status.toLowerCase() === 'approved').length;
-    this.rejectedCount = this.allRequests.filter(r => r.status.toLowerCase() === 'rejected').length;
+    this.pendingCount = this.allRequests.filter(r => this.isStatus(r.status, 'Pending')).length;
+    this.approvedCount = this.allRequests.filter(r => this.isStatus(r.status, 'Approved')).length;
+    this.rejectedCount = this.allRequests.filter(r => this.isStatus(r.status, 'Rejected')).length;
+  }
+
+  private isStatus(status: any, target: string): boolean {
+    if (!status) return target === 'pending';
+    return status.toString().trim().toLowerCase() === target.toLowerCase();
   }
 
   private updateCharts(): void {
-    const approvedCount = this.allRequests.filter(r => r.status.toLowerCase() === 'approved').length;
-    const pending = this.allRequests.filter(r => r.status.toLowerCase() === 'pending').length;
-    const rejected = this.allRequests.filter(r => r.status.toLowerCase() === 'rejected').length;
-
     this.transactionStatusData = {
       ...this.transactionStatusData,
       datasets: [{
         ...this.transactionStatusData.datasets[0],
-        data: [approvedCount, pending, rejected]
+        data: [
+          this.allRequests.filter(r => this.isStatus(r.status, 'approved')).length,
+          this.allRequests.filter(r => this.isStatus(r.status, 'pending')).length,
+          this.allRequests.filter(r => this.isStatus(r.status, 'rejected')).length
+        ]
       }]
     };
 
@@ -296,17 +427,11 @@ export class AssetTransactionComponent implements OnInit {
   }
 
   getStatusLabel(status: string): string {
-    if (!status) {
-      return 'Pending';
-    }
-    const lowered = status.toLowerCase();
-    if (lowered === 'approved' || lowered === 'completed') {
-      return 'Completed';
-    }
-    if (lowered === 'rejected') {
-      return 'Rejected';
-    }
-    return 'Pending';
+    const s = (status || '').toString().trim().toLowerCase();
+    if (s === 'approved') return 'APPROVED';
+    if (s === 'rejected') return 'REJECTED';
+    if (s === 'pending') return 'PENDING';
+    return s.toUpperCase() || 'PENDING';
   }
 
   async downloadDocument(doc: string, requestId?: string): Promise<void> {
@@ -437,23 +562,6 @@ export class AssetTransactionComponent implements OnInit {
     return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
   }
 
-  private updateStatusOptions(): void {
-    const rawStatuses = this.allRequests.map(r => r.status);
-    const uniqueStatuses = new Set<string>();
-    rawStatuses.forEach(s => {
-      if (s) {
-        const normalized = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-        uniqueStatuses.add(normalized);
-      }
-    });
-
-    // Ensure standard statuses are present if they exist in data, but also include any others
-    const standard = ['Pending', 'Approved', 'Rejected', 'Completed'];
-    const current = Array.from(uniqueStatuses).sort();
-
-    // Merge standard and any other unique statuses found
-    this.statusOptions = ['All', ...new Set([...standard.filter(s => current.includes(s)), ...current])];
-  }
 
   trackByRequestId(index: number, request: AssetRequest): string {
     return request.requestId || `${index}`;
@@ -614,5 +722,19 @@ export class AssetTransactionComponent implements OnInit {
     this.selectedTrackRequest = null;
     this.trackingSteps = [];
     this.overallProgress = 0;
+  }
+
+  // ===== Details Modal =====
+  showDetailsModal = false;
+  selectedRequest: AssetRequest | null = null;
+
+  openDetailsModal(request: AssetRequest): void {
+    this.selectedRequest = request;
+    this.showDetailsModal = true;
+  }
+
+  closeDetailsModal(): void {
+    this.showDetailsModal = false;
+    this.selectedRequest = null;
   }
 }

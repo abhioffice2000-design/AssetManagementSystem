@@ -39,7 +39,6 @@
           <th>Type</th>
           <th>Subcategory Name</th>
           <!-- <th class="text-center">Request ID</th> -->
-          <th>Purchased Date</th>
           <th>Allocated Date</th>
           <th>Warranty Expiry</th>
         </tr>
@@ -54,7 +53,6 @@
             <span class="request-id-badge" *ngIf="asset.requestId">{{ asset.requestId }}</span>
             <span class="text-muted" *ngIf="!asset.requestId">N/A</span>
           </td> -->
-          <td>{{ asset.purchaseDate | date }}</td>
           <td>{{ asset.allocatedDate ? (asset.allocatedDate | date) : '-' }}</td>
           <td>
             <span [class.text-danger]="isExpiringSoon(asset.warrantyExpiry)">

@@ -178,6 +178,30 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>Pending Actions</h3>
+            <p>Most recent requests awaiting allocation.</p>
+          </div>
+        </div>
+        <div class="expiry-list" *ngIf="pendingAllocations.length > 0">
+          <div class="expiry-item" *ngFor="let p of pendingAllocations">
+            <div class="expiry-icon"><span class="material-icons">pending_actions</span></div>
+            <div class="expiry-info">
+              <span class="expiry-name">{{ p.requester }}</span>
+              <span class="expiry-tag">{{ p.id }} &middot; {{ p.assetType }}</span>
+            </div>
+            <span class="expiry-days" [class.critical]="p.urgency === 'High'">{{ p.urgency }}</span>
+          </div>
+        </div>
+        <div *ngIf="pendingAllocations.length === 0" class="empty-state compact">
+          <span class="material-icons">task_alt</span>
+          <h4>All caught up!</h4>
+          <p>No pending asset requests in your queue.</p>
+        </div>
+      </section>
+
       <section class="panel" *ngIf="stockAlerts.length > 0">
         <div class="panel-header">
           <div>

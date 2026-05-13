@@ -58,6 +58,7 @@ export class AllocationDashboardComponent implements OnInit {
   // Data Lists
   stockAlerts: StockAlert[] = [];
   expiringAssets: any[] = [];
+  pendingAllocations: any[] = [];
   
   // Aggregate Stats
   stats = {
@@ -170,6 +171,20 @@ export class AllocationDashboardComponent implements OnInit {
         .sort((a,b) => a.days - b.days);
       
       this.stats.warrantyAlerts = this.expiringAssets.length;
+      
+      this.pendingAllocations = allRequests
+        .map((t: any) => {
+          const r = t?.old?.t_asset_requests || t?.t_asset_requests || {};
+          const u = t?.old?.m_users || t?.m_users || {};
+          return {
+            id: this.getVal(r.request_id) || this.getVal(r.Request_id) || 'REQ',
+            requester: this.getVal(u.name) || this.getVal(r.requester_name) || this.getVal(r.user_name) || 'Unknown',
+            assetType: this.getVal(r.sub_category_id) || this.getVal(r.asset_type) || 'Hardware',
+            urgency: this.getVal(r.urgency) || 'Medium',
+            date: this.getVal(r.created_at)
+          };
+        })
+        .slice(0, 5);
 
     } catch (err) {
       console.error('Final Dashboard Load Error:', err);
@@ -277,6 +292,7 @@ export class AllocationDashboardComponent implements OnInit {
     this.expiringAssets = [];
     this.inventoryRows = [];
     this.readyAssets = [];
+    this.pendingAllocations = [];
     this.pendingWarrantyRequests = [];
     this.inventoryTypeName = '';
     this.stats = {
@@ -318,6 +334,11 @@ export class AllocationDashboardComponent implements OnInit {
     if (value === null || value === undefined) return undefined;
     if (typeof value === 'object') {
       if (value['@nil'] === 'true' || value['@null'] === 'true' || value['@xsi:nil'] === 'true') return undefined;
+      const textVal = value['#text'] || value['text'] || value['_'];
+      if (textVal !== undefined && textVal !== null) {
+        const str = String(textVal).trim();
+        return str === '' ? undefined : str;
+      }
       return undefined;
     }
     const str = String(value).trim();

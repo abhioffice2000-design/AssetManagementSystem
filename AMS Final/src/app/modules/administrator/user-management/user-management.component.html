@@ -338,10 +338,17 @@
       <!-- Conditional: Asset Type (for Asset Manager / Asset Team) -->
       <div class="form-group mb-16" *ngIf="editRequiresAssetType">
         <label>Asset Type</label>
-        <select class="form-control" [(ngModel)]="editUserForm.assetTypeId">
-          <option value="">Keep current / Select an asset type</option>
-          <option *ngFor="let assetType of assetTypes" [value]="assetType.id">{{ assetType.name }}</option>
-        </select>
+        <div class="checkbox-group">
+          <div class="checkbox-item" 
+               *ngFor="let assetType of assetTypes"
+               [class.checked]="isAssetTypeSelected(assetType.id)"
+               (click)="toggleEditAssetType(assetType.id)">
+            <input type="checkbox" 
+                   [checked]="isAssetTypeSelected(assetType.id)"
+                   (change)="$event.stopPropagation(); toggleEditAssetType(assetType.id)">
+            <span>{{ assetType.name }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- Assigned Assets (Read-only Section) -->
