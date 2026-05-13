@@ -1,0 +1,86 @@
+<div class="policy-details-container">
+  <div class="header-section">
+    <div class="title-wrapper">
+      <h1 class="page-title">Policy Details</h1>
+      <p class="page-subtitle">Manage and view organizational asset policies and guidelines</p>
+    </div>
+    <div class="action-wrapper">
+      <button class="btn-primary add-btn" (click)="onAddPolicy()">
+        <i class="material-icons">add</i>
+        <span>Add New Policy</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon total">
+        <i class="material-icons">description</i>
+      </div>
+      <div class="stat-info">
+        <span class="stat-label">Total Policies</span>
+        <span class="stat-value">{{ stats.totalPolicies }}</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon expiry">
+        <i class="material-icons">warning</i>
+      </div>
+      <div class="stat-info">
+        <span class="stat-label">Warranty Expiry Coming Soon</span>
+        <span class="stat-value">{{ stats.expiringSoon }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-container card">
+    <div class="table-responsive">
+      <table class="policy-table">
+        <thead>
+          <tr>
+            <th>Policy ID</th>
+            <th>Policy Name</th>
+            <th>Purchase Date</th>
+            <th>Expiry Date</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let policy of policies">
+            <td>{{ policy.policyId }}</td>
+            <td class="policy-name">
+              <span class="name">{{ policy.name }}</span>
+              <span class="description" *ngIf="policy.description">{{ policy.description | slice:0:50 }}{{
+                policy.description.length > 50 ? '...' : '' }}</span>
+            </td>
+            <td>{{ policy.effectiveDate | date:'mediumDate' }}</td>
+            <td>{{ policy.expiryDate | date:'mediumDate' }}</td>
+            <td>
+              <span class="status-badge" [ngClass]="getStatusClass(policy.status)">
+                {{ policy.status }}
+              </span>
+            </td>
+            <td class="actions">
+              <button class="btn-icon" title="View Details">
+                <i class="material-icons">visibility</i>
+              </button>
+              <button class="btn-icon" title="Edit">
+                <i class="material-icons">edit</i>
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="policies.length === 0 && !loading">
+            <td colspan="7" class="empty-state">No policies found.</td>
+          </tr>
+          <tr *ngIf="loading">
+            <td colspan="7" class="loading-state">
+              <div class="spinner"></div>
+              <span>Loading policies...</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
