@@ -231,14 +231,27 @@
             <span class="detail-label">Urgency</span>
             <span class="detail-value">{{ selectedTicket.urgency }}</span>
           </div>
-          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET">
-            <span class="detail-label">Reason</span>
-            <span class="detail-value">{{ selectedTicket.reason }}</span>
+          <div class="detail-item full-width" *ngIf="selectedTicket.reason">
+            <span class="detail-label">Employee Remarks</span>
+            <div class="remarks-box emp-remarks">{{ selectedTicket.reason }}</div>
           </div>
           <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET">
             <span class="detail-label">Employee Return Reason</span>
             <span class="detail-value">{{ getReturnEmployeeReason(selectedTicket) }}</span>
           </div>
+          
+          <!-- Team Lead Remarks -->
+          <div class="detail-item full-width" *ngIf="selectedTicket.teamLeadRemarks">
+            <span class="detail-label">Team Lead Remarks</span>
+            <div class="remarks-box tl-remarks">{{ selectedTicket.teamLeadRemarks }}</div>
+          </div>
+
+          <!-- Asset Manager Remarks -->
+          <div class="detail-item full-width" *ngIf="selectedTicket.assetManagerRemarks">
+            <span class="detail-label">Asset Manager Remarks</span>
+            <div class="remarks-box am-remarks">{{ selectedTicket.assetManagerRemarks }}</div>
+          </div>
+
           <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET && getReturnAssetManagerRemarks(selectedTicket)">
             <span class="detail-label">Asset Manager Remarks</span>
             <span class="detail-value">{{ getReturnAssetManagerRemarks(selectedTicket) }}</span>

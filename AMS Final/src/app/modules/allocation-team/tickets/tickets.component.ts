@@ -24,6 +24,8 @@ export interface EnrichedTicket {
   urgency: string;
   reason: string;
   status: RequestStatus;
+  teamLeadRemarks?: string;
+  assetManagerRemarks?: string;
   rawRequest: AssetRequest;
 }
 
@@ -309,35 +311,32 @@ export class AllocationTicketsComponent implements OnInit {
         const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
         this.resolvedTickets = tupleArray
           .map((t: any) => this.mapTupleToEnrichedTicket(t))
-          .filter(t =>
-            t.status === RequestStatus.COMPLETED ||
-            t.status === RequestStatus.APPROVED ||
-            t.status === RequestStatus.REJECTED ||
-            t.status === RequestStatus.CANCELLED
-          );
+          .filter(t => {
+            const isResolved = (
+              t.status === RequestStatus.COMPLETED ||
+              t.status === RequestStatus.APPROVED ||
+              t.status === RequestStatus.REJECTED ||
+              t.status === RequestStatus.CANCELLED
+            );
 
-        // Enrich with asset details if missing
-        for (const ticket of this.resolvedTickets) {
-          await this.enrichTicketWithAssetDetails(ticket);
-        }
-      }
+            if (!isResolved) return false;
 
-      // Fetch Warranty Extension Resolved Tickets
-      try {
-        const warrantyRequests = await this.requestService.fetchAllWarrantyRequests();
-        const resolvedWarrantyTickets = warrantyRequests
-          .filter(req =>
-            req.status === RequestStatus.COMPLETED ||
-            req.status === RequestStatus.APPROVED ||
-            req.status === RequestStatus.REJECTED ||
-            req.status === RequestStatus.CANCELLED
-          )
-          .map(req => this.mapWarrantyToEnrichedTicket(req));
+            // Filter by asset type assignment (if any)
+            if (this.currentUser?.assetTypeName) {
+              const assignedTypes = this.currentUser.assetTypeName
+                .split(',')
+                .map((s: string) => s.trim().toLowerCase());
+              
+              if (assignedTypes.length > 0) {
+                return assignedTypes.includes(t.assetType.toLowerCase());
+              }
+            }
+            
+            return true; // If no types assigned or user missing, show all (fallback)
+          });
 
-        this.resolvedTickets = [...this.resolvedTickets, ...resolvedWarrantyTickets];
-        console.log(`Merged ${resolvedWarrantyTickets.length} resolved warranty tickets`);
-      } catch (wErr) {
-        console.warn('Failed to load resolved warranty tickets for main view:', wErr);
+        // Enrich with asset details in parallel
+        await Promise.all(this.resolvedTickets.map(ticket => this.enrichTicketWithAssetDetails(ticket)));
       }
     } catch (err) {
       console.error('Failed to load resolved tickets:', err);
@@ -563,7 +562,7 @@ export class AllocationTicketsComponent implements OnInit {
       ticketId: this.getVal(reqData?.request_id) ?? this.getVal(approval?.request_id) ?? '—',
       requestorName: this.getVal(userData?.name) ?? '—',
       assetType: this.getVal(reqData?.asset_type) ?? '—',
-      subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? '—',
+      subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? this.getVal(reqData?.temp1) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',
 
       // Reference from resolved return tickets: use temp1 for assetId if missing
@@ -576,6 +575,7 @@ export class AllocationTicketsComponent implements OnInit {
       urgency: this.getVal(reqData?.urgency) ?? '—',
       reason: this.getVal(reqData?.reason) ?? '—',
       status,
+      assetManagerRemarks: this.getVal(approval?.remarks) ?? this.getVal(approval?.temp3) ?? undefined,
       rawRequest: {
         id: this.getVal(reqData?.request_id) ?? '',
         requestNumber: this.getVal(reqData?.request_id) ?? '',
@@ -695,8 +695,63 @@ export class AllocationTicketsComponent implements OnInit {
     this.selectedTicket = ticket;
     this.drawerOpen = true;
     this.decisionRemarks = '';
-    if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
-      await this.enrichReturnTicketWithApprovalHistory(ticket);
+    
+    try {
+      if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
+        await this.enrichReturnTicketWithApprovalHistory(ticket);
+      } else {
+        // Fetch real-time progress for New Asset or Warranty requests
+        const progress = await this.requestService.getRequestProgress(ticket.ticketId);
+        if (progress && progress.length > 0) {
+          // 1. Collect ALL unique, human-entered comments from the history
+          const commentEntries = progress
+            .filter(p => p.comments && p.comments.trim().length > 0)
+            .filter(p => {
+              const c = p.comments.toLowerCase().trim();
+              // Only filter out very generic single-word status updates that aren't real remarks
+              return c !== 'approved' && c !== 'rejected' && c !== 'completed' && c !== 'pending' && c !== '—' && c !== '-' && c !== 'ok';
+            });
+
+          console.log(`[AllocationTickets] Found ${commentEntries.length} meaningful comment entries for ${ticket.ticketId}`);
+
+          // 2. Identify Team Lead Remarks
+          const tlEntry = commentEntries.find(p => {
+            const combined = (p.stage + ' ' + p.role).toLowerCase();
+            return combined.includes('team lead') || combined.includes('lead');
+          });
+          
+          if (tlEntry) {
+            ticket.teamLeadRemarks = tlEntry.comments;
+          } else if (commentEntries.length >= 1 && !ticket.teamLeadRemarks) {
+            ticket.teamLeadRemarks = commentEntries[0].comments;
+          }
+
+          // 3. Identify Asset Manager Remarks
+          const amEntry = commentEntries.find(p => {
+            const combined = (p.stage + ' ' + p.role).toLowerCase();
+            return (combined.includes('asset manager') || combined.includes('manager')) && 
+                   !combined.includes('team lead') && !combined.includes('lead');
+          });
+
+          if (amEntry) {
+            ticket.assetManagerRemarks = amEntry.comments;
+          } else if (commentEntries.length >= 2 && !ticket.assetManagerRemarks) {
+            // If we have at least 2 entries and AM isn't set, take the one that isn't the TL entry
+            const otherEntry = commentEntries.find(p => p.comments !== ticket.teamLeadRemarks);
+            if (otherEntry) ticket.assetManagerRemarks = otherEntry.comments;
+          }
+          
+          // 4. Final check: If we still don't have AM remarks but we had them from the initial tuple, KEEP THEM
+          // (Already handled by !ticket.assetManagerRemarks checks above)
+          
+          console.log(`[AllocationTickets] Final extracted remarks for ${ticket.ticketId}:`, {
+            TL: ticket.teamLeadRemarks,
+            AM: ticket.assetManagerRemarks
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[AllocationTickets] Failed to fetch approval history:', err);
     }
   }
 

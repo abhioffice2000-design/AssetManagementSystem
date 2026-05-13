@@ -116,6 +116,7 @@ export interface AssetRequest {
   document: string;
   createdAt: string;
   subCategory: string;
+  requestType?: string;
 }
 
 interface UserMasterRecord {

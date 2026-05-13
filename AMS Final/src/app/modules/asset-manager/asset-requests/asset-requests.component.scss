@@ -1508,3 +1508,55 @@
   }
 }
 
+
+.reason-box {
+  padding: 12px 16px;
+  background: var(--bg-main);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  border-left: 3px solid #cbd5e1;
+  margin-top: 4px;
+}
+
+.remarks-display-box {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  margin-top: 6px;
+  
+  .remarks-icon {
+    font-size: 20px;
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
+  
+  .remarks-text {
+    margin: 0;
+    font-size: 0.875rem;
+    font-style: italic;
+    line-height: 1.5;
+  }
+  
+  &.tl-remarks-box {
+    background: rgba(37, 99, 235, 0.06);
+    border-left: 4px solid var(--primary);
+    
+    .remarks-icon {
+      color: var(--primary);
+    }
+    
+    .remarks-text {
+      color: #1e40af;
+    }
+  }
+}
+
+.tl-remarks-display {
+  background: rgba(37, 99, 235, 0.05);
+  border-left-color: var(--primary);
+  color: #1e40af;
+  font-style: italic;
+}

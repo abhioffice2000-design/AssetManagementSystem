@@ -1199,17 +1199,23 @@ export class AssetRequestsComponent implements OnInit {
       if (progress && progress.length > 0) {
         // Update the detail request's approval chain with real-time data
         this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
-          const stageProgress = progress.find(p =>
-            p.stage === entry.stage ||
-            (entry.stage === ApprovalStage.TEAM_LEAD && (p.stage.toLowerCase().includes('team lead') || p.stage.toLowerCase().includes('manager')))
-          );
+          const stageProgress = progress.find(p => {
+            const pStage = (p.stage || '').toLowerCase();
+            const eStage = (entry.stage || '').toLowerCase();
+            
+            return pStage === eStage ||
+              (entry.stage === ApprovalStage.TEAM_LEAD && (pStage.includes('team lead') || pStage.includes('manager') || pStage.includes('lead'))) ||
+              (entry.stage === ApprovalStage.ASSET_MANAGER && (pStage.includes('asset manager') || pStage.includes('manager'))) ||
+              (entry.stage === ApprovalStage.ALLOCATION && (pStage.includes('allocation') || pStage.includes('inventory')));
+          });
 
           if (stageProgress) {
-
-
+            if (entry.stage === ApprovalStage.TEAM_LEAD && stageProgress.comments && this.detailRequest) {
+                this.detailRequest.teamLeadJustification = stageProgress.comments;
+            }
             return {
               ...entry,
-              action: (stageProgress.status === 'Approved' || stageProgress.status === 'Rejected') ? stageProgress.status : entry.action,
+              action: (stageProgress.status === 'Approved' || stageProgress.status === 'Rejected' || stageProgress.status === 'Completed') ? 'Approved' : entry.action,
               approverName: stageProgress.approverName || entry.approverName,
               timestamp: stageProgress.timestamp || entry.timestamp,
               comments: stageProgress.comments || entry.comments
@@ -1217,6 +1223,19 @@ export class AssetRequestsComponent implements OnInit {
           }
           return entry;
         });
+        
+        // Final fallback: search for ANY comments from a previous stage if not found yet
+        if (this.detailRequest && !this.detailRequest.teamLeadJustification) {
+            const tlProgress = progress.find(p => {
+                const pStage = (p.stage || '').toLowerCase();
+                return !pStage.includes('asset manager') && !pStage.includes('allocation') && p.comments;
+            });
+            if (tlProgress) {
+                this.detailRequest.teamLeadJustification = tlProgress.comments;
+            }
+        }
+        
+        console.log('[AssetRequests] Updated approval chain with progress:', this.detailRequest.approvalChain);
       } else {
         // Fallback: If no progress history found, but Manager is seeing it, TL must have approved
         this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
@@ -1265,6 +1284,22 @@ export class AssetRequestsComponent implements OnInit {
       return allocStage.comments || 'No remarks provided';
     }
     return allocStage?.comments || '';
+  }
+
+  getTeamLeadRemarks(req: AssetRequest): string {
+    if (req.teamLeadJustification) return req.teamLeadJustification;
+    if (!req.approvalChain) return '';
+    
+    // 1. Look for explicit Team Lead stage in the chain
+    const tlStage = req.approvalChain.find(a => {
+      const stage = (a.stage || '').toLowerCase();
+      return (stage.includes('team lead') || stage.includes('lead')) && 
+             (a.action === 'Approved' || a.action === 'Rejected' || a.comments);
+    });
+    
+    if (tlStage?.comments) return tlStage.comments;
+
+    return '';
   }
 
   getReturnEmployeeReason(req: AssetRequest): string {

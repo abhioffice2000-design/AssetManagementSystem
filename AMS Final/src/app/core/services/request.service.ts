@@ -875,11 +875,11 @@ export class RequestService {
    * Uses the GetRequestProgressForEmployee SOAP request.
    */
   async getRequestProgress(requestId: string): Promise<any[]> {
-    // Normalize ID to lowercase for the backend service (e.g., AR_072 -> ar_072)
-    const normalizedId = requestId.toLowerCase();
+    if (!requestId) return [];
 
     // If it's a warranty extension request (EW or EX prefix), use the specialized warranty progress service
-    if (normalizedId.startsWith('ew') || normalizedId.startsWith('ex')) {
+    const checkId = requestId.toLowerCase();
+    if (checkId.startsWith('ew') || checkId.startsWith('ex')) {
       return this.getWarrantyProgress(requestId);
     }
 
@@ -887,7 +887,7 @@ export class RequestService {
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
     <GetRequestProgressForEmployee xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
-      <requestId>${normalizedId}</requestId>
+      <requestId>${requestId}</requestId>
     </GetRequestProgressForEmployee>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
@@ -908,7 +908,10 @@ export class RequestService {
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
           timestamp: approvalData?.action_date || approvalData?.created_at || '',
-          comments: approvalData?.remarks
+          comments: approvalData?.remarks || approvalData?.Remarks || approvalData?.REMARKS ||
+            approvalData?.temp3 || approvalData?.Temp3 || approvalData?.TEMP3 ||
+            approvalData?.temp4 || approvalData?.temp5 || approvalData?.comment ||
+            approvalData?.reason || approvalData?.Reason || ''
         };
       });
 
@@ -1435,12 +1438,9 @@ export class RequestService {
 
   private mapToStatus(status: string): RequestStatus {
     const normalized = status.toLowerCase();
-    if (normalized.includes('pending')) return RequestStatus.PENDING;
-    if (normalized.includes('approved')) return RequestStatus.APPROVED;
-    if (normalized.includes('rejected')) return RequestStatus.REJECTED;
-    if (normalized.includes('progress')) return RequestStatus.IN_PROGRESS;
-    if (normalized.includes('completed')) return RequestStatus.COMPLETED;
-    if (normalized.includes('cancelled')) return RequestStatus.CANCELLED;
+    if (normalized.includes('pending') || normalized.includes('progress')) return RequestStatus.PENDING;
+    if (normalized.includes('approved') || normalized.includes('completed') || normalized.includes('success') || normalized.includes('closed') || normalized.includes('resolved')) return RequestStatus.APPROVED;
+    if (normalized.includes('rejected') || normalized.includes('failed') || normalized.includes('declined') || normalized.includes('cancelled')) return RequestStatus.REJECTED;
     if (normalized.includes('draft')) return RequestStatus.DRAFT;
     return RequestStatus.PENDING; // default
   }

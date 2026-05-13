@@ -392,11 +392,17 @@
             </div>
             <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Return Asset'">
               <label>Employee Reason</label>
-              <span>{{ detailRequest.justification }}</span>
+              <div class="reason-box">{{ detailRequest.justification }}</div>
             </div>
+            
+            <div class="detail-item full-col" *ngIf="getTeamLeadRemarks(detailRequest)">
+              <label>Team Lead Remarks</label>
+              <div class="reason-box tl-remarks-display">{{ getTeamLeadRemarks(detailRequest) }}</div>
+            </div>
+
             <div class="detail-item full-col" *ngIf="detailRequest.requestType === 'Return Asset'">
               <label>Employee Return Reason</label>
-              <span>{{ getReturnEmployeeReason(detailRequest) }}</span>
+              <div class="reason-box">{{ getReturnEmployeeReason(detailRequest) }}</div>
             </div>
             <div class="detail-item">
               <label>Date</label>

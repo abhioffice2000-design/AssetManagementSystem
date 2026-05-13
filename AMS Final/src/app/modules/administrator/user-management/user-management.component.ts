@@ -93,8 +93,8 @@ export class UserManagementComponent implements OnInit {
     email: string;
     roleName: string;
     projectId: string;
-    assetTypeId: string;
-  } = { email: '', roleName: '', projectId: '', assetTypeId: '' };
+    assetTypeIds: string[];
+  } = { email: '', roleName: '', projectId: '', assetTypeIds: [] };
   isSavingEdit = false;
   editUserEmailError = '';
   editUserAssignedAssets: AssignedAsset[] = [];
@@ -378,7 +378,7 @@ export class UserManagementComponent implements OnInit {
       email: user.email,
       roleName: user.role,
       projectId: user.projectId || '',
-      assetTypeId: user.assetTypeId ? user.assetTypeId.split(',')[0].trim() : ''
+      assetTypeIds: user.assetTypeId ? user.assetTypeId.split(',').map(id => id.trim()).filter(Boolean) : []
     };
     this.editUserEmailError = '';
     this.isSavingEdit = false;
@@ -400,10 +400,23 @@ export class UserManagementComponent implements OnInit {
   closeEditModal(): void {
     this.showEditModal = false;
     this.editingUser = null;
-    this.editUserForm = { email: '', roleName: '', projectId: '', assetTypeId: '' };
+    this.editUserForm = { email: '', roleName: '', projectId: '', assetTypeIds: [] };
     this.editUserEmailError = '';
     this.editUserAssignedAssets = [];
     this.isSavingEdit = false;
+  }
+
+  isAssetTypeSelected(typeId: string): boolean {
+    return this.editUserForm.assetTypeIds.includes(typeId);
+  }
+
+  toggleEditAssetType(typeId: string): void {
+    const index = this.editUserForm.assetTypeIds.indexOf(typeId);
+    if (index > -1) {
+      this.editUserForm.assetTypeIds.splice(index, 1);
+    } else {
+      this.editUserForm.assetTypeIds.push(typeId);
+    }
   }
 
   openChangePasswordModal(user: User): void {
@@ -460,7 +473,7 @@ export class UserManagementComponent implements OnInit {
   onEditUserRoleChange(roleName: string): void {
     this.editUserForm.roleName = roleName;
     this.editUserForm.projectId = '';
-    this.editUserForm.assetTypeId = '';
+    this.editUserForm.assetTypeIds = [];
   }
 
   get editRequiresProject(): boolean {
@@ -506,33 +519,37 @@ export class UserManagementComponent implements OnInit {
     try {
       const targetRoleName = this.editUserForm.roleName.trim().toLowerCase();
 
-      // Restriction: Ensure only one Asset Manager per Asset Type
-      if (targetRoleName === this.assetManagerRoleName.toLowerCase() && this.editUserForm.assetTypeId) {
-        await this.loadAssetTypes(); // Get fresh data to avoid stale checks
-        const existingType = this.assetTypes.find(t => t.id === this.editUserForm.assetTypeId);
-        if (existingType) {
-          const amId = (existingType.assetManagerId || '').trim();
-          const amName = (existingType.assetManager || '').trim();
-          const hasManager = amId !== '' || amName !== '';
-          
-          if (hasManager && amId !== this.editingUser.id) {
-            this.notificationService.showToast('An Asset Manager is already assigned to this asset type. Please remove the existing manager first.', 'error');
-            this.isSavingEdit = false;
-            return;
+      // Restriction: Ensure only one Asset Manager per Asset Type for each selected type
+      if (targetRoleName === this.assetManagerRoleName.toLowerCase() && this.editUserForm.assetTypeIds.length > 0) {
+        await this.loadAssetTypes(); // Get fresh data
+        for (const typeId of this.editUserForm.assetTypeIds) {
+          const existingType = this.assetTypes.find(t => t.id === typeId);
+          if (existingType) {
+            const amId = (existingType.assetManagerId || '').trim();
+            const amName = (existingType.assetManager || '').trim();
+            const hasManager = amId !== '' || amName !== '';
+            
+            if (hasManager && amId !== this.editingUser.id) {
+              this.notificationService.showToast(`An Asset Manager is already assigned to the '${existingType.name}' asset type.`, 'error');
+              this.isSavingEdit = false;
+              return;
+            }
           }
         }
       }
 
       // Restriction: Ensure only one Allocation Team Member per Asset Type
-      if (targetRoleName === this.assetTeamMemberRoleName.toLowerCase() && this.editUserForm.assetTypeId) {
+      if (targetRoleName === this.assetTeamMemberRoleName.toLowerCase() && this.editUserForm.assetTypeIds.length > 0) {
         await this.loadAssetTypes();
-        const existingType = this.assetTypes.find(t => t.id === this.editUserForm.assetTypeId);
-        if (existingType) {
-          const teamMember = (existingType.teamMembers || '').trim();
-          if (teamMember !== '' && teamMember !== this.editingUser.name) {
-            this.notificationService.showToast('An Allocation Team Member is already assigned to this asset type. Please remove the existing member first.', 'error');
-            this.isSavingEdit = false;
-            return;
+        for (const typeId of this.editUserForm.assetTypeIds) {
+          const existingType = this.assetTypes.find(t => t.id === typeId);
+          if (existingType) {
+            const teamMember = (existingType.teamMembers || '').trim();
+            if (teamMember !== '' && teamMember !== this.editingUser.name) {
+              this.notificationService.showToast(`An Allocation Team Member is already assigned to the '${existingType.name}' asset type.`, 'error');
+              this.isSavingEdit = false;
+              return;
+            }
           }
         }
       }
@@ -591,22 +608,8 @@ export class UserManagementComponent implements OnInit {
       // Handle Asset Type Clearing for roles that don't need it
       if (!this.editRequiresAssetType) {
         updates.assetTypeId = '';
-      } else if (this.editUserForm.assetTypeId) {
-        const existing = this.editingUser.assetTypeId || '';
-        const newId = this.editUserForm.assetTypeId;
-        
-        if (existing) {
-          const existingIds = existing.split(',').map(id => id.trim()).filter(Boolean);
-          if (!existingIds.includes(newId)) {
-            updates.assetTypeId = [...existingIds, newId].join(',');
-          } else {
-            // Already assigned, no change needed to this field
-            // But we keep it in updates to be safe or just skip if no change
-            updates.assetTypeId = existing;
-          }
-        } else {
-          updates.assetTypeId = newId;
-        }
+      } else {
+        updates.assetTypeId = this.editUserForm.assetTypeIds.join(',');
       }
 
       await this.adminDataService.updateUserDetails(this.editingUser.id, updates);
