@@ -185,13 +185,13 @@ export class AuthService {
         assetTypeName: this.getNullableValue(item.m_asset_types?.type_name || item.m_asset_types?.asset_type_name || item.asset_type_name || item.type_name)
       };
 
-      // Background resolution for project details if standard mapping was incomplete
+      // Wait for project and asset type details to be resolved before returning
       if (user.projectId && (!user.projectName || !user.teamLeadName)) {
-        this.resolveProjectDetailsInBackground(user);
+        await this.resolveProjectDetailsInBackground(user);
       }
 
       if (user.assetTypeId && !user.assetTypeName) {
-        this.resolveAssetTypeDetailsInBackground(user);
+        await this.resolveAssetTypeDetailsInBackground(user);
       }
 
       return user;

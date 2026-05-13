@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+﻿import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { AssetRequest, ApprovalEntry, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
@@ -86,7 +86,7 @@ export class AllocationTicketsComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     this.currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
     const userId = this.currentUser?.id ?? null;
-    
+
     try {
       // 1. Fetch ALL Asset Type Assignments to resolve managers and my assigned types
       const assignmentsSoap = `
@@ -100,12 +100,12 @@ export class AllocationTicketsComponent implements OnInit {
       let typesData = this.hs.xmltojson(resp, 'm_asset_types');
       if (typesData) {
         const typeArray = Array.isArray(typesData) ? typesData : [typesData];
-        
+
         typeArray.forEach((t: any) => {
           const typeName = (t.type_name || t.name || '').toLowerCase().trim();
           const managerName = t.asset_manager || '—';
           const teamMembers = (t.team_members || t.at_members || '').toString();
-          
+
           if (typeName) {
             this.typeToManagerMap.set(typeName, managerName);
             if (teamMembers.includes(userId)) {
@@ -113,7 +113,7 @@ export class AllocationTicketsComponent implements OnInit {
             }
           }
         });
-        
+
         console.log('[AllocationTickets] My Assigned Types:', this.myAssetTypes);
         console.log('[AllocationTickets] Type to Manager Map:', Array.from(this.typeToManagerMap.entries()));
       }
@@ -166,24 +166,24 @@ export class AllocationTicketsComponent implements OnInit {
       try {
         const activeTasks = await this.requestService.fetchActiveTasks();
         const myTasks = activeTasks.filter(t => t.assigneeId === userId);
-        
+
         // Find tickets that are in myTasks but NOT in allTickets
         for (const task of myTasks) {
-           const existing = this.allTickets.find(ticket => ticket.taskid === task.taskId || ticket.ticketId === (task.data?.requestId || task.data?.Request_id));
-           if (!existing) {
-              console.log('[AllocationTickets] Discovered missing task:', task.taskId);
-              // Try to fetch full details for this request
-              const reqId = task.data?.requestId || task.data?.Request_id;
-              if (reqId) {
-                 const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
-                 const fullReq = allReqs.find(r => r.id === reqId);
-                 if (fullReq) {
-                    const ticket = this.mapWarrantyToEnrichedTicket(fullReq); // Close enough for enrichment
-                    ticket.taskid = task.taskId;
-                    this.allTickets.push(ticket);
-                 }
+          const existing = this.allTickets.find(ticket => ticket.taskid === task.taskId || ticket.ticketId === (task.data?.requestId || task.data?.Request_id));
+          if (!existing) {
+            console.log('[AllocationTickets] Discovered missing task:', task.taskId);
+            // Try to fetch full details for this request
+            const reqId = task.data?.requestId || task.data?.Request_id;
+            if (reqId) {
+              const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
+              const fullReq = allReqs.find(r => r.id === reqId);
+              if (fullReq) {
+                const ticket = this.mapWarrantyToEnrichedTicket(fullReq); // Close enough for enrichment
+                ticket.taskid = task.taskId;
+                this.allTickets.push(ticket);
               }
-           }
+            }
+          }
         }
       } catch (discoveryErr) { console.warn('Task discovery failed:', discoveryErr); }
 
@@ -191,10 +191,10 @@ export class AllocationTicketsComponent implements OnInit {
       await this.loadPendingWarrantyTickets();
 
       this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
-      
+
       // Post-load filtering: Ensure everything matches my assigned types
       if (this.myAssetTypes.length > 0) {
-        this.allTickets = this.allTickets.filter(t => 
+        this.allTickets = this.allTickets.filter(t =>
           this.myAssetTypes.includes(t.assetType.toLowerCase().trim())
         );
       }
@@ -344,12 +344,12 @@ export class AllocationTicketsComponent implements OnInit {
 
             if (!isResolved) return false;
 
-                        // Filter by asset type assignment (handles multiple categories joined by & or ,)
+            // Filter by asset type assignment (handles multiple categories joined by & or ,)
             if (this.currentUser?.assetTypeName) {
               const assignedTypes = this.currentUser.assetTypeName
                 .split(/[&,]/)
                 .map((s: string) => s.trim().toLowerCase());
-              
+
               if (assignedTypes.length > 0) {
                 return assignedTypes.includes(t.assetType.toLowerCase());
               }
@@ -714,7 +714,7 @@ export class AllocationTicketsComponent implements OnInit {
     this.selectedTicket = ticket;
     this.drawerOpen = true;
     this.decisionRemarks = '';
-    
+
     try {
       if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
         await this.enrichReturnTicketWithApprovalHistory(ticket);
@@ -738,7 +738,7 @@ export class AllocationTicketsComponent implements OnInit {
             const combined = (p.stage + ' ' + p.role).toLowerCase();
             return combined.includes('team lead') || combined.includes('lead');
           });
-          
+
           if (tlEntry) {
             ticket.teamLeadRemarks = tlEntry.comments;
           } else if (commentEntries.length >= 1 && !ticket.teamLeadRemarks) {
@@ -748,8 +748,8 @@ export class AllocationTicketsComponent implements OnInit {
           // 3. Identify Asset Manager Remarks
           const amEntry = commentEntries.find(p => {
             const combined = (p.stage + ' ' + p.role).toLowerCase();
-            return (combined.includes('asset manager') || combined.includes('manager')) && 
-                   !combined.includes('team lead') && !combined.includes('lead');
+            return (combined.includes('asset manager') || combined.includes('manager')) &&
+              !combined.includes('team lead') && !combined.includes('lead');
           });
 
           if (amEntry) {
@@ -759,10 +759,10 @@ export class AllocationTicketsComponent implements OnInit {
             const otherEntry = commentEntries.find(p => p.comments !== ticket.teamLeadRemarks);
             if (otherEntry) ticket.assetManagerRemarks = otherEntry.comments;
           }
-          
+
           // 4. Final check: If we still don't have AM remarks but we had them from the initial tuple, KEEP THEM
           // (Already handled by !ticket.assetManagerRemarks checks above)
-          
+
           console.log(`[AllocationTickets] Final extracted remarks for ${ticket.ticketId}:`, {
             TL: ticket.teamLeadRemarks,
             AM: ticket.assetManagerRemarks
@@ -782,8 +782,8 @@ export class AllocationTicketsComponent implements OnInit {
 
   get unresolvedTickets(): EnrichedTicket[] {
     return this.allTickets.filter(t =>
-      t.status === 'Pending' ||
-      t.status === 'In Progress'
+      t.rawRequest.requestType !== RequestType.RETURN_ASSET &&
+      (t.status === 'Pending' || t.status === 'In Progress')
     );
   }
 

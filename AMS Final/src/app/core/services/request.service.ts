@@ -1688,6 +1688,39 @@ export class RequestService {
     });
   }
 
+  async hasActiveReturnRequestForAsset(assetId: string, userId: string): Promise<boolean> {
+    const normalizedAssetId = (assetId || '').trim().toLowerCase();
+    const normalizedUserId = (userId || '').trim().toLowerCase();
+    if (!normalizedAssetId || !normalizedUserId) return false;
+
+    const terminalStatuses = new Set(['rejected', 'cancelled', 'canceled', 'completed']);
+
+    try {
+      const resp = await this.hs.ajax(
+        'GetT_asset_returnsObjects',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        { fromReturn_id: '0', toReturn_id: 'zzzzzzzzzz' }
+      );
+      const tuples = this.hs.xmltojson(resp, 'tuple');
+      if (!tuples) return false;
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArray.some((tuple: any) => {
+        const data = tuple?.old?.t_asset_returns || tuple?.t_asset_returns || tuple;
+        const returnAssetId = (this.getReturnValue(data?.temp1) || this.getReturnValue(data?.asset_id) || '').trim().toLowerCase();
+        const requestedBy = (this.getReturnValue(data?.requested_by) || '').trim().toLowerCase();
+        const status = (this.getReturnValue(data?.status) || 'Pending').trim().toLowerCase();
+
+        return returnAssetId === normalizedAssetId &&
+          requestedBy === normalizedUserId &&
+          !terminalStatuses.has(status);
+      });
+    } catch (err) {
+      console.error('Failed to check active return request for asset:', err);
+      throw err;
+    }
+  }
+
   /**
    * Fetches all return requests, then filters by userId client-side.
    */

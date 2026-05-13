@@ -11,7 +11,6 @@ import { AdminDataService } from '../../../core/services/admin-data.service';
 
 
 
-
 @Component({
   selector: 'app-asset-requests',
   templateUrl: './asset-requests.component.html',
@@ -33,6 +32,7 @@ export class AssetRequestsComponent implements OnInit {
   statusFilterOptions = [RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.REJECTED];
   urgencies = Object.values(RequestUrgency);
   RequestStatus = RequestStatus; // Add this to use in template
+  RequestType = RequestType;
   availableAssets: any[] = [];
   private assetSubCategoryMap = new Map<string, { name: string, typeId: string }>();
   selectedAssetId = '';
@@ -47,8 +47,13 @@ export class AssetRequestsComponent implements OnInit {
   detailRequest: AssetRequest | null = null;
 
   returnRequests: AssetRequest[] = [];
+  returnConfirmationRequests: AssetRequest[] = [];
   requestStats = { total: 0, pending: 0, approved: 0, rejected: 0, completed: 0, inProgress: 0 };
   private returnApproverNameCache = new Map<string, string>();
+
+  trackingSteps: any[] = [];
+  overallProgress = 0;
+  loadingProgress = false;
 
   // Loading & error state
   isLoading = true;
@@ -68,7 +73,7 @@ export class AssetRequestsComponent implements OnInit {
     private notificationService: NotificationService,
     private mailService: MailService,
     private hs: HeroService,
-    private adminDataService: AdminDataService
+    private adminService: AdminDataService
   ) { }
 
   ngOnInit(): void {
@@ -87,6 +92,7 @@ export class AssetRequestsComponent implements OnInit {
         this.allRequests = [];
         this.pendingRequests = [];
         this.confirmationRequests = [];
+        this.returnConfirmationRequests = [];
         this.returnRequests = [];
         this.filteredRequests = [];
         this.requestStats = this.getEmptyRequestStats();
@@ -101,7 +107,7 @@ export class AssetRequestsComponent implements OnInit {
         this.requestService.fetchConfirmationRequestsFromService(approverId).catch(err => { console.error('Confirm Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingReturnApprovalsFromService(approverId).catch(err => { console.error('Return Req fetch failed:', err); return []; }),
         this.requestService.fetchAllReturnRequestsFromService().catch(err => { console.error('All Return Req fetch failed:', err); return []; }),
-        this.adminDataService.getAssetTypeAssignmentDetails().catch(err => { console.error('Assignment fetch failed:', err); return []; }),
+        this.adminService.getAssetTypeAssignmentDetails().catch(err => { console.error('Assignment fetch failed:', err); return []; }),
         this.loadAvailableAssets().catch(err => { console.error('Assets load failed:', err); return []; })
       ] as any[]);
 
@@ -151,6 +157,10 @@ export class AssetRequestsComponent implements OnInit {
       if (this.allocationTeamMemberList.length > 0) {
         this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
       }
+      console.log('Allocation Team Members:', this.allocationTeamMemberList);
+      this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, returnReqs, approverId);
+      this.confirmationRequests = [...confirmReqs, ...this.returnConfirmationRequests];
+      console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
       this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, filteredReturn, approverId);
       this.requestStats = this.requestService.getAllRequestStats(this.getDashboardStatsRequests());
@@ -162,6 +172,8 @@ export class AssetRequestsComponent implements OnInit {
       this.allRequests = [];
       this.pendingRequests = [];
       this.confirmationRequests = [];
+      this.filteredConfirmationRequests = [];
+      this.returnConfirmationRequests = [];
       this.returnRequests = [];
     } finally {
       this.isLoading = false;
@@ -402,6 +414,7 @@ export class AssetRequestsComponent implements OnInit {
     managerPendingReqs: AssetRequest[],
     approverId: string
   ): Promise<AssetRequest[]> {
+    this.returnConfirmationRequests = [];
     const pendingById = new Map<string, AssetRequest>();
     managerPendingReqs.forEach(req => pendingById.set(req.id || req.requestNumber, req));
 
@@ -410,6 +423,7 @@ export class AssetRequestsComponent implements OnInit {
 
     const ids = new Set<string>([...allById.keys(), ...pendingById.keys()]);
     const requests: AssetRequest[] = [];
+    const confirmationRequests: AssetRequest[] = [];
 
     for (const id of ids) {
       const pendingSource = pendingById.get(id);
@@ -418,8 +432,9 @@ export class AssetRequestsComponent implements OnInit {
 
       const base = { ...source } as AssetRequest;
       const progress = await this.requestService.getReturnRequestProgress(id);
+      const orderedProgress = this.getOrderedReturnProgress(progress);
       const chain = await this.buildReturnApprovalChain(progress);
-      const managerApprovals = progress.filter((approval: any) =>
+      const managerApprovals = orderedProgress.filter((approval: any) =>
         approval.approver_id === approverId &&
         this.isAssetManagerReturnRole(approval.role)
       );
@@ -444,7 +459,12 @@ export class AssetRequestsComponent implements OnInit {
           row.taskid = approval.temp2 || row.taskid;
           row.lastUpdated = approval.action_date || row.lastUpdated;
           row.approvalChain = chain.length ? chain : row.approvalChain;
-          requests.push(row);
+          // requests.push(row);
+          if (this.isFinalManagerReturnApproval(orderedProgress, approval)) {
+            confirmationRequests.push(row);
+          } else {
+            requests.push(row);
+          }
         });
 
         if (pendingSource && !hasPendingManagerApproval && pendingSource.status === RequestStatus.PENDING) {
@@ -477,27 +497,52 @@ export class AssetRequestsComponent implements OnInit {
       requests.push(base);
     }
 
+    this.returnConfirmationRequests = confirmationRequests;
     return requests;
   }
 
   private async buildReturnApprovalChain(progress: any[]): Promise<ApprovalEntry[]> {
-    if (!progress?.length) return [];
+    const ordered = this.getOrderedReturnProgress(progress);
+    const stages = [
+      { stage: ApprovalStage.ASSET_MANAGER, matcher: (approval: any) => this.isAssetManagerReturnRole(approval.role) },
+      { stage: ApprovalStage.ALLOCATION, matcher: (approval: any) => this.isAllocationReturnRole(approval.role) },
+      { stage: 'Asset Manager Final Approval' as ApprovalStage, matcher: (approval: any) => this.isAssetManagerReturnRole(approval.role) }
+    ];
+    const usedIndexes = new Set<number>();
 
-    const ordered = [...progress].sort((a: any, b: any) => {
-      const dateA = a.action_date ? new Date(a.action_date).getTime() : NaN;
-      const dateB = b.action_date ? new Date(b.action_date).getTime() : NaN;
-      if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateA - dateB;
-      return this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id);
-    });
+    return Promise.all(stages.map(async (template): Promise<ApprovalEntry> => {
+      const matchIndex = ordered.findIndex((approval: any, index: number) =>
+        !usedIndexes.has(index) && template.matcher(approval)
+      );
+      const approval = matchIndex >= 0 ? ordered[matchIndex] : null;
+      if (matchIndex >= 0) usedIndexes.add(matchIndex);
 
-    return Promise.all(ordered.map(async (approval: any): Promise<ApprovalEntry> => ({
-      stage: this.isAllocationReturnRole(approval.role) ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER,
-      action: this.toApprovalAction(approval.status),
-      approverId: approval.approver_id,
-      approverName: await this.getReturnApproverName(approval.approver_id),
-      timestamp: approval.action_date,
-      comments: approval.remarks
-    })));
+      return {
+        stage: template.stage,
+        action: approval ? this.toApprovalAction(approval.status) : 'Pending',
+        approverId: approval?.approver_id,
+        approverName: approval ? await this.getReturnApproverName(approval.approver_id) : undefined,
+        timestamp: approval?.action_date,
+        comments: approval?.remarks
+      };
+    }));
+
+    // Old behavior mapped only approval rows that already existed in DB, so future return stages were hidden.
+    // if (!progress?.length) return [];
+    // const ordered = [...progress].sort((a: any, b: any) => {
+    //   const dateA = a.action_date ? new Date(a.action_date).getTime() : NaN;
+    //   const dateB = b.action_date ? new Date(b.action_date).getTime() : NaN;
+    //   if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateA - dateB;
+    //   return this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id);
+    // });
+    // return Promise.all(ordered.map(async (approval: any): Promise<ApprovalEntry> => ({
+    //   stage: this.isAllocationReturnRole(approval.role) ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER,
+    //   action: this.toApprovalAction(approval.status),
+    //   approverId: approval.approver_id,
+    //   approverName: await this.getReturnApproverName(approval.approver_id),
+    //   timestamp: approval.action_date,
+    //   comments: approval.remarks
+    // })));
   }
 
   private getReturnDisplayStatus(progress: any[], fallback: RequestStatus): RequestStatus {
@@ -540,6 +585,27 @@ export class AssetRequestsComponent implements OnInit {
     return value.includes('allocation');
   }
 
+  private getOrderedReturnProgress(progress: any[] = []): any[] {
+    return [...(progress || [])].sort((a: any, b: any) => {
+      const dateA = a.action_date ? new Date(a.action_date).getTime() : NaN;
+      const dateB = b.action_date ? new Date(b.action_date).getTime() : NaN;
+      if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateA - dateB;
+      return this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id);
+    });
+  }
+
+  private isFinalManagerReturnApproval(orderedProgress: any[], approval: any): boolean {
+    const currentIndex = orderedProgress.findIndex((item: any) =>
+      item.return_approval_id === approval.return_approval_id
+    );
+    if (currentIndex < 0) return false;
+
+    return orderedProgress.slice(0, currentIndex).some((item: any) =>
+      this.isAllocationReturnRole(item.role) &&
+      this.normalizeStatusText(item.status) === RequestStatus.APPROVED
+    );
+  }
+
   private getNumericApprovalId(id: string): number {
     const numericId = String(id || '').match(/\d+/g)?.join('');
     return numericId ? Number(numericId) : 0;
@@ -573,6 +639,7 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   getApprovalStageLabel(stage: ApprovalStage | string): string {
+    if (stage === 'Asset Manager Final Approval') return 'Asset Manager Final';
     if (stage === ApprovalStage.ASSET_MANAGER) return 'Asset Manager';
     if (stage === ApprovalStage.ALLOCATION) return 'Asset Allocation Team';
     if (stage === ApprovalStage.TEAM_LEAD) return 'Team Lead';
@@ -1207,26 +1274,109 @@ export class AssetRequestsComponent implements OnInit {
     this.actionComments = ''; // Reset remarks for this specific request
     this.selectedAssetId = '';
     this.showDetailModal = true;
+    this.loadingProgress = true;
+    this.trackingSteps = [];
+    this.overallProgress = 0;
 
     // Fetch real-time progress to get actual names and statuses for the tracker
     try {
+      let progress: any[] = [];
       if (request.requestType === RequestType.RETURN_ASSET) {
-        const progress = await this.requestService.getReturnRequestProgress(request.id);
+        progress = await this.requestService.getReturnRequestProgress(request.id);
         const chain = await this.buildReturnApprovalChain(progress);
         if (chain.length > 0) {
           this.detailRequest.approvalChain = chain;
         }
+        await this.enrichReturnDetailWithAssetData(progress);
+        await this.enrichReturnDetailWithRequesterData();
         return;
+      } else {
+        progress = await this.requestService.getRequestProgress(request.id);
       }
 
-      const progress = await this.requestService.getRequestProgress(request.id);
+      const stages = this.getStagesForRequest(request);
+      let availableProgress = [...progress].sort((a: any, b: any) =>
+        new Date(a.timestamp || a.action_date).getTime() - new Date(b.timestamp || b.action_date).getTime()
+      );
+
+      const approverDetails = await this.resolveApproverDetails(request);
+      const resolvedNames: Record<string, string> = {};
+      Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
+
+      this.trackingSteps = stages.map((stage, index) => {
+        let foundIndex = availableProgress.findIndex(p =>
+          stage.roles.some(role => (p.stage || p.role)?.toLowerCase().includes(role))
+        );
+
+        let data = null;
+        if (foundIndex !== -1) {
+          data = availableProgress[foundIndex];
+          availableProgress.splice(foundIndex, 1);
+        }
+
+        let isCompleted = false;
+        let isCurrent = false;
+
+        if (data) {
+          const status = this.normalizeStatusText(data.status);
+          isCompleted = status === RequestStatus.APPROVED || status === RequestStatus.COMPLETED;
+          isCurrent = status === RequestStatus.PENDING;
+        }
+
+        const dbName = (data?.approverName || data?.approver_id || '').trim();
+        const genericPlaceholders = ['approver', 'assigned approver', 'pending', 'to be assigned', '', 'assignedapprover', 'null'];
+        const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
+
+        const roleKey = stage.name === 'Team Lead Approval' ? 'Team Lead' :
+          stage.name === 'Asset Manager Approval' ? 'Asset Manager' :
+            'Asset Allocation Team';
+
+        let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[roleKey];
+
+        return {
+          name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
+          roleName: stage.name,
+          status: data ? this.toApprovalAction(data.status) : (isCompleted ? 'Approved' : 'Pending'),
+          timestamp: data?.timestamp || data?.action_date,
+          isCompleted: isCompleted,
+          isCurrent: isCurrent,
+          comments: data?.comments || data?.remarks
+        };
+      });
+
+      // Special pass to handle "current" state based on the previous step
+      let currentStepFound = false;
+      for (let i = 0; i < this.trackingSteps.length; i++) {
+        const step = this.trackingSteps[i];
+        if (step.status === 'Pending') step.isCurrent = false;
+
+        if (!currentStepFound && !step.isCompleted && step.status?.toLowerCase() !== 'rejected') {
+          step.isCurrent = true;
+          currentStepFound = true;
+        }
+      }
+
+      // If rejected, remove subsequent steps
+      const rejectedIndex = this.trackingSteps.findIndex(s => s.status?.toLowerCase() === 'rejected');
+      if (rejectedIndex !== -1) {
+        this.trackingSteps = this.trackingSteps.slice(0, rejectedIndex + 1);
+      }
+
+      this.overallProgress = this.calculateOverallProgress(request);
+
+      // Initialize selectedAllocationMemberId if not already set
+      if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
+        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+      }
+      // Trigger initial update for the tracker if a member is already selected
+      this.onAllocationMemberChange(this.selectedAllocationMemberId);
+
+      // Legacy update for approvalChain if needed by other logic
       if (progress && progress.length > 0) {
-        // Update the detail request's approval chain with real-time data
         this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
           const stageProgress = progress.find(p => {
             const pStage = (p.stage || '').toLowerCase();
             const eStage = (entry.stage || '').toLowerCase();
-            
             return pStage === eStage ||
               (entry.stage === ApprovalStage.TEAM_LEAD && (pStage.includes('team lead') || pStage.includes('manager') || pStage.includes('lead'))) ||
               (entry.stage === ApprovalStage.ASSET_MANAGER && (pStage.includes('asset manager') || pStage.includes('manager'))) ||
@@ -1235,7 +1385,7 @@ export class AssetRequestsComponent implements OnInit {
 
           if (stageProgress) {
             if (entry.stage === ApprovalStage.TEAM_LEAD && stageProgress.comments && this.detailRequest) {
-                this.detailRequest.teamLeadJustification = stageProgress.comments;
+              this.detailRequest.teamLeadJustification = stageProgress.comments;
             }
             return {
               ...entry,
@@ -1247,31 +1397,138 @@ export class AssetRequestsComponent implements OnInit {
           }
           return entry;
         });
-        
-        // Final fallback: search for ANY comments from a previous stage if not found yet
-        if (this.detailRequest && !this.detailRequest.teamLeadJustification) {
-            const tlProgress = progress.find(p => {
-                const pStage = (p.stage || '').toLowerCase();
-                return !pStage.includes('asset manager') && !pStage.includes('allocation') && p.comments;
-            });
-            if (tlProgress) {
-                this.detailRequest.teamLeadJustification = tlProgress.comments;
-            }
-        }
-        
-        console.log('[AssetRequests] Updated approval chain with progress:', this.detailRequest.approvalChain);
-      } else {
-        // Fallback: If no progress history found, but Manager is seeing it, TL must have approved
-        this.detailRequest.approvalChain = this.detailRequest.approvalChain.map(entry => {
-          if (entry.stage === ApprovalStage.TEAM_LEAD) {
-            return { ...entry, action: 'Approved' as any };
-          }
-          return entry;
-        });
       }
     } catch (err) {
       console.warn('Failed to load dynamic progress for tracker:', err);
+    } finally {
+      this.loadingProgress = false;
     }
+  }
+
+  private async enrichReturnDetailWithAssetData(progress: any[]): Promise<void> {
+    if (!this.detailRequest || this.detailRequest.requestType !== RequestType.RETURN_ASSET) return;
+
+    const progressAssetId = this.getOrderedReturnProgress(progress)
+      .map((approval: any) => approval?.temp1)
+      .find((assetId: string) => !!assetId && assetId !== 'â€”' && assetId !== '-' && assetId !== 'N/A');
+    const assetId = this.detailRequest.assignedAssetId || this.detailRequest.allocatedAssetId || progressAssetId;
+    if (!assetId) return;
+
+    const asset = await this.requestService.getAssetDetailsById(assetId);
+    if (!asset) {
+      this.detailRequest.assignedAssetId = assetId;
+      return;
+    }
+
+    this.detailRequest.assignedAssetId = asset.asset_id || assetId;
+    this.detailRequest.allocatedAssetId = asset.asset_id || assetId;
+    this.detailRequest.assetName = asset.asset_name || this.detailRequest.assetName;
+    this.detailRequest.assetType = this.requestService.normalizeAssetType(asset.type_id || this.detailRequest.assetType);
+    this.detailRequest.assignedTypeId = asset.type_id || this.detailRequest.assignedTypeId;
+    this.detailRequest.assignedSubCategoryId = asset.sub_category_id || this.detailRequest.assignedSubCategoryId;
+    this.detailRequest.subCategory = this.getSubCategoryInfo(asset.sub_category_id)?.name || asset.sub_category_id || this.detailRequest.subCategory;
+    this.detailRequest.category = asset.asset_name || this.detailRequest.category;
+    this.detailRequest.assignedSerial = asset.serial_number || this.detailRequest.assignedSerial;
+    this.detailRequest.assignedPurchaseDate = asset.purchase_date || this.detailRequest.assignedPurchaseDate;
+    this.detailRequest.assignedWarrantyExpiry = asset.warranty_expiry || this.detailRequest.assignedWarrantyExpiry;
+  }
+
+  private async enrichReturnDetailWithRequesterData(): Promise<void> {
+    if (!this.detailRequest || this.detailRequest.requestType !== RequestType.RETURN_ASSET) return;
+
+    const requesterId = this.detailRequest.requesterId;
+    if (!requesterId) return;
+
+    const requester = await this.authService.getUserDetails(requesterId).catch(() => null);
+    if (!requester) return;
+
+    // Return requests from GetT_asset_returnsObjects may not include joined m_users data.
+    // Keep existing mapped values when present, and fill the missing requester details from Cordys.
+    // this.detailRequest.requesterName = this.detailRequest.requesterName;
+    this.detailRequest.requesterName = this.detailRequest.requesterName || requester.name || requesterId;
+    this.detailRequest.requesterEmail = this.detailRequest.requesterEmail || requester.email || '';
+    this.detailRequest.requesterRoleName = this.detailRequest.requesterRoleName || requester.role || '';
+    this.detailRequest.requesterRole = this.detailRequest.requesterRole || requester.role || '';
+    this.detailRequest.requesterDepartment = this.detailRequest.requesterDepartment || requester.department || '';
+    this.detailRequest.requesterTeam = this.detailRequest.requesterTeam || requester.team || requester.projectName || '';
+    this.detailRequest.requesterProject = this.detailRequest.requesterProject || requester.projectId || '';
+    this.detailRequest.requesterProjectName = this.detailRequest.requesterProjectName || requester.projectName || '';
+  }
+
+  onAllocationMemberChange(memberId: string): void {
+    if (!memberId || !this.trackingSteps || this.trackingSteps.length === 0) return;
+
+    const member = this.allocationTeamMemberList.find(m => m.user_id === memberId);
+    if (!member) return;
+
+    // Find the allocation team step in the tracker
+    const allocationStep = this.trackingSteps.find(step => step.roleName === 'Asset Allocation Team');
+    if (allocationStep && (allocationStep.status === 'Pending' || !allocationStep.isCompleted)) {
+      allocationStep.name = member.name;
+    }
+  }
+
+  private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
+    return [
+      { name: 'Team Lead Approval', roles: ['team lead', 'approver'] },
+      { name: 'Asset Manager Approval', roles: ['asset manager', 'mgr'] },
+      { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
+    ];
+  }
+
+  calculateOverallProgress(request: AssetRequest): number {
+    const status = (request.status || '').toLowerCase();
+    if (status === 'completed' || status === 'approved' || status === 'rejected') return 100;
+
+    const completedCount = this.trackingSteps.filter(s => s.isCompleted || s.status?.toLowerCase() === 'rejected').length;
+    const totalSteps = this.trackingSteps.length;
+
+    if (totalSteps === 0) return 10;
+    const progress = Math.round((completedCount / totalSteps) * 100);
+    return Math.min(Math.max(progress, 10), 95);
+  }
+
+  private async resolveApproverDetails(request: AssetRequest): Promise<Record<string, { name: string, id: string }>> {
+    const details: Record<string, { name: string, id: string }> = {};
+    try {
+      // 1. Resolve Team Lead
+      if (request.requesterId) {
+        const user = await this.authService.getUserDetails(request.requesterId).catch(() => null);
+        if (user) {
+          if (user.teamLeadName) {
+            details['Team Lead'] = {
+              name: user.teamLeadName,
+              id: user.teamLeadId || ''
+            };
+          } else if (user.teamLeadId) {
+            const lead = await this.authService.getUserDetails(user.teamLeadId).catch(() => null);
+            details['Team Lead'] = {
+              name: lead?.name || 'Team Lead',
+              id: user.teamLeadId
+            };
+          }
+        }
+      }
+
+      // 2. Resolve Asset Manager & Allocation Team
+      if (request.assetType) {
+        const assignment = await this.adminService.getAssignmentByAssetType(request.assetType);
+        if (assignment) {
+          details['Asset Manager'] = {
+            name: assignment.assetManager,
+            id: assignment.assetManagerId || ''
+          };
+
+          details['Asset Allocation Team'] = {
+            name: assignment.teamMembers,
+            id: ''
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve approver details:', err);
+    }
+    return details;
   }
 
   getRejectionReason(req: AssetRequest): string {
@@ -1313,14 +1570,14 @@ export class AssetRequestsComponent implements OnInit {
   getTeamLeadRemarks(req: AssetRequest): string {
     if (req.teamLeadJustification) return req.teamLeadJustification;
     if (!req.approvalChain) return '';
-    
+
     // 1. Look for explicit Team Lead stage in the chain
     const tlStage = req.approvalChain.find(a => {
       const stage = (a.stage || '').toLowerCase();
-      return (stage.includes('team lead') || stage.includes('lead')) && 
-             (a.action === 'Approved' || a.action === 'Rejected' || a.comments);
+      return (stage.includes('team lead') || stage.includes('lead')) &&
+        (a.action === 'Approved' || a.action === 'Rejected' || a.comments);
     });
-    
+
     if (tlStage?.comments) return tlStage.comments;
 
     return '';
@@ -1335,23 +1592,21 @@ export class AssetRequestsComponent implements OnInit {
     this.detailRequest = null;
   }
 
-  getApprovalStageClass(action: string): string {
-    switch (action) {
-      case 'Approved': return 'stage-approved';
-      case 'Rejected': return 'stage-rejected';
-      case 'Pending': return 'stage-pending';
-      case 'Skipped': return 'stage-skipped';
+  getApprovalStageClass(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'completed';
+      case 'Rejected': return 'rejected';
+      case 'Pending': return 'current';
       default: return '';
     }
   }
 
-  getApprovalIcon(action: string): string {
-    switch (action) {
-      case 'Approved': return 'check_circle';
+  getApprovalIcon(status: string): string {
+    switch (status) {
+      case 'Approved': case 'Completed': return 'check_circle';
       case 'Rejected': return 'cancel';
-      case 'Pending': return 'radio_button_unchecked';
-      case 'Skipped': return 'remove_circle_outline';
-      default: return 'help_outline';
+      case 'Pending': return 'pending';
+      default: return 'radio_button_unchecked';
     }
   }
 
@@ -1508,11 +1763,20 @@ export class AssetRequestsComponent implements OnInit {
     if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
       this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
     }
-    
+
     const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
     if (!member) return 'Not Assigned';
-    
+
     return member.email ? `${member.name} — ${member.email}` : member.name;
+  }
+
+  getTlRemarks(req: AssetRequest): string {
+    if (req.teamLeadJustification) return req.teamLeadJustification;
+    if (req.approvalChain) {
+      const tlEntry = req.approvalChain.find(entry => entry.stage === ApprovalStage.TEAM_LEAD);
+      if (tlEntry && tlEntry.comments && tlEntry.comments !== 'null') return tlEntry.comments;
+    }
+    return '';
   }
 
 }

@@ -114,9 +114,20 @@ export interface AssetRequest {
   status: string;
   emailApproval: boolean;
   document: string;
-  createdAt: string;
   subCategory: string;
   requestType?: string;
+  createdAt: string;
+}
+
+export interface Policy {
+  id: string;
+  policyId: string;
+  name: string;
+  category: string;
+  effectiveDate: string;
+  expiryDate: string;
+  status: 'Active' | 'Inactive' | 'Draft';
+  description: string;
 }
 
 interface UserMasterRecord {
@@ -932,6 +943,32 @@ export class AdminDataService {
         subCategory: this.normalizeNullable(requestData.temp1, '-')
       };
     }) as AssetRequest[];
+  }
+
+  async getAllPolicies(): Promise<Policy[]> {
+    const getAllPoliciesSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllPolicies xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, getAllPoliciesSoap);
+    let policiesData = this.heroService.xmltojson(response, 'm_policies');
+
+    if (!policiesData) return [];
+    if (!Array.isArray(policiesData)) policiesData = [policiesData];
+
+    return policiesData.map((p: any) => ({
+      id: this.normalizeSoapNullable(p.policy_id, ''),
+      policyId: this.normalizeSoapNullable(p.policy_id, ''),
+      name: this.normalizeSoapNullable(p.policy_name, 'Untitled Policy'),
+      category: this.normalizeSoapNullable(p.category, 'General'),
+      effectiveDate: this.normalizeSoapNullable(p.effective_date, ''),
+      expiryDate: this.normalizeSoapNullable(p.expiry_date, ''),
+      status: this.normalizeSoapNullable(p.status, 'Active') as Policy['status'],
+      description: this.normalizeSoapNullable(p.description, '')
+    })) as Policy[];
   }
 
   private normalizeNullable(value: any, fallback: string): string {
