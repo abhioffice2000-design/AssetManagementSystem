@@ -39,7 +39,7 @@ export class AllocationDashboardComponent implements OnInit {
   private myAssetTypes: string[] = [];
   private typeIdToNameMap = new Map<string, string>();
   private typeNameToIdMap = new Map<string, string>();
-  
+
   // Charts
   public assetTypeChartOptions: ChartConfiguration['options'] = {
     responsive: true,
@@ -62,7 +62,7 @@ export class AllocationDashboardComponent implements OnInit {
   stockAlerts: StockAlert[] = [];
   expiringAssets: any[] = [];
   pendingAllocations: any[] = [];
-  
+
   // Aggregate Stats
   stats = {
     totalPending: 0,
@@ -89,7 +89,7 @@ export class AllocationDashboardComponent implements OnInit {
     private notificationService: NotificationService,
     private mailService: MailService,
     private authService: AuthService
-  ) {}
+  ) { }
 
   async ngOnInit(): Promise<void> {
     await this.resolveMyAssetTypes();
@@ -123,7 +123,7 @@ export class AllocationDashboardComponent implements OnInit {
       const resp = await this.hs.ajax(null, null, {}, assignmentsSoap);
       // The service might return types directly or inside tuples
       let typesData = this.hs.xmltojson(resp, 'm_asset_types') || this.hs.xmltojson(resp, 'tuple');
-      
+
       if (typesData) {
         const typeArray = Array.isArray(typesData) ? typesData : [typesData];
         typeArray.forEach((item: any) => {
@@ -131,12 +131,12 @@ export class AllocationDashboardComponent implements OnInit {
           const t = item?.old?.m_asset_types ?? item?.m_asset_types ?? item;
           const typeName = (t.type_name || t.name || '').trim();
           const typeId = this.getVal(t.asset_type_id) || this.getVal(t.id) || '';
-          
+
           if (typeName) {
             const lowerName = typeName.toLowerCase();
             this.typeIdToNameMap.set(typeId, lowerName);
             this.typeNameToIdMap.set(lowerName, typeId);
-            
+
             // Check all possible assignment fields
             const assignments = (t.team_members || t.at_members || t.asset_manager || t.manager_id || '').toString();
             if (assignments.includes(userId)) {
@@ -190,20 +190,20 @@ export class AllocationDashboardComponent implements OnInit {
         }
 
         if (allRequests.length === 0) {
-           try {
-             const activeTasks = await this.requestService.fetchActiveTasks();
-             const myTasks = activeTasks.filter(t => t.assigneeId === userId);
-             for (const task of myTasks) {
-                const reqId = task.data?.requestId || task.data?.Request_id;
-                if (reqId) {
-                   const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
-                   const fullReq = allReqs.find(r => r.id === reqId);
-                   if (fullReq && this.myAssetTypes.includes((fullReq.assetType || '').toLowerCase().trim())) {
-                      allRequests.push({ t_asset_requests: fullReq, m_users: { name: fullReq.requesterName } });
-                   }
+          try {
+            const activeTasks = await this.requestService.fetchActiveTasks();
+            const myTasks = activeTasks.filter(t => t.assigneeId === userId);
+            for (const task of myTasks) {
+              const reqId = task.data?.requestId || task.data?.Request_id;
+              if (reqId) {
+                const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
+                const fullReq = allReqs.find(r => r.id === reqId);
+                if (fullReq && this.myAssetTypes.includes((fullReq.assetType || '').toLowerCase().trim())) {
+                  allRequests.push({ t_asset_requests: fullReq, m_users: { name: fullReq.requesterName } });
                 }
-             }
-           } catch (e) { console.warn('BPM Fallback failed:', e); }
+              }
+            }
+          } catch (e) { console.warn('BPM Fallback failed:', e); }
         }
       }
 
@@ -259,7 +259,7 @@ export class AllocationDashboardComponent implements OnInit {
         available: availableMap.get(cat) || 0
       }))
       .filter(alert => alert.available < alert.waiting)
-      .sort((a,b) => b.waiting - a.waiting);
+      .sort((a, b) => b.waiting - a.waiting);
 
     const now = new Date();
     const thirtyDaysLater = new Date();
@@ -278,10 +278,10 @@ export class AllocationDashboardComponent implements OnInit {
         assignedTo: a.assignedToName || 'Not Assigned',
         days: Math.round((new Date(a.warrantyExpiry).getTime() - now.getTime()) / (1000 * 3600 * 24))
       }))
-      .sort((a,b) => a.days - b.days);
-    
+      .sort((a, b) => a.days - b.days);
+
     this.stats.warrantyAlerts = this.expiringAssets.length;
-    
+
     this.pendingAllocations = allRequests
       .map((t: any) => {
         const r = t?.old?.t_asset_requests || t?.t_asset_requests || t;
@@ -299,7 +299,7 @@ export class AllocationDashboardComponent implements OnInit {
 
   private async fetchAllocationInventoryByUser(userId: string): Promise<Asset[]> {
     const response = await this.hs.ajax(
-      'GetAllocationInventoryByUser',
+      'GetAllocationInventoryByUserName',
       'http://schemas.cordys.com/AMS_Database_Metadata',
       { user_id: userId }
     );
@@ -317,9 +317,9 @@ export class AllocationDashboardComponent implements OnInit {
     const serialNumber = this.getVal(data?.serial_number) ?? '';
     const typeId = this.getVal(data?.type_id) ?? '';
     let typeName = this.getVal(typeInfo?.type_name) ?? this.typeIdToNameMap.get(typeId) ?? typeId ?? 'Assigned Type';
-    
+
     if (typeName === typeId && this.typeIdToNameMap.has(typeId)) {
-       typeName = this.typeIdToNameMap.get(typeId)!;
+      typeName = this.typeIdToNameMap.get(typeId)!;
     }
 
     const categoryName = this.getVal(subCategoryInfo?.name) ?? this.getVal(data?.sub_category_id) ?? 'Uncategorized';
