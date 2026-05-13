@@ -168,7 +168,7 @@ export class AllocationTicketsComponent implements OnInit {
       await this.loadReturnTickets();
       // Sync warranty tickets load
       await this.loadPendingWarrantyTickets();
-      
+
       // Merge return and warranty tickets into allTickets so they appear in the table
       this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
       // Load resolved history
@@ -241,14 +241,14 @@ export class AllocationTicketsComponent implements OnInit {
     try {
       // 1. Try the direct service first
       let warrantyRequests = await this.requestService.fetchPendingWarrantyApprovalsFromService(userId);
-      
+
       // 2. If direct service returns nothing (likely due to role restrictions on the backend), 
       // use a more robust discovery approach
       if (!warrantyRequests || warrantyRequests.length === 0) {
         console.log('[AllocationTickets] Direct pending service returned 0. Trying robust discovery...');
         const allWarrantyReqs = await this.requestService.fetchAllWarrantyRequests();
         const allAssets = await this.assetService.fetchAssetsFromService();
-        
+
         // Find assets that are in "MoveToAllocationTeam" status
         const allocationAssetIds = new Set(
           allAssets
@@ -289,7 +289,7 @@ export class AllocationTicketsComponent implements OnInit {
       this.pendingWarrantyTickets = (warrantyRequests || [])
         .filter(req => req.status === RequestStatus.PENDING || req.status === RequestStatus.IN_PROGRESS)
         .map(req => this.mapWarrantyToEnrichedTicket(req));
-      
+
       console.log(`[AllocationTickets] Loaded ${this.pendingWarrantyTickets.length} pending warranty tickets`);
     } catch (err) {
       console.error('Failed to load pending warranty tickets:', err);
@@ -829,7 +829,7 @@ export class AllocationTicketsComponent implements OnInit {
         new: {
           t_request_approvals: {
             status: "Approved",
-            remarks: this.decisionRemarks || "Allocated to Requestor"
+            remarks: this.decisionRemarks
           }
         }
 
@@ -841,7 +841,7 @@ export class AllocationTicketsComponent implements OnInit {
     // Handle Warranty Extension specific final approval
     if (ticket.rawRequest.requestType === RequestType.EXTEND_WARRANTY) {
       await this.requestService.updateExtendAssetRequest(ticket.rawRequest.id, 'Approved');
-      
+
       // For warranty, we just complete the BPM task and notify
       if (ticket.taskid && ticket.taskid !== '—') {
         await this.requestService.completeUserTask({

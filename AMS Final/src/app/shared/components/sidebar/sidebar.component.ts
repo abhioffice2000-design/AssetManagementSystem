@@ -85,7 +85,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
       case UserRole.TEAM_LEAD:
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
-          { label: 'Pending Approvals', icon: 'fact_check', route: `${base}/pending-approval` },
+          { label: 'Approval History', icon: 'fact_check', route: `${base}/pending-approval` },
           { label: 'My Asset', icon: 'devices', route: `${base}/my-asset` }
         ];
         break;

@@ -908,7 +908,7 @@ export class RequestService {
           approverId: approvalData?.approver_id,
           approverName: approvalData?.m_users?.name || approvalData?.approver_name || 'Assigned Approver',
           timestamp: approvalData?.action_date || approvalData?.created_at || '',
-          comments: approvalData?.remarks || approvalData?.reason || ''
+          comments: approvalData?.remarks
         };
       });
 
@@ -1205,7 +1205,7 @@ export class RequestService {
         )
       ),
       subCategory: this.getNullableValue(subCatInfo?.name || reqData?.sub_category || ''),
-      justification: reqData?.reason || '',
+      justification: this.getNullableValue(reqData?.reason) || '',
       urgency: urgency,
       status: status,
       currentStage: currentStage,

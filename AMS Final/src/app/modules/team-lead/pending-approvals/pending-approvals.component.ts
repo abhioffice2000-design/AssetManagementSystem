@@ -18,7 +18,8 @@ export class PendingApprovalsComponent implements OnInit {
   user: any;
   userDetails: any;
   isLoading = false;
-  approvalChain: any[] = [];
+  trackingSteps: any[] = [];
+  overallProgress = 0;
   loadingProgress = false;
 
   // Pagination & Filtering
@@ -33,7 +34,7 @@ export class PendingApprovalsComponent implements OnInit {
     private requestService: RequestService,
     private notificationService: NotificationService,
     private mailService: MailService,
-        private adminService: AdminDataService,
+    private adminService: AdminDataService,
   ) { }
 
 
@@ -68,51 +69,57 @@ export class PendingApprovalsComponent implements OnInit {
   }
 
   getallrequests() {
-    this.hs.ajax('GetallpendingrequestsForParticularTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
-      { Approver_id: this.userDetails.user_id }
+    this.isLoading = true;
+    debugger;
+    this.hs.ajax('GetRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
+      {}
     ).then((resp: any) => {
-      // Cordys joins typically return tuples
-      const result = this.hs.xmltojson(resp, "tuple") || this.hs.xmltojson(resp, "t_asset_requests");
+      const result = this.hs.xmltojson(resp, "tuple") || this.hs.xmltojson(resp, "t_request_approvals");
       const rawData = result ? (Array.isArray(result) ? result : [result]) : [];
 
-      // Map database fields to the AssetRequest interface
-      this.pendingRequests = rawData
-        .map((tuple: any) => {
-          // If tuple has "old", it's a join; otherwise it might be a flat object
-          const parent = tuple.old || tuple;
+      const mappedRequests = rawData.map((item: any) => {
+        const parent = item.old || item;
+        const request = this.requestService.mapTupleToRequest(item);
+        console.log("item", parent);
 
-          // Data is either inside t_asset_requests or flat in parent
-          const reqItem = parent.t_asset_requests || parent;
-          const userInfo = parent.m_users || reqItem.m_users || {};
-          const subCategory = parent.m_asset_subcategories || reqItem.m_asset_subcategories || {};
-          const approvalInfo = parent.t_request_approvals || reqItem.t_request_approvals || {};
-          const assetTypeInfo = parent.m_asset_types || reqItem.m_asset_types || {};
+        const approvalItem = parent.t_request_approvals;
+        const reqItem = approvalItem.t_asset_requests;
 
-          return {
-            approvalId: approvalInfo.approval_id || '',
-            id: reqItem.request_id || '',
-            requestNumber: reqItem.request_id || '',
-            requesterId: reqItem.user_id || userInfo.user_id || '',
-            requesterName: userInfo.name || '',
-            requesterEmail: userInfo.email || '',
-            requesterTeam: (userInfo.m_projects && userInfo.m_projects.project_name) ? userInfo.m_projects.project_name : (userInfo.team || ''),
-            category: reqItem.temp1,
-            assetType: this.getAssetType(reqItem, assetTypeInfo) || subCategory.name || reqItem.asset_type || '',
-            description: reqItem.purpose || reqItem.reason || '',
-            urgency: reqItem.urgency || '',
-            status: approvalInfo.status || reqItem.status || 'Pending',
-            reason: reqItem.reason || reqItem.purpose || '',
-            remarks: approvalInfo.remarks || 'No remarks',
-            requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
-            currentStage: ApprovalStage.TEAM_LEAD,
-            taskid: approvalInfo.temp2 || ''
-          } as unknown as AssetRequest;
+        return {
+          ...request,
+          id: reqItem.request_id || approvalItem.request_id || parent.request_id || request.id,
+          requestNumber: reqItem.request_id || approvalItem.request_id || parent.request_id || request.requestNumber,
+          requesterName: approvalItem.m_users?.name,
+          assetType: reqItem.asset_type || request.assetType,
+          category: reqItem.temp1 || request.category,
+          urgency: reqItem.urgency || request.urgency,
+          requestDate: reqItem.created_at || request.requestDate,
+          justification: approvalItem.t_asset_requests.reason || '',
+          reqStatus: reqItem.status || request.reqStatus,
+          status: approvalItem.status || request.status,
+          approverId: approvalItem.approver_id || '',
+          role: approvalItem.role || ''
+        };
+      });
 
-        }).sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
+      const uniqueRequestsMap = new Map();
+      mappedRequests.forEach(req => {
+        const existing = uniqueRequestsMap.get(req.id);
+        if (!existing) {
+          uniqueRequestsMap.set(req.id, req);
+        } else {
+          if (req.approverId === this.userDetails?.user_id) {
+            uniqueRequestsMap.set(req.id, req);
+          }
+        }
+      });
+
+      this.pendingRequests = Array.from(uniqueRequestsMap.values())
+        .sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
 
       this.isLoading = false;
     }).catch(err => {
-      console.error("Error fetching requests:", err);
+      console.error("Error fetching request history:", err);
       this.isLoading = false;
     });
   }
@@ -161,53 +168,145 @@ export class PendingApprovalsComponent implements OnInit {
     this.fetchApprovalProgress(req.id);
   }
 
-  async fetchApprovalProgress(requestId: string) {
-    this.loadingProgress = true;
+  private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
+    const isSkippedTl = request.hasEmailApproval || request.requesterId === this.userDetails?.user_id;
 
-    // Standard template for employee requests seen by Team Lead
-    const standardChain = [
-      { stage: 'Team Lead Approval', stageKey: 'Team Lead', status: 'Pending', approverName: '' },
-      { stage: 'Asset Manager Approval', stageKey: 'Asset Manager', status: 'Pending', approverName: '' },
-      { stage: 'Allocation Team', stageKey: 'Asset Allocation', status: 'Pending', approverName: '' }
+    const stages = [
+      { name: 'Team Lead Approval', roles: ['team lead', 'approver'] },
+      { name: 'Asset Manager Approval', roles: ['asset manager', 'mgr'] },
+      { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
     ];
 
-    try {
-      const progress = await this.requestService.getRequestProgress(requestId);
-      console.log('[PendingApprovals] Raw progress:', progress);
+    return isSkippedTl ? stages.slice(1) : stages;
+  }
 
-      // Merge real progress into template
-      this.approvalChain = standardChain.map(step => {
-        // Try to find matching progress entry
-        const match = progress.find(p =>
-          p.stage.toLowerCase().includes(step.stageKey.toLowerCase()) ||
-          step.stage.toLowerCase().includes(p.stage.toLowerCase())
+  async fetchApprovalProgress(requestId: string) {
+    if (!this.selectedRequest) return;
+    this.loadingProgress = true;
+    this.trackingSteps = [];
+
+    try {
+      const progressData = await this.requestService.getRequestProgress(requestId);
+      const stages = this.getStagesForRequest(this.selectedRequest);
+
+      let availableProgress = [...progressData].sort((a: any, b: any) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
+      const approverDetails = await this.resolveApproverDetails(this.selectedRequest);
+      const resolvedNames: Record<string, string> = {};
+      Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
+
+      this.trackingSteps = stages.map((stage, index) => {
+        let foundIndex = availableProgress.findIndex(p =>
+          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
         );
 
-        if (match) {
-          return {
-            ...step,
-            status: match.status,
-            approverName: match.approverName,
-            timestamp: match.timestamp
-          };
+        let data = null;
+        if (foundIndex !== -1) {
+          data = availableProgress[foundIndex];
+          availableProgress.splice(foundIndex, 1);
         }
-        return step;
+
+        let isCompleted = false;
+        let isCurrent = false;
+
+        if (data) {
+          isCompleted = data.status === 'Approved' || data.status === 'Completed';
+          isCurrent = data.status === 'Pending';
+        }
+
+        const dbName = data?.approverName?.trim();
+        const genericPlaceholders = ['approver', 'assigned approver', 'pending', 'to be assigned', '', 'assignedapprover'];
+        const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
+
+        const roleKey = stage.name === 'Team Lead Approval' ? 'Team Lead' :
+          stage.name === 'Asset Manager Approval' ? 'Asset Manager' :
+            'Asset Allocation Team';
+
+        let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[roleKey];
+
+        return {
+          name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
+          roleName: stage.name,
+          status: data ? data.status : (isCompleted ? 'Approved' : 'Pending'),
+          timestamp: data?.timestamp,
+          isCompleted: isCompleted,
+          isCurrent: isCurrent,
+          comments: data?.comments || data?.remarks
+        };
       });
 
+      // Special pass to handle "current" state based on the previous step
+      let currentStepFound = false;
+      for (let i = 0; i < this.trackingSteps.length; i++) {
+        const step = this.trackingSteps[i];
+        if (step.status === 'Pending') step.isCurrent = false;
+
+        if (!currentStepFound && !step.isCompleted && step.status?.toLowerCase() !== 'rejected') {
+          step.isCurrent = true;
+          currentStepFound = true;
+        }
+      }
+
+      // If rejected, remove subsequent steps
+      const rejectedIndex = this.trackingSteps.findIndex(s => s.status?.toLowerCase() === 'rejected');
+      if (rejectedIndex !== -1) {
+        this.trackingSteps = this.trackingSteps.slice(0, rejectedIndex + 1);
+      }
+
+      this.overallProgress = this.calculateOverallProgress(this.selectedRequest);
     } catch (err) {
-      console.error('[PendingApprovals] Failed to fetch progress:', err);
-      this.approvalChain = standardChain;
+      console.error('[History] Failed to fetch progress:', err);
     } finally {
       this.loadingProgress = false;
     }
   }
 
+  private async resolveApproverDetails(request: AssetRequest): Promise<Record<string, { name: string, id: string }>> {
+    const details: Record<string, { name: string, id: string }> = {};
+    try {
+      details['Team Lead'] = {
+        name: this.userDetails?.name || 'Team Lead',
+        id: this.userDetails?.user_id || ''
+      };
+
+      if (request.assetType) {
+        const assignment = await this.adminService.getAssignmentByAssetType(request.assetType);
+        if (assignment) {
+          details['Asset Manager'] = {
+            name: assignment.assetManager,
+            id: assignment.assetManagerId || ''
+          };
+          details['Asset Allocation Team'] = {
+            name: assignment.teamMembers,
+            id: ''
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve approver details:', err);
+    }
+    return details;
+  }
+
+  calculateOverallProgress(request: AssetRequest): number {
+    const status = (request.status || '').toLowerCase();
+    if (status === 'completed' || status === 'approved' || status === 'rejected') return 100;
+
+    const completedCount = this.trackingSteps.filter(s => s.isCompleted || s.status?.toLowerCase() === 'rejected').length;
+    const totalSteps = this.trackingSteps.length;
+
+    if (totalSteps === 0) return 10;
+    const progress = Math.round((completedCount / totalSteps) * 100);
+    return Math.min(Math.max(progress, 10), 95);
+  }
+
   getApprovalStageClass(status: string): string {
     switch (status) {
-      case 'Approved': case 'Completed': return 'stage-approved';
-      case 'Rejected': return 'stage-rejected';
-      case 'Pending': return 'stage-pending';
-      case 'Skipped': return 'stage-skipped';
+      case 'Approved': case 'Completed': return 'completed';
+      case 'Rejected': return 'rejected';
+      case 'Pending': return 'current';
       default: return '';
     }
   }
@@ -216,9 +315,8 @@ export class PendingApprovalsComponent implements OnInit {
     switch (status) {
       case 'Approved': case 'Completed': return 'check_circle';
       case 'Rejected': return 'cancel';
-      case 'Pending': return 'radio_button_unchecked';
-      case 'Skipped': return 'remove_circle_outline';
-      default: return 'help_outline';
+      case 'Pending': return 'pending';
+      default: return 'radio_button_unchecked';
     }
   }
 
@@ -242,10 +340,10 @@ export class PendingApprovalsComponent implements OnInit {
       console.error("[PendingApprovals] Error fetching latest task ID:", err);
     }
   }
-assetmanagerid:any;
+  assetmanagerid: any;
   markAsAccept(): void {
     if (this.selectedRequest) {
-    
+
       this.handleApprove(this.selectedRequest.assetType);
     }
   }
@@ -255,7 +353,7 @@ assetmanagerid:any;
       this.handleReject();
     }
   }
-  async handleApprove(assettype:any) {
+  async handleApprove(assettype: any) {
     console.log(this.selectedRequest);
     if (!this.selectedRequest?.approvalId) {
       this.notificationService.showToast("No approval record found for this request", "error");
@@ -288,12 +386,12 @@ assetmanagerid:any;
       // Fetch latest task ID dynamically to ensure we have it for completion
       await this.Getassetidbyapprovalid(newrequestid);
       const taskid = this.task_id_latest || this.selectedRequest?.taskid;
-        const assignment = await this.adminService.getAssignmentByAssetType(assettype);
+      const assignment = await this.adminService.getAssignmentByAssetType(assettype);
       console.log("taskid to complete", taskid);
 
       if (assignment) {
-          this.assetmanagerid=assignment.assetManagerId;
-        }
+        this.assetmanagerid = assignment.assetManagerId;
+      }
 
       var request2 = {
         tuple: {

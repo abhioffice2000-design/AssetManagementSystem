@@ -21,6 +21,8 @@
       <span style="display: flex; align-items: center; gap: 8px;">
         <span class="material-icons-outlined" style="font-size: 18px;">pending_actions</span>
         Pending
+        <span class="count-badge" [style.background]="activeTab === 'pending' ? 'var(--primary)' : '#cbd5e1'" 
+          style="padding: 2px 8px; border-radius: 20px; color: #fff; font-size: 0.75rem; font-weight: 700;">{{ pendingCount }}</span>
       </span>
     </button>
     <button class="tab-link" [class.active]="activeTab === 'resolved'" (click)="setTab('resolved')"
@@ -31,6 +33,8 @@
       <span style="display: flex; align-items: center; gap: 8px;">
         <span class="material-icons-outlined" style="font-size: 18px;">task_alt</span>
         Resolved
+        <span class="count-badge" [style.background]="activeTab === 'resolved' ? 'var(--primary)' : '#cbd5e1'" 
+          style="padding: 2px 8px; border-radius: 20px; color: #fff; font-size: 0.75rem; font-weight: 700;">{{ resolvedCount }}</span>
       </span>
     </button>
   </div>
@@ -221,12 +225,25 @@
                   style="font-size: 0.72rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em;">{{
                   step.roleName }}</span>
               </div>
-              <span class="step-status">{{ step.status }}</span>
+              <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                <span class="step-status">{{ step.status }}</span>
+                <span class="step-time" *ngIf="step.timestamp" style="font-size: 0.75rem; color: #94a3b8; font-weight: 500;">
+                  {{ step.timestamp | date:'MMM d, h:mm a' }}
+                </span>
+              </div>
             </div>
 
             <div class="step-details card-sub p-12 mt-8">
 
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
+
+              <div class="step-remarks mt-8" *ngIf="step.comments && step.comments !== 'null' && step.comments !== 'undefined'">
+                <div class="remarks-header" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                  <span class="material-icons-outlined" style="font-size: 14px; color: #64748b;">chat_bubble_outline</span>
+                  <span style="font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.02em;">Approver Remarks</span>
+                </div>
+                <p style="margin: 0; font-size: 0.85rem; color: #475569; line-height: 1.4; font-style: italic;">"{{ step.comments }}"</p>
+              </div>
 
               <div class="mt-12 pt-12"
                 *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Service / Maintenance' && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"

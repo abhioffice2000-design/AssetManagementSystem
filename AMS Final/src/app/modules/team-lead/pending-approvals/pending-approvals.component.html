@@ -10,9 +10,9 @@
 
   <ng-container *ngIf="!isLoading">
     <div class="card-header border-0" style="display: flex; justify-content: space-between; align-items: center;">
-      <h3 style="margin: 0;">Pending Approvals ({{pendingRequests.length}})</h3>
+      <h3 style="margin: 0;">Approval History ({{pendingRequests.length}})</h3>
       <div class="search-box">
-        <input type="text" placeholder="Search approvals..." (input)="onSearch($event)" 
+        <input type="text" placeholder="Search history..." (input)="onSearch($event)" 
                style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; min-width: 250px;">
       </div>
     </div>
@@ -25,45 +25,42 @@
               <th><span class="material-icons-outlined">person</span>Name</th>
               <th><span class="material-icons-outlined">category</span> Category</th>
               <th><span class="material-icons-outlined">devices</span> Asset Name</th>
-              <th><span class="material-icons-outlined">speed</span> Urgency</th>
-              <th><span class="material-icons-outlined">info</span> Status</th>
-              <!-- <th><span class="material-icons-outlined">chat_bubble</span> Approver Remarks</th> -->
+              <th><span class="material-icons-outlined">info</span> Overall Status</th>
+              <th><span class="material-icons-outlined">pending_actions</span> Your Action</th>
               <th><span class="material-icons-outlined">event</span> Date</th>
-              <th class="text-center"><span class="material-icons-outlined">settings</span> Action</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngFor="let req of paginatedRequests" 
-                class="clickable-row"
-                [class.selected]="selectedRequest?.id === req.id">
+                (click)="selectRequest(req)"
+                class="clickable-row">
               <td><strong>{{req.requestNumber}}</strong></td>
               <td>{{req.requesterName}}</td>
-              <td>{{req.assetType}}</td>
               <td>{{req.category}}</td>
+              <td>{{req.assetType}}</td>
               <td>
-                <span class="badge" 
-                      [ngClass]="{
-                        'badge-danger': req.urgency === 'High', 
-                        'badge-warning': req.urgency === 'Medium',
-                        'badge-success': req.urgency === 'Low'
-                      }">
-                  {{req.urgency}}
+                <span class="badge" [ngClass]="{
+                      'badge-warning': req.reqStatus === 'Pending' || req.reqStatus === 'In Progress', 
+                      'badge-success': req.reqStatus === 'Completed',
+                      'badge-danger': req.reqStatus === 'Rejected'
+                    }">
+                  {{req.reqStatus}}
                 </span>
               </td>
               <td>
-                <span class="badge badge-warning">{{req.status}}</span>
+                <span class="badge" [ngClass]="{
+                      'badge-warning': req.status === 'Pending' || req.status === 'In Progress', 
+                      'badge-success': req.status === 'Approved' || req.status === 'Completed',
+                      'badge-danger': req.status === 'Rejected' || req.status === 'Cancelled'
+                    }">
+                  {{req.status}}
+                </span>
               </td>
-              <!-- <td>{{req.reason}}</td> -->
-              <td>{{req.requestDate | date}}</td>
-              <td class="text-center">
-                <button (click)="selectRequest(req)" class="btn btn-icon btn-primary" title="Process Request">
-                  <span class="material-icons-outlined" style="font-size: 18px;">edit</span>
-                </button>
-              </td>
+              <td>{{req.requestDate | date:'mediumDate'}}</td>
             </tr>
             <tr *ngIf="pendingRequests.length === 0">
               <td colspan="7" class="text-center text-muted m-24 p-24">
-                Awesome, no pending requests!
+                No request history found.
               </td>
             </tr>
           </tbody>
@@ -78,40 +75,68 @@
   </ng-container>
 </div>
 
-<!-- Modal Popup for Approval Detail -->
+<!-- Modal Popup for Details -->
 <div class="modal-overlay" *ngIf="selectedRequest" (click)="cancelSelection()">
   <div class="modal-content" (click)="$event.stopPropagation()">
     <h4 style="margin-top: 0; margin-bottom: 20px; font-size: 18px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 12px;">Request Details - {{selectedRequest.requestNumber}}</h4>
     
     <!-- Tracker Section -->
-    <div class="approval-chain-top" style="margin-bottom: 30px;">
-      <h4 style="font-size: 13px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-        <span class="material-icons-outlined" style="font-size: 18px; vertical-align: middle; margin-right: 6px; color: #1e293b;">account_tree</span>
-        Request Progress Tracker
-      </h4>
-      <div class="horizontal-timeline">
-        <div class="hz-timeline-item" *ngFor="let entry of approvalChain; let last = last"
-             [ngClass]="getApprovalStageClass(entry.status)">
-          <div class="hz-timeline-marker">
-            <div class="hz-timeline-dot" [ngClass]="getApprovalStageClass(entry.status)">
-              <span class="material-icons-outlined">{{ getApprovalIcon(entry.status) }}</span>
+    <div class="tracker-container mb-24" style="padding: 16px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px;">
+      <!-- Overall Progress -->
+      <div class="progress-section">
+        <div class="progress-header">
+          <span class="progress-label">OVERALL COMPLETION</span>
+          <span class="progress-percentage">{{ overallProgress }}%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar" [style.width.%]="overallProgress"></div>
+        </div>
+      </div>
+
+      <!-- Tracking Timeline -->
+      <div class="tracking-timeline mt-20" [class.loading]="loadingProgress" style="margin-top: 20px;">
+        <div class="timeline-step" *ngFor="let step of trackingSteps; let last = last"
+             [ngClass]="getApprovalStageClass(step.status)">
+          
+          <div class="step-indicator">
+            <div class="step-icon">
+              <span class="material-icons-outlined" [class.spinning]="step.isCurrent && step.status === 'Pending'">
+                {{ getApprovalIcon(step.status) }}
+              </span>
             </div>
-            <div class="hz-timeline-connector" *ngIf="!last"></div>
+            <div class="step-line" *ngIf="!last"></div>
           </div>
-          <div class="hz-timeline-content">
-            <span class="hz-timeline-stage">{{ entry.stage }}</span>
-            <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.status)">{{ entry.status }}</span>
-            <div class="hz-timeline-meta" *ngIf="entry.approverName && entry.status !== 'Pending'">
-              <span class="material-icons-outlined">person</span> {{ entry.approverName }}
+
+          <div class="step-content">
+            <div class="step-header">
+              <div class="step-name-block">
+                <h4 class="step-name">{{ step.name }}</h4>
+                <span class="step-role-label">{{ step.roleName }}</span>
+              </div>
+              <span class="step-status">{{ step.status }}</span>
+            </div>
+
+            <div class="step-details" *ngIf="step.status !== 'Pending' || step.isCurrent">
+              <div class="detail-row" *ngIf="step.timestamp">
+                <span class="material-icons-outlined">calendar_today</span>
+                <span class="detail-text">{{ step.timestamp | date:'medium' }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="material-icons-outlined">chat_bubble_outline</span>
+                <span class="detail-text italic" *ngIf="step.comments">"{{ step.comments }}"</span>
+                <span class="detail-text" *ngIf="!step.comments">-</span>
+              </div>
+              <p class="step-message mt-4" *ngIf="step.isCurrent && !step.timestamp">Awaiting action at this stage...</p>
             </div>
           </div>
         </div>
+
+        <div *ngIf="loadingProgress" class="text-center p-16">
+          <div class="spinner-small" style="width: 24px; height: 24px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 2s linear infinite; margin: 0 auto;"></div>
+          <p class="text-xs text-muted mt-8">Fetching real-time progress...</p>
+        </div>
       </div>
-      <div *ngIf="loadingProgress" class="text-center p-16">
-        <div class="spinner-small" style="width: 24px; height: 24px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 2s linear infinite; margin: 0 auto;"></div>
-        <p class="text-xs text-muted mt-8">Loading real-time progress...</p>
-      </div>
-    </div>    
+    </div>
     <div class="grid grid-2 gap-16" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <label style="font-size: 13px; font-weight: 500; color: #666;">Requester Name</label>
@@ -135,7 +160,7 @@
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;">
         <label style="font-size: 13px; font-weight: 500; color: #666;">Reason</label>
-        <textarea type="text" [value]="selectedRequest.reason" readonly 
+        <textarea type="text" [value]="selectedRequest.justification" readonly 
                style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box; resize: vertical;" rows="3"></textarea>
       </div>
 
@@ -159,21 +184,17 @@
       </div>
       
       <!-- Remarks section -->
-      <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;">
-        <label style="font-size: 13px; font-weight: 500; color: #666;">Approver Remarks</label>
-        <textarea [(ngModel)]="tl_remarks" placeholder="Enter any remarks or comments here..." 
-                  style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: white; width: 100%; box-sizing: border-box; resize: vertical;" 
-                  rows="3"></textarea>
+      <div style="display: flex; flex-direction: column; gap: 8px; grid-column: span 2;" *ngIf="selectedRequest.remarks">
+        <label style="font-size: 13px; font-weight: 500; color: #666;">Remarks</label>
+        <div style="padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9; width: 100%; box-sizing: border-box; min-height: 40px;">
+          {{selectedRequest.remarks}}
+        </div>
       </div>
     </div>
 
     <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 28px; padding-top: 16px; border-top: 1px solid #eee;">
-      <button (click)="markAsReject()" [disabled]="!tl_remarks.trim()" 
-              [style.opacity]="tl_remarks.trim() ? '1' : '0.6'"
-              style="padding: 10px 18px; border: none; background: #dc3545; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Reject</button>
-      <button (click)="markAsAccept()" 
-              style="padding: 10px 18px; border: none; background: #007bff; color: white; border-radius: 4px; cursor: pointer; font-weight: 500;">Accept</button>
-
+      <button (click)="cancelSelection()" 
+              style="padding: 10px 18px; border: 1px solid #ddd; background: white; color: #333; border-radius: 4px; cursor: pointer; font-weight: 500;">Close</button>
     </div>
   </div>
 </div>
