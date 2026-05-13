@@ -171,8 +171,9 @@ export class AllocationTicketsComponent implements OnInit {
       // Sync warranty tickets load
       await this.loadPendingWarrantyTickets();
 
-      // Merge return and warranty tickets into allTickets so they appear in the table
-      this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
+      // Return tickets are kept in the Return Requests tab only.
+      // this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
+      this.allTickets = [...this.allTickets, ...this.pendingWarrantyTickets];
       // Load resolved history
       await this.loadResolvedTickets();
       // Load resolved return history
@@ -763,8 +764,8 @@ export class AllocationTicketsComponent implements OnInit {
 
   get unresolvedTickets(): EnrichedTicket[] {
     return this.allTickets.filter(t =>
-      t.status === 'Pending' ||
-      t.status === 'In Progress'
+      t.rawRequest.requestType !== RequestType.RETURN_ASSET &&
+      (t.status === 'Pending' || t.status === 'In Progress')
     );
   }
 
