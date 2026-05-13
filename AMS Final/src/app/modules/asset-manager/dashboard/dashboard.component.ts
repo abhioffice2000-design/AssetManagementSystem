@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 
 
 @Component({
@@ -24,8 +25,14 @@ export class ManagerDashboardComponent implements OnInit {
   maintenanceRequestsPendingCount = 0;
 
 
-  // Type breakdown
+  // Type breakdown (filtered to manager's type)
   typeBreakdown: TypeBreakdown[] = [];
+
+  // Subcategory-level breakdown used by the donut chart
+  chartBreakdown: TypeBreakdown[] = [];
+
+  // The asset type name assigned to the logged-in asset manager
+  managerAssetTypeName = '';
 
   // Total for percentage calculation
   grandTotal = 0;
@@ -69,7 +76,8 @@ export class ManagerDashboardComponent implements OnInit {
   constructor(
     private assetService: AssetService,
     private requestService: RequestService,
-    private authService: AuthService
+    private authService: AuthService,
+    private adminDataService: AdminDataService
   ) {}
 
 
@@ -183,7 +191,76 @@ export class ManagerDashboardComponent implements OnInit {
 
       // Sort types by count descending
       this.typeBreakdown.sort((a, b) => b.count - a.count);
-      this.grandTotal = this.totalInventory;
+
+      // ── Dynamically resolve ALL asset types managed by this manager from the DB ──
+      let managerTypeNames: string[] = [];
+      try {
+        const allAssignments = await this.adminDataService.getAssetTypeAssignmentDetails();
+        const myAssignments = allAssignments.filter(a =>
+          a.assetManagerId && a.assetManagerId.toLowerCase().trim() === managerId.toLowerCase().trim()
+        );
+        managerTypeNames = myAssignments.map(a => a.name.toLowerCase().trim());
+        console.log(`[Dashboard] Manager ${managerId} is assigned to types:`, managerTypeNames);
+      } catch (e) {
+        // Fallback to single type from auth profile if DB lookup fails
+        const fallbackType = currentUser?.assetTypeName || '';
+        if (fallbackType) managerTypeNames = [fallbackType.toLowerCase().trim()];
+        console.warn('[Dashboard] Could not fetch type assignments from DB, using auth fallback:', managerTypeNames);
+      }
+
+      if (managerTypeNames.length > 0) {
+        // Filter typeBreakdown to ALL types this manager is responsible for
+        this.typeBreakdown = this.typeBreakdown.filter(
+          tb => managerTypeNames.includes(tb.type.toLowerCase().trim())
+        );
+      }
+
+      // Update the display label (comma-joined list for multi-type managers)
+      this.managerAssetTypeName = this.typeBreakdown.map(tb => tb.type).join(' & ');
+
+      // ── Build chartBreakdown: subcategories from ALL matched types as individual slices ──
+      const subColors = [
+        { icon: 'devices',      color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.1)' },
+        { icon: 'laptop',       color: '#8b5cf6', bgColor: 'rgba(139, 92, 246, 0.1)' },
+        { icon: 'monitor',      color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.1)' },
+        { icon: 'memory',       color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.1)' },
+        { icon: 'tablet_mac',   color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.1)' },
+        { icon: 'dns',          color: '#6366f1', bgColor: 'rgba(99, 102, 241, 0.1)' },
+        { icon: 'category',     color: '#14b8a6', bgColor: 'rgba(20, 184, 166, 0.1)' },
+        { icon: 'inventory_2',  color: '#f97316', bgColor: 'rgba(249, 115, 22, 0.1)' },
+        { icon: 'chair',        color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.1)' },
+        { icon: 'code',         color: '#a855f7', bgColor: 'rgba(168, 85, 247, 0.1)' }
+      ];
+      let subColorIdx = 0;
+
+      // Flatten all subcategories from all matched types into one chart
+      const allSubCategorySlices: TypeBreakdown[] = [];
+      this.typeBreakdown.forEach(parentType => {
+        parentType.subCategories.forEach(sub => {
+          const style = subColors[subColorIdx++ % subColors.length];
+          allSubCategorySlices.push({
+            type: sub.name,
+            icon: style.icon,
+            color: style.color,
+            bgColor: style.bgColor,
+            count: sub.count,
+            subCategories: []
+          });
+        });
+      });
+
+      if (allSubCategorySlices.length > 0) {
+        this.chartBreakdown = allSubCategorySlices.sort((a, b) => b.count - a.count);
+        this.grandTotal = this.chartBreakdown.reduce((sum, s) => sum + s.count, 0);
+      } else if (this.typeBreakdown.length > 0) {
+        // No subcategories — show parent types directly
+        this.chartBreakdown = [...this.typeBreakdown];
+        this.grandTotal = this.typeBreakdown.reduce((sum, t) => sum + t.count, 0);
+      } else {
+        this.chartBreakdown = [];
+        this.grandTotal = this.totalInventory;
+      }
+
 
     } catch (err: any) {
       console.error('Failed to load dashboard data:', err);
@@ -230,9 +307,9 @@ export class ManagerDashboardComponent implements OnInit {
     // Calculate start angle (cumulative of all previous slices)
     let startAngleDeg = -90; // Start from 12 o'clock
     for (let i = 0; i < index; i++) {
-      startAngleDeg += (this.typeBreakdown[i].count / this.grandTotal) * 360;
+      startAngleDeg += (this.chartBreakdown[i].count / this.grandTotal) * 360;
     }
-    const sliceAngleDeg = (this.typeBreakdown[index].count / this.grandTotal) * 360;
+    const sliceAngleDeg = (this.chartBreakdown[index].count / this.grandTotal) * 360;
     const endAngleDeg = startAngleDeg + sliceAngleDeg;
 
     const startRad = (startAngleDeg * Math.PI) / 180;
