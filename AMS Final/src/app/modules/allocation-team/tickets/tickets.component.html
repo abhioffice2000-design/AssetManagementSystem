@@ -61,7 +61,8 @@
             <option value="">All Requests</option>
             <option value="new">New Asset Requests</option>
             <option value="warranty">Warranty Extensions</option>
-            <option value="return">Return Requests</option>
+            <!-- Return requests are shown only in the Return Requests tab. -->
+            <!-- <option value="return">Return Requests</option> -->
           </select>
           <select class="asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="onFilterChange()"
             style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">

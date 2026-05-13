@@ -31,6 +31,7 @@ export class AssetRequestsComponent implements OnInit {
   statusFilterOptions = [RequestStatus.PENDING, RequestStatus.APPROVED, RequestStatus.REJECTED];
   urgencies = Object.values(RequestUrgency);
   RequestStatus = RequestStatus; // Add this to use in template
+  RequestType = RequestType;
   availableAssets: any[] = [];
   private assetSubCategoryMap = new Map<string, { name: string, typeId: string }>();
   selectedAssetId = '';
@@ -45,6 +46,7 @@ export class AssetRequestsComponent implements OnInit {
   detailRequest: AssetRequest | null = null;
 
   returnRequests: AssetRequest[] = [];
+  returnConfirmationRequests: AssetRequest[] = [];
   requestStats = { total: 0, pending: 0, approved: 0, rejected: 0, completed: 0, inProgress: 0 };
   private returnApproverNameCache = new Map<string, string>();
 
@@ -84,6 +86,7 @@ export class AssetRequestsComponent implements OnInit {
         this.allRequests = [];
         this.pendingRequests = [];
         this.confirmationRequests = [];
+        this.returnConfirmationRequests = [];
         this.returnRequests = [];
         this.filteredRequests = [];
         this.requestStats = this.getEmptyRequestStats();
@@ -108,10 +111,11 @@ export class AssetRequestsComponent implements OnInit {
       ] as any[]);
 
       this.allRequests = allReqs;
-      this.confirmationRequests = confirmReqs;
+      // this.confirmationRequests = confirmReqs;
 
       // Filter out confirmation requests from the pending approvals list to prevent duplication
-      const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
+      // const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
+      const confirmationIds = new Set(confirmReqs.map((r: AssetRequest) => r.id));
       this.pendingRequests = pendingReqs.filter((r: AssetRequest) => !confirmationIds.has(r.id));
 
       // ── Fix: Reconcile allRequests statuses against the approvals table ──
@@ -145,6 +149,7 @@ export class AssetRequestsComponent implements OnInit {
       }
       console.log('Allocation Team Members:', this.allocationTeamMemberList);
       this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, returnReqs, approverId);
+      this.confirmationRequests = [...confirmReqs, ...this.returnConfirmationRequests];
       console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
       this.requestStats = this.requestService.getAllRequestStats(this.getDashboardStatsRequests());
@@ -158,6 +163,7 @@ export class AssetRequestsComponent implements OnInit {
       this.pendingRequests = [];
       this.confirmationRequests = [];
       this.filteredConfirmationRequests = [];
+      this.returnConfirmationRequests = [];
       this.returnRequests = [];
       this.requestStats = this.getEmptyRequestStats();
     } finally {
@@ -399,6 +405,7 @@ export class AssetRequestsComponent implements OnInit {
     managerPendingReqs: AssetRequest[],
     approverId: string
   ): Promise<AssetRequest[]> {
+    this.returnConfirmationRequests = [];
     const pendingById = new Map<string, AssetRequest>();
     managerPendingReqs.forEach(req => pendingById.set(req.id || req.requestNumber, req));
 
@@ -407,6 +414,7 @@ export class AssetRequestsComponent implements OnInit {
 
     const ids = new Set<string>([...allById.keys(), ...pendingById.keys()]);
     const requests: AssetRequest[] = [];
+    const confirmationRequests: AssetRequest[] = [];
 
     for (const id of ids) {
       const pendingSource = pendingById.get(id);
@@ -415,8 +423,9 @@ export class AssetRequestsComponent implements OnInit {
 
       const base = { ...source } as AssetRequest;
       const progress = await this.requestService.getReturnRequestProgress(id);
+      const orderedProgress = this.getOrderedReturnProgress(progress);
       const chain = await this.buildReturnApprovalChain(progress);
-      const managerApprovals = progress.filter((approval: any) =>
+      const managerApprovals = orderedProgress.filter((approval: any) =>
         approval.approver_id === approverId &&
         this.isAssetManagerReturnRole(approval.role)
       );
@@ -441,7 +450,12 @@ export class AssetRequestsComponent implements OnInit {
           row.taskid = approval.temp2 || row.taskid;
           row.lastUpdated = approval.action_date || row.lastUpdated;
           row.approvalChain = chain.length ? chain : row.approvalChain;
-          requests.push(row);
+          // requests.push(row);
+          if (this.isFinalManagerReturnApproval(orderedProgress, approval)) {
+            confirmationRequests.push(row);
+          } else {
+            requests.push(row);
+          }
         });
 
         if (pendingSource && !hasPendingManagerApproval && pendingSource.status === RequestStatus.PENDING) {
@@ -474,27 +488,52 @@ export class AssetRequestsComponent implements OnInit {
       requests.push(base);
     }
 
+    this.returnConfirmationRequests = confirmationRequests;
     return requests;
   }
 
   private async buildReturnApprovalChain(progress: any[]): Promise<ApprovalEntry[]> {
-    if (!progress?.length) return [];
+    const ordered = this.getOrderedReturnProgress(progress);
+    const stages = [
+      { stage: ApprovalStage.ASSET_MANAGER, matcher: (approval: any) => this.isAssetManagerReturnRole(approval.role) },
+      { stage: ApprovalStage.ALLOCATION, matcher: (approval: any) => this.isAllocationReturnRole(approval.role) },
+      { stage: 'Asset Manager Final Approval' as ApprovalStage, matcher: (approval: any) => this.isAssetManagerReturnRole(approval.role) }
+    ];
+    const usedIndexes = new Set<number>();
 
-    const ordered = [...progress].sort((a: any, b: any) => {
-      const dateA = a.action_date ? new Date(a.action_date).getTime() : NaN;
-      const dateB = b.action_date ? new Date(b.action_date).getTime() : NaN;
-      if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateA - dateB;
-      return this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id);
-    });
+    return Promise.all(stages.map(async (template): Promise<ApprovalEntry> => {
+      const matchIndex = ordered.findIndex((approval: any, index: number) =>
+        !usedIndexes.has(index) && template.matcher(approval)
+      );
+      const approval = matchIndex >= 0 ? ordered[matchIndex] : null;
+      if (matchIndex >= 0) usedIndexes.add(matchIndex);
 
-    return Promise.all(ordered.map(async (approval: any): Promise<ApprovalEntry> => ({
-      stage: this.isAllocationReturnRole(approval.role) ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER,
-      action: this.toApprovalAction(approval.status),
-      approverId: approval.approver_id,
-      approverName: await this.getReturnApproverName(approval.approver_id),
-      timestamp: approval.action_date,
-      comments: approval.remarks
-    })));
+      return {
+        stage: template.stage,
+        action: approval ? this.toApprovalAction(approval.status) : 'Pending',
+        approverId: approval?.approver_id,
+        approverName: approval ? await this.getReturnApproverName(approval.approver_id) : undefined,
+        timestamp: approval?.action_date,
+        comments: approval?.remarks
+      };
+    }));
+
+    // Old behavior mapped only approval rows that already existed in DB, so future return stages were hidden.
+    // if (!progress?.length) return [];
+    // const ordered = [...progress].sort((a: any, b: any) => {
+    //   const dateA = a.action_date ? new Date(a.action_date).getTime() : NaN;
+    //   const dateB = b.action_date ? new Date(b.action_date).getTime() : NaN;
+    //   if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateA - dateB;
+    //   return this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id);
+    // });
+    // return Promise.all(ordered.map(async (approval: any): Promise<ApprovalEntry> => ({
+    //   stage: this.isAllocationReturnRole(approval.role) ? ApprovalStage.ALLOCATION : ApprovalStage.ASSET_MANAGER,
+    //   action: this.toApprovalAction(approval.status),
+    //   approverId: approval.approver_id,
+    //   approverName: await this.getReturnApproverName(approval.approver_id),
+    //   timestamp: approval.action_date,
+    //   comments: approval.remarks
+    // })));
   }
 
   private getReturnDisplayStatus(progress: any[], fallback: RequestStatus): RequestStatus {
@@ -537,6 +576,27 @@ export class AssetRequestsComponent implements OnInit {
     return value.includes('allocation');
   }
 
+  private getOrderedReturnProgress(progress: any[] = []): any[] {
+    return [...(progress || [])].sort((a: any, b: any) => {
+      const dateA = a.action_date ? new Date(a.action_date).getTime() : NaN;
+      const dateB = b.action_date ? new Date(b.action_date).getTime() : NaN;
+      if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateA - dateB;
+      return this.getNumericApprovalId(a.return_approval_id) - this.getNumericApprovalId(b.return_approval_id);
+    });
+  }
+
+  private isFinalManagerReturnApproval(orderedProgress: any[], approval: any): boolean {
+    const currentIndex = orderedProgress.findIndex((item: any) =>
+      item.return_approval_id === approval.return_approval_id
+    );
+    if (currentIndex < 0) return false;
+
+    return orderedProgress.slice(0, currentIndex).some((item: any) =>
+      this.isAllocationReturnRole(item.role) &&
+      this.normalizeStatusText(item.status) === RequestStatus.APPROVED
+    );
+  }
+
   private getNumericApprovalId(id: string): number {
     const numericId = String(id || '').match(/\d+/g)?.join('');
     return numericId ? Number(numericId) : 0;
@@ -570,6 +630,7 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   getApprovalStageLabel(stage: ApprovalStage | string): string {
+    if (stage === 'Asset Manager Final Approval') return 'Asset Manager Final';
     if (stage === ApprovalStage.ASSET_MANAGER) return 'Asset Manager';
     if (stage === ApprovalStage.ALLOCATION) return 'Asset Allocation Team';
     if (stage === ApprovalStage.TEAM_LEAD) return 'Team Lead';
@@ -1213,6 +1274,8 @@ export class AssetRequestsComponent implements OnInit {
         if (chain.length > 0) {
           this.detailRequest.approvalChain = chain;
         }
+        await this.enrichReturnDetailWithAssetData(progress);
+        await this.enrichReturnDetailWithRequesterData();
         return;
       }
 
@@ -1269,6 +1332,56 @@ export class AssetRequestsComponent implements OnInit {
     } catch (err) {
       console.warn('Failed to load dynamic progress for tracker:', err);
     }
+  }
+
+  private async enrichReturnDetailWithAssetData(progress: any[]): Promise<void> {
+    if (!this.detailRequest || this.detailRequest.requestType !== RequestType.RETURN_ASSET) return;
+
+    const progressAssetId = this.getOrderedReturnProgress(progress)
+      .map((approval: any) => approval?.temp1)
+      .find((assetId: string) => !!assetId && assetId !== 'â€”' && assetId !== '-' && assetId !== 'N/A');
+    const assetId = this.detailRequest.assignedAssetId || this.detailRequest.allocatedAssetId || progressAssetId;
+    if (!assetId) return;
+
+    const asset = await this.requestService.getAssetDetailsById(assetId);
+    if (!asset) {
+      this.detailRequest.assignedAssetId = assetId;
+      return;
+    }
+
+    this.detailRequest.assignedAssetId = asset.asset_id || assetId;
+    this.detailRequest.allocatedAssetId = asset.asset_id || assetId;
+    this.detailRequest.assetName = asset.asset_name || this.detailRequest.assetName;
+    this.detailRequest.assetType = this.requestService.normalizeAssetType(asset.type_id || this.detailRequest.assetType);
+    this.detailRequest.assignedTypeId = asset.type_id || this.detailRequest.assignedTypeId;
+    this.detailRequest.assignedSubCategoryId = asset.sub_category_id || this.detailRequest.assignedSubCategoryId;
+    this.detailRequest.subCategory = this.getSubCategoryInfo(asset.sub_category_id)?.name || asset.sub_category_id || this.detailRequest.subCategory;
+    this.detailRequest.category = asset.asset_name || this.detailRequest.category;
+    this.detailRequest.assignedSerial = asset.serial_number || this.detailRequest.assignedSerial;
+    this.detailRequest.assignedPurchaseDate = asset.purchase_date || this.detailRequest.assignedPurchaseDate;
+    this.detailRequest.assignedWarrantyExpiry = asset.warranty_expiry || this.detailRequest.assignedWarrantyExpiry;
+  }
+
+  private async enrichReturnDetailWithRequesterData(): Promise<void> {
+    if (!this.detailRequest || this.detailRequest.requestType !== RequestType.RETURN_ASSET) return;
+
+    const requesterId = this.detailRequest.requesterId;
+    if (!requesterId) return;
+
+    const requester = await this.authService.getUserDetails(requesterId).catch(() => null);
+    if (!requester) return;
+
+    // Return requests from GetT_asset_returnsObjects may not include joined m_users data.
+    // Keep existing mapped values when present, and fill the missing requester details from Cordys.
+    // this.detailRequest.requesterName = this.detailRequest.requesterName;
+    this.detailRequest.requesterName = this.detailRequest.requesterName || requester.name || requesterId;
+    this.detailRequest.requesterEmail = this.detailRequest.requesterEmail || requester.email || '';
+    this.detailRequest.requesterRoleName = this.detailRequest.requesterRoleName || requester.role || '';
+    this.detailRequest.requesterRole = this.detailRequest.requesterRole || requester.role || '';
+    this.detailRequest.requesterDepartment = this.detailRequest.requesterDepartment || requester.department || '';
+    this.detailRequest.requesterTeam = this.detailRequest.requesterTeam || requester.team || requester.projectName || '';
+    this.detailRequest.requesterProject = this.detailRequest.requesterProject || requester.projectId || '';
+    this.detailRequest.requesterProjectName = this.detailRequest.requesterProjectName || requester.projectName || '';
   }
 
   getRejectionReason(req: AssetRequest): string {

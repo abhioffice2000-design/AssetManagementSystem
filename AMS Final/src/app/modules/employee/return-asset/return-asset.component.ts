@@ -63,6 +63,12 @@ export class ReturnAssetComponent implements OnInit {
 
     try {
       console.log('Preparing SOAP request for User ID:', user.id);
+      const hasActiveReturn = await this.requestService.hasActiveReturnRequestForAsset(this.selectedAsset.id, user.id);
+      if (hasActiveReturn) {
+        this.notificationService.showToast('A return request is already active for this asset.', 'warning');
+        return;
+      }
+
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = String(today.getMonth() + 1).padStart(2, '0');

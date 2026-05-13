@@ -582,7 +582,33 @@
 
         <!-- Confirmation Requests tab — dedicated approve/reject flow -->
         <ng-container
+          *ngIf="activeTab === 'confirmation' && detailRequest && detailRequest.requestType === RequestType.RETURN_ASSET && detailRequest.status !== 'Rejected' && detailRequest.status !== 'Completed'">
+          <button class="btn-approve" (click)="directConfirmAction(detailRequest, 'approve')">
+            <span class="material-icons-outlined">check</span>
+            Approve
+          </button>
+          <button class="btn-reject" (click)="directConfirmAction(detailRequest, 'reject')">
+            <span class="material-icons-outlined">close</span>
+            Reject
+          </button>
+        </ng-container>
+
+        <!-- Old confirmation handling was only valid for normal asset confirmations, not return final confirmations. -->
+        <!--
+        <ng-container
           *ngIf="activeTab === 'confirmation' && detailRequest && detailRequest.status !== 'Rejected' && detailRequest.status !== 'Completed'">
+          <button class="btn-approve" (click)="directConfirmActionForConfirmation(detailRequest, 'approve')">
+            <span class="material-icons-outlined">check</span>
+            Approve
+          </button>
+          <button class="btn-reject" (click)="directConfirmActionForConfirmation(detailRequest, 'reject')">
+            <span class="material-icons-outlined">close</span>
+            Reject
+          </button>
+        </ng-container>
+        -->
+        <ng-container
+          *ngIf="activeTab === 'confirmation' && detailRequest && detailRequest.requestType !== RequestType.RETURN_ASSET && detailRequest.status !== 'Rejected' && detailRequest.status !== 'Completed'">
           <button class="btn-approve" (click)="directConfirmActionForConfirmation(detailRequest, 'approve')">
             <span class="material-icons-outlined">check</span>
             Approve
