@@ -307,37 +307,60 @@
         </button>
       </div>
       <div class="modal-body" *ngIf="detailRequest">
-        <!-- Approval Chain (Horizontal) -->
-        <div class="detail-section approval-chain-top">
-          <h4 class="detail-section-title">
-            <span class="material-icons-outlined">account_tree</span>
-            Approval Chain
-          </h4>
-          <div class="horizontal-timeline">
-            <div class="hz-timeline-item" *ngFor="let entry of detailRequest.approvalChain; let last = last"
-              [ngClass]="getApprovalStageClass(entry.action)">
+        <!-- tracker Section -->
+        <div class="tracker-container mb-24" style="padding: 16px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px;">
+          <!-- Overall Progress -->
+          <div class="progress-section">
+            <div class="progress-header">
+              <span class="progress-label">OVERALL COMPLETION</span>
+              <span class="progress-percentage">{{ overallProgress }}%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" [style.width.%]="overallProgress"></div>
+            </div>
+          </div>
 
-              <div class="hz-timeline-marker">
-                <div class="hz-timeline-dot">
-                  <span class="material-icons-outlined">{{ getApprovalIcon(entry.action) }}</span>
+          <!-- Tracking Timeline -->
+          <div class="tracking-timeline mt-20" [class.loading]="loadingProgress" style="margin-top: 20px;">
+            <div class="timeline-step" *ngFor="let step of trackingSteps; let last = last"
+                 [ngClass]="getApprovalStageClass(step.status)">
+              
+              <div class="step-indicator">
+                <div class="step-icon">
+                  <span class="material-icons-outlined" [class.spinning]="step.isCurrent && step.status === 'Pending'">
+                    {{ getApprovalIcon(step.status) }}
+                  </span>
                 </div>
-                <div class="hz-timeline-connector" *ngIf="!last"></div>
+                <div class="step-line" *ngIf="!last"></div>
               </div>
 
-              <div class="hz-timeline-content">
-                <span class="hz-timeline-stage">
-                  {{ getApprovalStageLabel(entry.stage) }}<span *ngIf="entry.approverName"> ({{ entry.approverName }})</span>
-                </span>
-                <span class="timeline-action-badge" [ngClass]="getApprovalStageClass(entry.action)">{{ entry.action
-                  }}</span>
-                <div class="hz-timeline-meta" *ngIf="entry.approverId && !entry.approverName">
-                  <span class="material-icons-outlined">person</span> {{ entry.approverId }}
+              <div class="step-content">
+                <div class="step-header">
+                  <div class="step-name-block">
+                    <h4 class="step-name">{{ step.name }}</h4>
+                    <span class="step-role-label">{{ step.roleName }}</span>
+                  </div>
+                  <span class="step-status">{{ step.status }}</span>
                 </div>
-                <div class="hz-timeline-meta" *ngIf="entry.timestamp">
-                  <span class="material-icons-outlined">schedule</span> {{ entry.timestamp | date: 'dd MMM, hh:mm a' }}
+
+                <div class="step-details" *ngIf="step.status !== 'Pending' || step.isCurrent">
+                  <div class="detail-row" *ngIf="step.timestamp">
+                    <span class="material-icons-outlined">calendar_today</span>
+                    <span class="detail-text">{{ step.timestamp | date:'medium' }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="material-icons-outlined">chat_bubble_outline</span>
+                    <span class="detail-text italic" *ngIf="step.comments">"{{ step.comments }}"</span>
+                    <span class="detail-text" *ngIf="!step.comments">-</span>
+                  </div>
+                  <p class="step-message mt-4" *ngIf="step.isCurrent && !step.timestamp">Awaiting action at this stage...</p>
                 </div>
               </div>
+            </div>
 
+            <div *ngIf="loadingProgress" class="text-center p-16">
+              <div class="spinner-small" style="width: 24px; height: 24px; border: 3px solid #f3f3f3; border-top: 3px solid #3498db; border-radius: 50%; animation: spin 2s linear infinite; margin: 0 auto;"></div>
+              <p class="text-xs text-muted mt-8">Fetching real-time progress...</p>
             </div>
           </div>
         </div>
@@ -394,11 +417,12 @@
               <label>Employee Reason</label>
               <div class="reason-box">{{ detailRequest.justification }}</div>
             </div>
-            
-            <div class="detail-item full-col" *ngIf="getTeamLeadRemarks(detailRequest)">
+
+            <div class="detail-item full-col" *ngIf="detailRequest.requestType !== 'Return Asset' && getTlRemarks(detailRequest)">
               <label>Team Lead Remarks</label>
-              <div class="reason-box tl-remarks-display">{{ getTeamLeadRemarks(detailRequest) }}</div>
+              <div class="reason-box remarks-box">{{ getTlRemarks(detailRequest) }}</div>
             </div>
+            
 
             <div class="detail-item full-col" *ngIf="detailRequest.requestType === 'Return Asset'">
               <label>Employee Return Reason</label>
@@ -436,12 +460,12 @@
                     </option>
                   </select>
                 </div>
-                <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation'">
-                  <label>Allocation Team Member</label>
-                  <select class="asset-select" [(ngModel)]="selectedAllocationMemberId">
-                    <option value="">-- Select Allocation Team Member --</option>
+                <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation' && detailRequest.requestType !== 'Extend Warranty'">
+                  <label>Assign Allocation Team Member</label>
+                  <select class="form-control" [(ngModel)]="selectedAllocationMemberId" (ngModelChange)="onAllocationMemberChange($event)" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                    <option value="" disabled>-- Select Member --</option>
                     <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
-                      {{ member.name }} — {{ member.email }}
+                      {{ member.name }} ({{ member.email }})
                     </option>
                   </select>
                 </div>

@@ -586,10 +586,12 @@ export class LeadDashboardComponent implements OnInit {
           urgency: reqItem.urgency || '',
           status: approvalInfo.status || reqItem.status || 'Pending',
           reason: reqItem.reason || reqItem.purpose || '',
+          justification: reqItem.reason || reqItem.purpose || '',
           remarks: approvalInfo.remarks || 'No remarks',
           requestDate: reqItem.created_at || reqItem.request_date || new Date().toISOString(),
           currentStage: ApprovalStage.TEAM_LEAD,
-          taskid: approvalInfo.temp2 || ''
+          taskid: approvalInfo.temp2 || '',
+          document: reqItem.document || reqItem.temp2 || ''
         } as unknown as AssetRequest;
       }).sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
 

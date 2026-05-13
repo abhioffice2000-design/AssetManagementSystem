@@ -11,6 +11,7 @@ import { MasterDataComponent } from './master-data/master-data.component';
 import { AssetTransactionComponent } from './asset-transaction/asset-transaction.component';
 import { AdminReportsComponent } from './reports/reports.component';
 import { WarrantySchedulerComponent } from './warranty-scheduler/warranty-scheduler.component';
+import { PolicyDetailsComponent } from './policy-details/policy-details.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: AdminDashboardComponent },
@@ -19,6 +20,7 @@ const routes: Routes = [
   { path: 'transactions', component: AssetTransactionComponent },
   { path: 'reports', component: AdminReportsComponent },
   { path: 'warranty-scheduler', component: WarrantySchedulerComponent },
+  { path: 'policy-details', component: PolicyDetailsComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
 
@@ -29,7 +31,8 @@ const routes: Routes = [
     MasterDataComponent,
     AssetTransactionComponent,
     AdminReportsComponent,
-    WarrantySchedulerComponent
+    WarrantySchedulerComponent,
+    PolicyDetailsComponent
   ],
   imports: [
     CommonModule,
