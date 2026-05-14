@@ -24,7 +24,7 @@ export class AllocationInventoryComponent implements OnInit {
   loading = true;
   searchText = '';
   statusFilter = '';
-  
+
   viewMode: 'summary' | 'details' = 'summary';
   summaryRows: InventorySummaryRow[] = [];
   inventoryTypeName = '';
@@ -72,7 +72,7 @@ export class AllocationInventoryComponent implements OnInit {
 
   private async fetchAllocationInventoryByUser(userId: string): Promise<Asset[]> {
     const response = await this.hs.ajax(
-      'GetAllocationInventoryByUser',
+      'GetAllocationInventoryByUserName',
       'http://schemas.cordys.com/AMS_Database_Metadata',
       { user_id: userId }
     );
@@ -126,7 +126,7 @@ export class AllocationInventoryComponent implements OnInit {
       const typeName = asset.type as string || 'Assigned Type';
       const categoryName = asset.category || 'Uncategorized';
       const statusValue = (asset.status || '').toLowerCase().trim();
-      
+
       const isAvailable = statusValue === 'available';
       const isMoveToAllocation = statusValue === 'movetoallocationteam';
       const isAssigned = statusValue === 'allocated' || statusValue === 'assigned';
