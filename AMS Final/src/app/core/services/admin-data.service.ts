@@ -126,8 +126,10 @@ export interface Policy {
   category: string;
   effectiveDate: string;
   expiryDate: string;
-  status: 'Active' | 'Inactive' | 'Draft';
+  status: string;
   description: string;
+  toMailId?: string;
+  fromMailId?: string;
 }
 
 interface UserMasterRecord {
@@ -966,8 +968,38 @@ export class AdminDataService {
       category: this.normalizeSoapNullable(p.category, 'General'),
       effectiveDate: this.normalizeSoapNullable(p.policy_purchase_date || p.effective_date, ''),
       expiryDate: this.normalizeSoapNullable(p.policy_expiry_date || p.expiry_date, ''),
-      status: this.normalizeSoapNullable(p.flag || p.status, 'Active') as Policy['status'],
-      description: this.normalizeSoapNullable(p.description, '')
+      status: this.normalizeSoapNullable(p.flag || p.status, 'Active'),
+      description: this.normalizeSoapNullable(p.description, ''),
+      toMailId: this.normalizeSoapNullable(p.to_mailid, ''),
+      fromMailId: this.normalizeSoapNullable(p.from_mailid, '')
+    })) as Policy[];
+  }
+
+  async getAllInactivePolicies(): Promise<Policy[]> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <Allinactivepolicy xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.heroService.ajax(null, null, {}, soapMsg);
+    let policiesData = this.heroService.xmltojson(response, 'm_policy_details') || this.heroService.xmltojson(response, 'm_policies');
+
+    if (!policiesData) return [];
+    if (!Array.isArray(policiesData)) policiesData = [policiesData];
+
+    return policiesData.map((p: any) => ({
+      id: this.normalizeSoapNullable(p.policy_id, ''),
+      policyId: this.normalizeSoapNullable(p.policy_id, ''),
+      name: this.normalizeSoapNullable(p.policy_name, 'Untitled Policy'),
+      category: this.normalizeSoapNullable(p.category, 'General'),
+      effectiveDate: this.normalizeSoapNullable(p.policy_purchase_date || p.effective_date, ''),
+      expiryDate: this.normalizeSoapNullable(p.policy_expiry_date || p.expiry_date, ''),
+      status: this.normalizeSoapNullable(p.flag || p.status, 'Inactive'),
+      description: this.normalizeSoapNullable(p.description, ''),
+      toMailId: this.normalizeSoapNullable(p.to_mailid, ''),
+      fromMailId: this.normalizeSoapNullable(p.from_mailid, '')
     })) as Policy[];
   }
 
@@ -1044,6 +1076,35 @@ export class AdminDataService {
   <SOAP:Body>
     <UpdateM_policy_details xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
       <tuple>
+        <new>
+          <m_policy_details qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <policy_name>${this.xmlEscape(policy.policy_name)}</policy_name>
+            <policy_purchase_date>${this.xmlEscape(policy.policy_purchase_date)}</policy_purchase_date>
+            <policy_expiry_date>${this.xmlEscape(policy.policy_expiry_date)}</policy_expiry_date>
+            <flag>${this.xmlEscape(policy.flag)}</flag>
+            <to_mailid>${this.xmlEscape(policy.to_mailid)}</to_mailid>
+            <from_mailid>${this.xmlEscape(policy.from_mailid)}</from_mailid>
+          </m_policy_details>
+        </new>
+      </tuple>
+    </UpdateM_policy_details>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, soapMsg);
+  }
+
+  async updatePolicyDetail(policy: any, policyId?: string): Promise<void> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_policy_details xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_policy_details>
+            <policy_id>${policyId}</policy_id>
+          </m_policy_details>
+        </old>
         <new>
           <m_policy_details qAccess="0" qConstraint="0" qInit="0" qValues="">
             <policy_name>${this.xmlEscape(policy.policy_name)}</policy_name>
