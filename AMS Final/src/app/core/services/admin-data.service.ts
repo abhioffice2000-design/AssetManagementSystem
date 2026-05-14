@@ -954,7 +954,7 @@ export class AdminDataService {
 </SOAP:Envelope>`.trim();
 
     const response = await this.heroService.ajax(null, null, {}, getAllPoliciesSoap);
-    let policiesData = this.heroService.xmltojson(response, 'm_policies');
+    let policiesData = this.heroService.xmltojson(response, 'm_policy_details') || this.heroService.xmltojson(response, 'm_policies');
 
     if (!policiesData) return [];
     if (!Array.isArray(policiesData)) policiesData = [policiesData];
@@ -964,9 +964,9 @@ export class AdminDataService {
       policyId: this.normalizeSoapNullable(p.policy_id, ''),
       name: this.normalizeSoapNullable(p.policy_name, 'Untitled Policy'),
       category: this.normalizeSoapNullable(p.category, 'General'),
-      effectiveDate: this.normalizeSoapNullable(p.effective_date, ''),
-      expiryDate: this.normalizeSoapNullable(p.expiry_date, ''),
-      status: this.normalizeSoapNullable(p.status, 'Active') as Policy['status'],
+      effectiveDate: this.normalizeSoapNullable(p.policy_purchase_date || p.effective_date, ''),
+      expiryDate: this.normalizeSoapNullable(p.policy_expiry_date || p.expiry_date, ''),
+      status: this.normalizeSoapNullable(p.flag || p.status, 'Active') as Policy['status'],
       description: this.normalizeSoapNullable(p.description, '')
     })) as Policy[];
   }
@@ -1029,6 +1029,37 @@ export class AdminDataService {
       console.error('Error changing password for user:', e);
       throw new Error('Failed to update user password.');
     }
+  }
+
+  async addPolicyDetail(policy: {
+    policy_name: string;
+    policy_purchase_date: string;
+    policy_expiry_date: string;
+    flag: string;
+    to_mailid: string;
+    from_mailid: string;
+  }): Promise<void> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_policy_details xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <m_policy_details qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <policy_name>${this.xmlEscape(policy.policy_name)}</policy_name>
+            <policy_purchase_date>${this.xmlEscape(policy.policy_purchase_date)}</policy_purchase_date>
+            <policy_expiry_date>${this.xmlEscape(policy.policy_expiry_date)}</policy_expiry_date>
+            <flag>${this.xmlEscape(policy.flag)}</flag>
+            <to_mailid>${this.xmlEscape(policy.to_mailid)}</to_mailid>
+            <from_mailid>${this.xmlEscape(policy.from_mailid)}</from_mailid>
+          </m_policy_details>
+        </new>
+      </tuple>
+    </UpdateM_policy_details>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    await this.heroService.ajax(null, null, {}, soapMsg);
   }
 
   private xmlEscape(value: string): string {

@@ -1,4 +1,4 @@
-﻿import { Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetRequest, ApprovalEntry, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
@@ -1286,9 +1286,45 @@ export class AssetRequestsComponent implements OnInit {
         const chain = await this.buildReturnApprovalChain(progress);
         if (chain.length > 0) {
           this.detailRequest.approvalChain = chain;
+
+          const approverDetails = await this.resolveApproverDetails(request);
+          const resolvedNames: Record<string, string> = {};
+          resolvedNames[ApprovalStage.ASSET_MANAGER] = approverDetails['Asset Manager']?.name;
+          resolvedNames[ApprovalStage.ALLOCATION] = approverDetails['Asset Allocation Team']?.name;
+          resolvedNames['Asset Manager Final Approval'] = approverDetails['Asset Manager']?.name;
+
+          // Populate trackingSteps for the UI tracker
+          this.trackingSteps = chain.map(step => {
+            const genericPlaceholders = ['approver', 'assigned approver', 'pending', 'to be assigned', 'null', 'undefined', '', 'assignedapprover'];
+            const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
+
+            let resolvedName = !isPlaceholder(step.approverName) ? step.approverName : resolvedNames[step.stage];
+
+            return {
+              name: resolvedName || (step.action === 'Approved' ? 'System Approved' : 'To be Assigned'),
+              roleName: step.stage,
+              status: step.action,
+              timestamp: step.timestamp,
+              isCompleted: step.action === 'Approved',
+              isCurrent: false,
+              comments: step.comments
+            };
+          });
+
+          // Determine current step
+          let currentStepFound = false;
+          for (const step of this.trackingSteps) {
+            if (!currentStepFound && !step.isCompleted && step.status !== 'Rejected') {
+              step.isCurrent = true;
+              currentStepFound = true;
+            }
+          }
+
+          this.overallProgress = this.calculateOverallProgress(request);
         }
         await this.enrichReturnDetailWithAssetData(progress);
         await this.enrichReturnDetailWithRequesterData();
+        this.loadingProgress = false;
         return;
       } else {
         progress = await this.requestService.getRequestProgress(request.id);
@@ -1478,12 +1514,13 @@ export class AssetRequestsComponent implements OnInit {
 
   calculateOverallProgress(request: AssetRequest): number {
     const status = (request.status || '').toLowerCase();
-    if (status === 'completed' || status === 'approved' || status === 'rejected') return 100;
+    if (status === 'completed' || status === 'rejected') return 100;
 
     const completedCount = this.trackingSteps.filter(s => s.isCompleted || s.status?.toLowerCase() === 'rejected').length;
     const totalSteps = this.trackingSteps.length;
 
     if (totalSteps === 0) return 10;
+    if (completedCount === totalSteps && totalSteps > 0) return 100;
     const progress = Math.round((completedCount / totalSteps) * 100);
     return Math.min(Math.max(progress, 10), 95);
   }

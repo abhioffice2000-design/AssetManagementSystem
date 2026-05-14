@@ -1,18 +1,18 @@
-<div class="policy-details-container">
-  <div class="header-section">
+<div class="page-container">
+  <div class="page-header mb-24">
     <div class="title-wrapper">
-      <h1 class="page-title">Policy Details</h1>
+      <h2 class="page-title">Policy Details</h2>
       <p class="page-subtitle">Manage and view organizational asset policies and guidelines</p>
     </div>
     <div class="action-wrapper">
-      <button class="btn-primary add-btn" (click)="onAddPolicy()">
-        <i class="material-icons">add</i>
+      <button class="btn btn-primary add-user-btn" (click)="onAddPolicy()">
+        <span class="material-icons-outlined">add</span>
         <span>Add New Policy</span>
       </button>
     </div>
   </div>
 
-  <div class="stats-grid">
+  <div class="stats-grid mb-24">
     <div class="stat-card">
       <div class="stat-icon total">
         <i class="material-icons">description</i>
@@ -22,7 +22,7 @@
         <span class="stat-value">{{ stats.totalPolicies }}</span>
       </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card expiry-soon">
       <div class="stat-icon expiry">
         <i class="material-icons">warning</i>
       </div>
@@ -33,54 +33,120 @@
     </div>
   </div>
 
-  <div class="table-container card">
-    <div class="table-responsive">
-      <table class="policy-table">
-        <thead>
-          <tr>
-            <th>Policy ID</th>
-            <th>Policy Name</th>
-            <th>Purchase Date</th>
-            <th>Expiry Date</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let policy of policies">
-            <td>{{ policy.policyId }}</td>
-            <td class="policy-name">
-              <span class="name">{{ policy.name }}</span>
-              <span class="description" *ngIf="policy.description">{{ policy.description | slice:0:50 }}{{
-                policy.description.length > 50 ? '...' : '' }}</span>
-            </td>
-            <td>{{ policy.effectiveDate | date:'mediumDate' }}</td>
-            <td>{{ policy.expiryDate | date:'mediumDate' }}</td>
-            <td>
-              <span class="status-badge" [ngClass]="getStatusClass(policy.status)">
-                {{ policy.status }}
-              </span>
-            </td>
-            <td class="actions">
-              <button class="btn-icon" title="View Details">
-                <i class="material-icons">visibility</i>
-              </button>
-              <button class="btn-icon" title="Edit">
-                <i class="material-icons">edit</i>
-              </button>
-            </td>
-          </tr>
-          <tr *ngIf="policies.length === 0 && !loading">
-            <td colspan="7" class="empty-state">No policies found.</td>
-          </tr>
-          <tr *ngIf="loading">
-            <td colspan="7" class="loading-state">
-              <div class="spinner"></div>
-              <span>Loading policies...</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+  <div class="card">
+    <div class="card-header">
+      <h3>Policy List <span class="badge badge-blue" style="margin-left: 8px;">{{ policies.length }}</span></h3>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Policy ID</th>
+              <th>Policy Name</th>
+              <th>Purchase Date</th>
+              <th>Expiry Date</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let policy of policies" class="hover-row">
+              <td><span style="font-weight: 600; color: #1a56db;">{{ policy.policyId }}</span></td>
+              <td class="policy-name">
+                <span class="name">{{ policy.name }}</span>
+                <span class="description" *ngIf="policy.description">{{ policy.description | slice:0:50 }}{{
+                  policy.description.length > 50 ? '...' : '' }}</span>
+              </td>
+              <td>{{ policy.effectiveDate | date:'mediumDate' }}</td>
+              <td>{{ policy.expiryDate | date:'mediumDate' }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadgeClass(policy.status)">
+                  {{ policy.status }}
+                </span>
+              </td>
+              <td class="actions">
+                <button class="btn btn-sm btn-outline" title="View Details">
+                  <span class="material-icons-outlined" style="font-size: 16px;">visibility</span>
+                </button>
+                <button class="btn btn-sm btn-outline" title="Edit">
+                  <span class="material-icons-outlined" style="font-size: 16px;">edit</span>
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="policies.length === 0 && !loading">
+              <td colspan="6" class="empty-state">
+                <span class="material-icons-outlined" style="font-size: 3rem; display: block; margin-bottom: 8px; opacity: 0.2;">search_off</span>
+                No policies found.
+              </td>
+            </tr>
+            <tr *ngIf="loading">
+              <td colspan="6" class="loading-state">
+                <div class="spinner"></div>
+                <span>Loading policies...</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Policy Modal -->
+<div class="modal-overlay" *ngIf="showAddModal">
+  <div class="modal-container animate-slide-up" style="max-width: 550px;">
+    <div class="modal-header">
+      <h3>Add New Policy</h3>
+      <button class="btn-icon" (click)="closeAddModal()">
+        <span class="material-icons-outlined">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group full-width">
+          <label>Policy Name</label>
+          <input type="text" [(ngModel)]="newPolicy.policy_name" class="form-control" [class.error-border]="errors.policy_name" placeholder="Enter policy name">
+          <span class="error-text" *ngIf="errors.policy_name">{{ errors.policy_name }}</span>
+        </div>
+        <div class="form-group">
+          <label>Purchase Date</label>
+          <input type="date" [(ngModel)]="newPolicy.policy_purchase_date" class="form-control" [class.error-border]="errors.purchase_date" [max]="getTodayDate()">
+          <span class="error-text" *ngIf="errors.purchase_date">{{ errors.purchase_date }}</span>
+        </div>
+        <div class="form-group">
+          <label>Expiry Date</label>
+          <input type="date" [(ngModel)]="newPolicy.policy_expiry_date" class="form-control" [class.error-border]="errors.expiry_date" [min]="getTodayDate()">
+          <span class="error-text" *ngIf="errors.expiry_date">{{ errors.expiry_date }}</span>
+        </div>
+        <div class="form-group">
+          <label>From Email</label>
+          <input type="email" [(ngModel)]="newPolicy.from_mailid" class="form-control" readonly style="background: #f1f5f9; cursor: not-allowed;">
+        </div>
+        <div class="form-group">
+          <label>To Email</label>
+          <input type="text" [(ngModel)]="newPolicy.to_mailid" class="form-control" [class.error-border]="errors.to_mailid" list="userEmailsList" placeholder="user1@example.com; user2@example.com">
+          <datalist id="userEmailsList">
+            <option *ngFor="let email of userEmails" [value]="email">{{ email }}</option>
+          </datalist>
+          <span class="error-text" *ngIf="errors.to_mailid">{{ errors.to_mailid }}</span>
+          <span class="help-text" *ngIf="!errors.to_mailid">Separate multiple emails with semicolon (;)</span>
+        </div>
+        <div class="form-group full-width">
+          <label class="checkbox-container">
+            <input type="checkbox" [checked]="newPolicy.flag === 'Active'" (change)="newPolicy.flag = $any($event.target).checked ? 'Active' : 'Inactive'">
+            <span class="checkmark"></span>
+            Active Policy
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeAddModal()" [disabled]="isSaving">Cancel</button>
+      <button class="btn btn-primary" (click)="onSavePolicy()" [disabled]="isSaving">
+        <span *ngIf="isSaving" class="spinner-sm"></span>
+        {{ isSaving ? 'Saving...' : 'Save Policy' }}
+      </button>
     </div>
   </div>
 </div>
