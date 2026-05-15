@@ -196,7 +196,16 @@ export class AssetTransactionComponent implements OnInit {
         status: this.normalizeStatus(r.status)
       }));
 
-      this.allRequests.sort((a, b) => this.toMillis(b.createdAt) - this.toMillis(a.createdAt));
+      this.allRequests.sort((a, b) => {
+        const timeA = this.toMillis(a.createdAt);
+        const timeB = this.toMillis(b.createdAt);
+        if (timeB !== timeA) return timeB - timeA;
+        
+        // Secondary sort by ID descending (numeric awareness for ex_100 vs ex_99)
+        const idA = a.requestId || '';
+        const idB = b.requestId || '';
+        return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+      });
       this.updateDashboardCards();
       this.updateCharts();
       this.applyFilters();
@@ -588,12 +597,20 @@ export class AssetTransactionComponent implements OnInit {
       progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
       // Define standard stages for a new asset request
-      const stages = [
-        { name: 'Team Lead', roles: ['team lead', 'approver'] },
-        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
-        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
-        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
-      ];
+      let stages: any[] = [];
+      if (request.requestType === 'Extend Warranty Requests') {
+        stages = [
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
+        ];
+      } else {
+        stages = [
+          { name: 'Team Lead', roles: ['team lead', 'approver'] },
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+        ];
+      }
 
       let availableProgress = [...progressData];
 
@@ -604,7 +621,7 @@ export class AssetTransactionComponent implements OnInit {
         const isDistributionStep = index === (stages.length - 1) && stage.name === 'Asset Manager' && stages.length > 2;
 
         const foundIndex = availableProgress.findIndex(p =>
-          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
+          stage.roles.some((role: string) => p.stage?.toLowerCase().includes(role))
         );
 
         let data = null;
@@ -709,12 +726,24 @@ export class AssetTransactionComponent implements OnInit {
     if (status === 'completed') return 100;
     if (status === 'rejected') return 0;
 
+    const totalSteps = this.trackingSteps.length;
     const completedCount = this.trackingSteps.filter(s => s.isCompleted).length;
+
+    if (totalSteps > 0 && completedCount === totalSteps) {
+      return 100;
+    }
+
     if (completedCount === 0) return 10;
-    if (completedCount === 1) return 33;
-    if (completedCount === 2) return 66;
-    if (completedCount === 3) return 90;
-    return 100;
+    
+    if (totalSteps === 4) {
+      if (completedCount === 1) return 33;
+      if (completedCount === 2) return 66;
+      if (completedCount === 3) return 90;
+    } else if (totalSteps === 2) {
+      if (completedCount === 1) return 50;
+    }
+    
+    return Math.floor((completedCount / totalSteps) * 100) || 10;
   }
 
   closeTrackingModal(): void {

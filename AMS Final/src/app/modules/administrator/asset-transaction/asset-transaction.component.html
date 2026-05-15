@@ -74,7 +74,7 @@
             <th class="col-urgency">Urgency</th>
             <th class="col-date">Request Date</th>
             <th class="col-status">Status</th>
-            <th class="col-approval">Attachment</th>
+            <th class="col-approval" *ngIf="selectedRequestType !== 'Extend Warranty Requests'">Attachment</th>
             <th class="col-track">Track</th>
           </tr>
         </thead>
@@ -99,7 +99,7 @@
                 {{ getStatusLabel(request.status) }}
               </span>
             </td>
-            <td class="col-approval" (click)="$event.stopPropagation()">
+            <td class="col-approval" (click)="$event.stopPropagation()" *ngIf="selectedRequestType !== 'Extend Warranty Requests'">
               <button *ngIf="request.emailApproval"
                       class="btn btn-sm"
                       (click)="downloadDocument(request.document, request.requestId)"
@@ -223,12 +223,12 @@
             </div>
 
             <div class="step-details card-sub p-12 mt-8">
-              <div class="detail-row" *ngIf="step.timestamp">
-                <span class="material-icons-outlined" style="font-size: 16px;">schedule</span>
-                <span class="detail-text">{{ step.timestamp | date:'medium' }}</span>
+              <div class="detail-row" *ngIf="step.timestamp && step.status !== 'Pending'">
+                <span class="material-icons-outlined" style="font-size: 16px;">calendar_today</span>
+                <span class="detail-text">{{ step.timestamp | date:'mediumDate' }}</span>
               </div>
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
-              <p class="step-comments mt-8 italic" *ngIf="step.comments">"{{ step.comments }}"</p>
+              <p class="step-comments mt-8 italic" *ngIf="step.comments && step.status !== 'Pending'">"{{ step.comments }}"</p>
             </div>
           </div>
         </div>

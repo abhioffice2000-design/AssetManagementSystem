@@ -47,18 +47,32 @@
     </section>
 
     <section class="work-strip">
-      <div class="work-item">
-        <span class="material-icons">pending_actions</span>
+      <div class="work-item new-asset" (click)="navigateTo('/allocation/tickets', { tab: 'unresolved' })">
+        <span class="material-icons">add_shopping_cart</span>
         <div>
-          <strong>{{ stats.totalPending }}</strong>
-          <span>Pending actions</span>
+          <strong>{{ stats.pendingNew }}</strong>
+          <span>New Asset Requests</span>
         </div>
       </div>
-      <div class="work-item warranty">
-        <span class="material-icons">event</span>
+      <div class="work-item return" (click)="navigateTo('/allocation/tickets', { tab: 'return' })">
+        <span class="material-icons">assignment_return</span>
         <div>
-          <strong>{{ stats.warrantyAlerts }}</strong>
-          <span>Warranties within 30 days</span>
+          <strong>{{ stats.pendingReturn }}</strong>
+          <span>Return Requests</span>
+        </div>
+      </div>
+      <div class="work-item warranty" (click)="navigateTo('/allocation/warranty')">
+        <span class="material-icons">verified_user</span>
+        <div>
+          <strong>{{ stats.pendingWarranty }}</strong>
+          <span>Warranty Requests</span>
+        </div>
+      </div>
+      <div class="work-item service" (click)="navigateTo('/allocation/service')">
+        <span class="material-icons">build</span>
+        <div>
+          <strong>{{ stats.pendingService }}</strong>
+          <span>Service Requests</span>
         </div>
       </div>
     </section>
@@ -335,6 +349,14 @@
         <div class="summary-item">
           <span class="label">Requested By</span>
           <span class="value">{{ selectedWarrantyRequest.requesterName }}</span>
+        </div>
+        <div class="summary-item employee-remarks-item" style="grid-column: span 2; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 8px;">
+          <span class="label" style="display: flex; align-items: center; gap: 4px; color: #475569; margin-bottom: 4px;">
+            <span class="material-icons" style="font-size: 16px;">person</span>
+            Employee Remarks
+          </span>
+          <span class="value" style="color: #334155; font-style: italic;" *ngIf="selectedWarrantyRequest.justification || selectedWarrantyRequest.reason">"{{ selectedWarrantyRequest.justification || selectedWarrantyRequest.reason }}"</span>
+          <span class="value" style="color: #94a3b8; font-style: italic;" *ngIf="!(selectedWarrantyRequest.justification || selectedWarrantyRequest.reason)">No remarks provided by the employee.</span>
         </div>
       </div>
 

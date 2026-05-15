@@ -128,8 +128,8 @@
                   <button class="action-btn edit" (click)="onEditPolicy(policy)" title="Edit Policy">
                     <span class="material-icons-outlined">edit</span>
                   </button>
-                  <button class="action-btn" [ngClass]="policy.status?.toLowerCase() === 'active' ? 'inactive' : 'active'" (click)="onTogglePolicyStatus(policy)" [title]="policy.status?.toLowerCase() === 'active' ? 'Deactivate Policy' : 'Activate Policy'">
-                    <span class="material-icons-outlined">{{ policy.status?.toLowerCase() === 'active' ? 'block' : 'check_circle' }}</span>
+                  <button class="action-btn" [ngClass]="policy.status.toLowerCase() === 'active' ? 'inactive' : 'active'" (click)="onTogglePolicyStatus(policy)" [title]="policy.status.toLowerCase() === 'active' ? 'Deactivate Policy' : 'Activate Policy'">
+                    <span class="material-icons-outlined">{{ policy.status.toLowerCase() === 'active' ? 'block' : 'check_circle' }}</span>
                   </button>
                 </div>
               </td>

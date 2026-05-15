@@ -227,7 +227,7 @@
               </div>
               <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
                 <span class="step-status">{{ step.status }}</span>
-                <span class="step-time" *ngIf="step.timestamp" style="font-size: 0.75rem; color: #94a3b8; font-weight: 500;">
+                <span class="step-time" *ngIf="step.timestamp && !selectedRequest?.requestType?.includes('Extend Warranty')" style="font-size: 0.75rem; color: #94a3b8; font-weight: 500;">
                   {{ step.timestamp | date:'MMM d, h:mm a' }}
                 </span>
               </div>
@@ -237,7 +237,7 @@
 
               <p class="step-message mt-8" *ngIf="step.isCurrent">This stage is currently awaiting action...</p>
 
-              <div class="step-remarks mt-8" *ngIf="step.comments && step.comments !== 'null' && step.comments !== 'undefined'">
+              <div class="step-remarks mt-8" *ngIf="step.comments && step.comments !== 'null' && step.comments !== 'undefined' && selectedRequest?.requestType !== 'Extend Warranty'">
                 <div class="remarks-header" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
                   <span class="material-icons-outlined" style="font-size: 14px; color: #64748b;">chat_bubble_outline</span>
                   <span style="font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.02em;">Approver Remarks</span>
@@ -246,7 +246,7 @@
               </div>
 
               <div class="mt-12 pt-12"
-                *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Service / Maintenance' && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
+                *ngIf="last && isFullyApproved() && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Service / Maintenance' && !selectedRequest?.requestType?.includes('Extend Warranty') && selectedRequest?.status !== 'Completed' && selectedRequest?.status !== 'Approved'"
                 style="border-top: 1px dashed var(--border-color);">
                 <button class="btn btn-primary"
                   style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;"

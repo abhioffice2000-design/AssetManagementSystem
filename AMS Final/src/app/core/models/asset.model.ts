@@ -23,6 +23,9 @@ export interface Asset {
   requestId?: string;
   reminderDays?: number;
   allocatedDate?: string;
+  temp5?: string;
+  temp6?: string;
+  temp7?: string;
 }
 
 export enum AssetType {
