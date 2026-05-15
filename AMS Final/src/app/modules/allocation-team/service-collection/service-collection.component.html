@@ -94,6 +94,7 @@
             <th>Status</th>
             <th>Remarks</th>
             <th>Date</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -108,9 +109,17 @@
             <td><span class="status-badge" [ngClass]="getStatusClass(item.status)">{{ item.status }}</span></td>
             <td class="issue-cell">{{ item.remarks || '-' }}</td>
             <td>{{ item.action_date | date:'mediumDate' }}</td>
+            <td>
+              <div class="action-group">
+                <button class="btn-view" (click)="openDrawer(item)">
+                  <span class="material-icons">visibility</span>
+                  Details
+                </button>
+              </div>
+            </td>
           </tr>
           <tr *ngIf="currentData.length === 0">
-            <td colspan="6" class="no-data">
+            <td colspan="7" class="no-data">
               <span class="material-icons">history</span>
               <p>No collection history yet.</p>
             </td>
@@ -239,13 +248,13 @@
         </div>
       </div>
 
-      <div class="remarks-section">
+      <div class="remarks-section" *ngIf="selectedItem.status === 'Pending'">
         <label for="actionRemarks">Remarks <span class="hint">(mandatory for rejection)</span></label>
         <textarea id="actionRemarks" [(ngModel)]="actionRemarks"
           placeholder="Enter collection remarks..." class="remarks-textarea"></textarea>
       </div>
 
-      <div class="drawer-actions">
+      <div class="drawer-actions" *ngIf="selectedItem.status === 'Pending'">
         <button class="drawer-btn-allocate" (click)="approveCollection(selectedItem)" [disabled]="isSaving">
           <span class="material-icons">check_circle</span>
           Confirm Collection

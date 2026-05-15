@@ -115,6 +115,7 @@
             <th>Status</th>
             <th>Remarks</th>
             <th>Date</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -129,9 +130,17 @@
             <td><span class="status-badge" [ngClass]="getStatusClass(item.status)">{{ item.status }}</span></td>
             <td class="issue-cell">{{ item.remarks || '-' }}</td>
             <td>{{ item.action_date | date:'mediumDate' }}</td>
+            <td>
+              <div class="action-group">
+                <button class="btn-view" (click)="openDrawer(item)">
+                  <span class="material-icons">visibility</span>
+                  Details
+                </button>
+              </div>
+            </td>
           </tr>
           <tr *ngIf="currentData.length === 0">
-            <td colspan="6" class="no-data">
+            <td colspan="7" class="no-data">
               <span class="material-icons">history</span>
               <p>No approval history yet.</p>
             </td>
@@ -566,11 +575,11 @@
     <!-- ── Footer Actions ── -->
     <div class="drawer-footer-actions" *ngIf="selectedItem">
       <button class="btn-drawer-close" (click)="closeDrawer()">Close</button>
-      <button class="btn-drawer-approve" (click)="handleApprove(selectedItem)" [disabled]="isSaving">
+      <button class="btn-drawer-approve" *ngIf="selectedItem.status === 'Pending'" (click)="handleApprove(selectedItem)" [disabled]="isSaving">
         <span class="material-icons">check</span>
         {{ selectedItem.stage === 'STAGE_3_MANAGER_FINAL' ? 'Final Approve' : 'Approve' }}
       </button>
-      <button class="btn-drawer-reject" (click)="rejectApproval(selectedItem)" [disabled]="isSaving">
+      <button class="btn-drawer-reject" *ngIf="selectedItem.status === 'Pending'" (click)="rejectApproval(selectedItem)" [disabled]="isSaving">
         <span class="material-icons">close</span>
         Reject
       </button>

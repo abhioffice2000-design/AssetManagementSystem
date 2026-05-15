@@ -250,7 +250,22 @@ export class ServiceRequestsComponent implements OnInit {
   // ─── Drawer ─────────────────────────────────────────────────────────────
 
   async openDrawer(item: any): Promise<void> {
-    this.selectedItem = item;
+    const detailItem = await this.buildServiceDetailItem(item);
+    this.selectedItem = {
+      ...detailItem,
+      isHistoryDetail: item?.status !== 'Pending'
+    };
+    // History rows come from t_service_approvals only, so they must be enriched before the drawer can show details.
+    // this.selectedItem = {
+    //   ...item,
+    //   isHistoryDetail: item?.status !== 'Pending'
+    // };
+    /*
+    this.selectedItem = {
+      ...item,
+      isHistoryDetail: item?.status !== 'Pending'
+    };
+    */
     this.drawerOpen = true;
     this.actionRemarks = '';
     this.approvalChain = [];
@@ -269,7 +284,9 @@ export class ServiceRequestsComponent implements OnInit {
       this.loadingChain = false;
     }
 
-    await this.loadAllocationTeamMemberForItem(item);
+    if (this.selectedItem.status === 'Pending') {
+      await this.loadAllocationTeamMemberForItem(item);
+    }
   }
 
   closeDrawer(): void {
@@ -277,6 +294,45 @@ export class ServiceRequestsComponent implements OnInit {
     this.selectedItem = null;
     this.actionRemarks = '';
     this.approvalChain = [];
+  }
+
+  private async buildServiceDetailItem(item: any): Promise<any> {
+    let detailItem = { ...item };
+    const requestId = item?.service_request_id;
+
+    const requestRow = this.allServiceRequests.find((request: any) => request.service_request_id === requestId);
+    if (requestRow) {
+      detailItem = {
+        ...requestRow,
+        ...detailItem,
+        issue_description: detailItem.issue_description || requestRow.issue_description,
+        asset_id: detailItem.asset_id || requestRow.asset_id,
+        user_id: detailItem.user_id || requestRow.user_id,
+        tl_id: detailItem.tl_id || requestRow.tl_id,
+        urgency: detailItem.urgency || requestRow.urgency,
+        needs_temp_asset: detailItem.needs_temp_asset ?? requestRow.needs_temp_asset,
+        created_at: detailItem.created_at || requestRow.created_at,
+        req_temp1: detailItem.req_temp1 || requestRow.temp1,
+        req_temp2: detailItem.req_temp2 || requestRow.temp2,
+        req_temp3: detailItem.req_temp3 || requestRow.temp3
+      };
+    }
+
+    if (detailItem.user_id && (!detailItem.requester_name || !detailItem.requester_email)) {
+      const employee = await this.getServiceUserContact(detailItem.user_id, detailItem.requester_name, detailItem.requester_email);
+      detailItem.requester_name = detailItem.requester_name || employee.name;
+      detailItem.requester_email = detailItem.requester_email || employee.email;
+    }
+
+    if (detailItem.asset_id && (!detailItem.asset_name || !detailItem.asset_serial)) {
+      const asset = await this.assetService.getAssetDetails(detailItem.asset_id).catch(() => null);
+      if (asset) {
+        detailItem.asset_name = detailItem.asset_name || asset.name;
+        detailItem.asset_serial = detailItem.asset_serial || asset.serialNumber || asset.assetTag;
+      }
+    }
+
+    return detailItem;
   }
 
   /** Get accumulated remarks for the current stage: employee reason + all previous stage remarks */

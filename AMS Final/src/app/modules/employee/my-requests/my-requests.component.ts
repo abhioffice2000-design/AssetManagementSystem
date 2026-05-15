@@ -517,8 +517,12 @@ export class MyRequestsComponent implements OnInit {
           resolvedName = undefined;
         }
 
+        const fallbackName = request.requestType === RequestType.SERVICE_MAINTENANCE
+          ? stage.name
+          : (isCompleted ? 'System Approved' : 'To be Assigned');
+
         return {
-          name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
+          name: resolvedName || fallbackName,
           roleName: stage.name + (isDistributionStep ? ' (Distribution)' : ''),
           status: data ? data.status : (isCompleted ? 'Approved' : 'Pending'),
           timestamp: data?.timestamp,
@@ -546,9 +550,14 @@ export class MyRequestsComponent implements OnInit {
       }
 
       // 5. Remove steps that have no approver assigned (not part of the actual flow)
-      this.trackingSteps = this.trackingSteps.filter(step =>
-        step.name !== 'To be Assigned'
-      );
+      // this.trackingSteps = this.trackingSteps.filter(step =>
+      //   step.name !== 'To be Assigned'
+      // );
+      if (request.requestType !== RequestType.SERVICE_MAINTENANCE) {
+        this.trackingSteps = this.trackingSteps.filter(step =>
+          step.name !== 'To be Assigned'
+        );
+      }
 
       // 6. If any step was rejected, remove all subsequent steps (they were never reached)
       const rejectedIndex = this.trackingSteps.findIndex(s => s.status?.toLowerCase() === 'rejected');
