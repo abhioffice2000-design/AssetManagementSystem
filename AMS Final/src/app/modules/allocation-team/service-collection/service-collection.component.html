@@ -248,13 +248,13 @@
         </div>
       </div>
 
-      <div class="remarks-section" *ngIf="selectedItem.status === 'Pending'">
+      <div class="remarks-section" *ngIf="selectedItem.approval_status === 'Pending'">
         <label for="actionRemarks">Remarks <span class="hint">(mandatory for rejection)</span></label>
         <textarea id="actionRemarks" [(ngModel)]="actionRemarks"
           placeholder="Enter collection remarks..." class="remarks-textarea"></textarea>
       </div>
 
-      <div class="drawer-actions" *ngIf="selectedItem.status === 'Pending'">
+      <div class="drawer-actions" *ngIf="selectedItem.approval_status === 'Pending'">
         <button class="drawer-btn-allocate" (click)="approveCollection(selectedItem)" [disabled]="isSaving">
           <span class="material-icons">check_circle</span>
           Confirm Collection
