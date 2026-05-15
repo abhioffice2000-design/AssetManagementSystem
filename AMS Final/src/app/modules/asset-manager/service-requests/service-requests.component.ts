@@ -217,18 +217,90 @@ export class ServiceRequestsComponent implements OnInit {
 
     this.serviceHistoryLoading = true;
     try {
-      this.serviceHistoryRows = await this.requestService.getAssetManagerServiceHistory({
+      const rows = await this.requestService.getAssetManagerServiceHistory({
         asset_manager_id: currentUser.id,
         ...this.serviceHistoryFilters
       });
+      this.serviceHistoryRows = rows.length > 0 ? rows : this.buildServiceHistoryFallback(currentUser.id);
       this.currentPage = 1;
     } catch (error) {
       console.error('Failed to load service history:', error);
       this.notificationService.showToast('Failed to load service history.', 'error');
-      this.serviceHistoryRows = [];
+      this.serviceHistoryRows = this.buildServiceHistoryFallback(currentUser.id);
     } finally {
       this.serviceHistoryLoading = false;
     }
+  }
+
+  private buildServiceHistoryFallback(managerId: string): any[] {
+    const relatedRequestIds = new Set<string>();
+    [...this.pendingApprovals, ...this.allServiceApprovals]
+      .filter((approval: any) => approval.approver_id === managerId)
+      .forEach((approval: any) => {
+        if (approval.service_request_id) relatedRequestIds.add(approval.service_request_id);
+      });
+
+    const hasBackendScope = relatedRequestIds.size > 0;
+    return this.allServiceRequests
+      .filter((request: any) => !hasBackendScope || relatedRequestIds.has(request.service_request_id))
+      .map((request: any) => this.mapRequestToHistoryFallback(request, managerId))
+      .filter((row: any) => this.matchesServiceHistoryFilters(row))
+      .sort((a: any, b: any) => {
+        const da = new Date(a.changed_at || a.created_at || 0).getTime();
+        const db = new Date(b.changed_at || b.created_at || 0).getTime();
+        return db - da;
+      });
+  }
+
+  private mapRequestToHistoryFallback(request: any, managerId: string): any {
+    const status = request.status || 'Pending';
+    return {
+      service_request_id: request.service_request_id || '',
+      asset_id: request.asset_id || '',
+      asset_name: request.temp1 || request.asset_name || request.asset_id || '',
+      serial_number: request.temp2 || request.serial_number || '',
+      employee_id: request.user_id || '',
+      employee_name: this.allUsersMap.get(request.user_id) || request.user_id || '',
+      employee_email: '',
+      issue_description: request.issue_description || '',
+      current_status: status,
+      previous_status: this.getPreviousServiceStatus(status),
+      new_status: status,
+      changed_by: managerId,
+      changed_by_name: this.allUsersMap.get(managerId) || 'Asset Manager',
+      changed_at: request.created_at || '',
+      created_at: request.created_at || '',
+      history_remarks: request.issue_description || '',
+      action_stage: 'Service Status',
+      temp_asset_id: request.temp3 || request.allocation_id || '',
+      temp_asset_name: '',
+      expected_return_date: ''
+    };
+  }
+
+  private getPreviousServiceStatus(status: string): string {
+    switch ((status || '').toLowerCase()) {
+      case 'movetoallocationteam': return 'Pending';
+      case 'collectedbyteam': return 'MoveToAllocationTeam';
+      case 'onservice': return 'CollectedByTeam';
+      case 'serviced': return 'OnService';
+      case 'closed': return 'Serviced';
+      case 'rejected': return 'Pending';
+      default: return 'Created';
+    }
+  }
+
+  private matchesServiceHistoryFilters(row: any): boolean {
+    const includes = (value: any, filter: string) =>
+      !filter || String(value || '').toLowerCase().includes(filter.trim().toLowerCase());
+    const rowDate = row.changed_at || row.created_at || '';
+
+    return includes(row.employee_id, this.serviceHistoryFilters.employee_id)
+      && includes(row.asset_id, this.serviceHistoryFilters.asset_id)
+      && includes(row.service_request_id, this.serviceHistoryFilters.service_request_id)
+      && (!this.serviceHistoryFilters.status || row.current_status === this.serviceHistoryFilters.status || row.new_status === this.serviceHistoryFilters.status)
+      && (!this.serviceHistoryFilters.from_date || !rowDate || rowDate >= this.serviceHistoryFilters.from_date)
+      && (!this.serviceHistoryFilters.to_date || !rowDate || rowDate <= this.serviceHistoryFilters.to_date);
   }
 
   resetServiceHistoryFilters(): void {
@@ -854,11 +926,12 @@ export class ServiceRequestsComponent implements OnInit {
           original_asset_name: req.temp1 || '',
           user_id: req.user_id || ''
         };
-        // Try to get temp asset name from available assets
-        const tempAsset = this.availableAssets.find((a: any) => a.asset_id === this.tempAssetInfo.temp_asset_id);
+        // Assigned temp assets are no longer in the available list, so fall back to a direct asset lookup.
+        const tempAsset = this.availableAssets.find((a: any) => a.asset_id === this.tempAssetInfo.temp_asset_id)
+          || await this.assetService.getAssetDetails(this.tempAssetInfo.temp_asset_id).catch(() => null);
         if (tempAsset) {
-          this.tempAssetInfo.temp_asset_name = tempAsset.asset_name || tempAsset.asset_id;
-          this.tempAssetInfo.temp_asset_serial = tempAsset.serial_number || '';
+          this.tempAssetInfo.temp_asset_name = tempAsset.asset_name || tempAsset.name || tempAsset.asset_id || tempAsset.id;
+          this.tempAssetInfo.temp_asset_serial = tempAsset.serial_number || tempAsset.serialNumber || '';
         }
       }
     } catch (e) {

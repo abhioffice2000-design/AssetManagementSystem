@@ -232,15 +232,15 @@
       <div class="history-filter-bar">
         <div class="filter-field">
           <label>Employee ID</label>
-          <input type="text" [(ngModel)]="serviceHistoryFilters.employee_id" placeholder="usr_009">
+          <input type="text" [(ngModel)]="serviceHistoryFilters.employee_id" placeholder="Enter user ID">
         </div>
         <div class="filter-field">
           <label>Asset ID</label>
-          <input type="text" [(ngModel)]="serviceHistoryFilters.asset_id" placeholder="asset_060">
+          <input type="text" [(ngModel)]="serviceHistoryFilters.asset_id" placeholder="Enter asset ID">
         </div>
         <div class="filter-field">
           <label>Request ID</label>
-          <input type="text" [(ngModel)]="serviceHistoryFilters.service_request_id" placeholder="SRVREQ_026">
+          <input type="text" [(ngModel)]="serviceHistoryFilters.service_request_id" placeholder="Enter request ID">
         </div>
         <div class="filter-field">
           <label>Status</label>
@@ -575,11 +575,11 @@
     <!-- ── Footer Actions ── -->
     <div class="drawer-footer-actions" *ngIf="selectedItem">
       <button class="btn-drawer-close" (click)="closeDrawer()">Close</button>
-      <button class="btn-drawer-approve" *ngIf="selectedItem.status === 'Pending'" (click)="handleApprove(selectedItem)" [disabled]="isSaving">
+      <button class="btn-drawer-approve" *ngIf="selectedItem.approval_status === 'Pending'" (click)="handleApprove(selectedItem)" [disabled]="isSaving">
         <span class="material-icons">check</span>
         {{ selectedItem.stage === 'STAGE_3_MANAGER_FINAL' ? 'Final Approve' : 'Approve' }}
       </button>
-      <button class="btn-drawer-reject" *ngIf="selectedItem.status === 'Pending'" (click)="rejectApproval(selectedItem)" [disabled]="isSaving">
+      <button class="btn-drawer-reject" *ngIf="selectedItem.approval_status === 'Pending'" (click)="rejectApproval(selectedItem)" [disabled]="isSaving">
         <span class="material-icons">close</span>
         Reject
       </button>
