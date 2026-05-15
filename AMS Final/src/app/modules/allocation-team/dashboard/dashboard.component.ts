@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
 import { RequestService } from '../../../core/services/request.service';
 import { HeroService } from '../../../core/services/hero.service';
 import { Asset, AssetCondition } from '../../../core/models/asset.model';
@@ -66,6 +67,10 @@ export class AllocationDashboardComponent implements OnInit {
   // Aggregate Stats
   stats = {
     totalPending: 0,
+    pendingNew: 0,
+    pendingReturn: 0,
+    pendingWarranty: 0,
+    pendingService: 0,
     totalAssets: 0,
     available: 0,
     readyForAllocation: 0,
@@ -88,7 +93,8 @@ export class AllocationDashboardComponent implements OnInit {
     private hs: HeroService,
     private notificationService: NotificationService,
     private mailService: MailService,
-    private authService: AuthService
+    private authService: AuthService,
+    private router: Router
   ) { }
 
   async ngOnInit(): Promise<void> {
@@ -163,59 +169,30 @@ export class AllocationDashboardComponent implements OnInit {
         return;
       }
 
-      if (this.myAssetTypes.length === 0) {
-        await this.resolveMyAssetTypes();
-      }
-
-      const [resRequests, resInventory, resWarranty] = await Promise.all([
+      const [resRequests, resInventory, resWarranty, resReturn, resService] = await Promise.all([
         this.hs.ajax('GetallpendingrequestsForAllocationTeamMemberwithTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: userId }),
         this.fetchAllocationInventoryByUser(userId),
-        this.requestService.fetchPendingWarrantyApprovalsFromService(userId)
+        this.requestService.fetchPendingWarrantyApprovalsFromService(userId),
+        this.hs.ajax('GetPendingReturnApprovalsForManager', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: userId }),
+        this.requestService.fetchPendingServiceApprovals(userId)
       ]);
 
       const requestTuples = this.hs.xmltojson(resRequests, 'tuple');
-      let allRequests = Array.isArray(requestTuples) ? requestTuples : (requestTuples ? [requestTuples] : []);
-      let allAssets: Asset[] = resInventory || [];
+      const allRequests = Array.isArray(requestTuples) ? requestTuples : (requestTuples ? [requestTuples] : []);
+
+      const returnTuples = this.hs.xmltojson(resReturn, 'tuple');
+      const allReturns = Array.isArray(returnTuples) ? returnTuples : (returnTuples ? [returnTuples] : []);
+
+      const allAssets: Asset[] = resInventory || [];
       this.pendingWarrantyRequests = resWarranty || [];
+      const allServices = (resService || []).filter((a: any) => a.stage === 'STAGE_2_ALLOCATION');
 
-      if (this.myAssetTypes.length > 0) {
-        if (allAssets.length === 0) {
-          console.log('[AllocationDashboard] Fallback scan for assets...');
-          const allRes = await this.hs.ajax('GetallAssets', 'http://schemas.cordys.com/AMS_Database_Metadata', {});
-          const tuples = this.hs.xmltojson(allRes, 'tuple');
-          const tupleArray = Array.isArray(tuples) ? tuples : (tuples ? [tuples] : []);
-          allAssets = tupleArray
-            .map((t: any) => this.mapAllocationInventoryTupleToAsset(t))
-            .filter(a => this.myAssetTypes.includes((a.type || '').toLowerCase().trim()));
-        }
+      this.stats.pendingNew = allRequests.length;
+      this.stats.pendingReturn = allReturns.length;
+      this.stats.pendingWarranty = this.pendingWarrantyRequests.length;
+      this.stats.pendingService = allServices.length;
+      this.stats.totalPending = this.stats.pendingNew + this.stats.pendingReturn + this.stats.pendingWarranty + this.stats.pendingService;
 
-        if (allRequests.length === 0) {
-          try {
-            const activeTasks = await this.requestService.fetchActiveTasks();
-            const myTasks = activeTasks.filter(t => t.assigneeId === userId);
-            for (const task of myTasks) {
-              const reqId = task.data?.requestId || task.data?.Request_id;
-              if (reqId) {
-                const allReqs = await this.requestService.fetchAllRequestsFromService(userId);
-                const fullReq = allReqs.find(r => r.id === reqId);
-                if (fullReq && this.myAssetTypes.includes((fullReq.assetType || '').toLowerCase().trim())) {
-                  allRequests.push({ t_asset_requests: fullReq, m_users: { name: fullReq.requesterName } });
-                }
-              }
-            }
-          } catch (e) { console.warn('BPM Fallback failed:', e); }
-        }
-      }
-
-      if (this.myAssetTypes.length > 0) {
-        allRequests = allRequests.filter((t: any) => {
-          const r = t?.old?.t_asset_requests || t?.t_asset_requests || t;
-          const type = (this.getVal(r.asset_type) || '').toLowerCase().trim();
-          return this.myAssetTypes.includes(type);
-        });
-      }
-
-      this.stats.totalPending = allRequests.length;
       this.buildInventorySummary(allAssets);
       this.updateDashboardVisuals(allAssets, allRequests);
 
@@ -412,6 +389,10 @@ export class AllocationDashboardComponent implements OnInit {
     this.inventoryTypeName = '';
     this.stats = {
       totalPending: 0,
+      pendingNew: 0,
+      pendingReturn: 0,
+      pendingWarranty: 0,
+      pendingService: 0,
       totalAssets: 0,
       available: 0,
       readyForAllocation: 0,
@@ -443,6 +424,10 @@ export class AllocationDashboardComponent implements OnInit {
 
   private formatAssignedUser(name: string, id: string): string {
     return name ? `${name} (${id})` : id;
+  }
+
+  navigateTo(route: string, queryParams: any = {}): void {
+    this.router.navigate([route], { queryParams });
   }
 
   private getVal(value: any): string | undefined {
@@ -483,32 +468,36 @@ export class AllocationDashboardComponent implements OnInit {
   }
 
   async approveWarrantyExtension(): Promise<void> {
-    if (!this.selectedWarrantyRequest || !this.newWarrantyDate) {
+    const req = this.selectedWarrantyRequest;
+    if (!req || !this.newWarrantyDate) {
       alert('Please select a new warranty date.');
       return;
     }
     try {
-      const requestId = this.selectedWarrantyRequest.id;
-      const approvalId = this.selectedWarrantyRequest.approvalId;
-      const assetId = this.selectedWarrantyRequest.assignedAssetId;
+      const requestId = req.id;
+      const approvalId = req.approvalId;
+      const assetId = req.assignedAssetId;
+
       if (!approvalId) {
-        this.notificationService.showToast('Approval context missing.', 'error');
+        this.notificationService?.showToast('Approval context missing. Cannot proceed.', 'error');
         return;
       }
       await this.requestService.updateWarrantyRequestApproval(approvalId, 'Approved', 'Warranty extended', assetId);
       await this.requestService.updateExtendAssetRequest(requestId, 'Approved');
       if (assetId) await this.requestService.updateAssetWarrantyDate(assetId, this.newWarrantyDate);
       await this.mailService.sendWarrantyExtensionConfirmation({
-        employeeName: this.selectedWarrantyRequest.requesterName,
-        assetName: this.selectedWarrantyRequest.assetName || 'Asset',
+        employeeName: req.requesterName,
+        assetName: req.assetName || 'Asset',
         newExpiryDate: this.newWarrantyDate,
         requestId: requestId
       });
-      this.notificationService.showToast('Warranty extension approved!', 'success');
+
+      this.notificationService?.showToast('Warranty extension approved and updated successfully!', 'success');
       this.closeWarrantyModal();
       await this.loadTaskConsole();
     } catch (error) {
-      this.notificationService.showToast('Failed to complete approval.', 'error');
+      console.error('Failed to approve warranty extension:', error);
+      this.notificationService?.showToast('Failed to complete approval. Please try again.', 'error');
     }
   }
 }

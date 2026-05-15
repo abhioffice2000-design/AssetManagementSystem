@@ -470,7 +470,8 @@ export class AssetService {
       condition: this.mapToAssetCondition(this.getNullableValue(assetData?.condition) || 'Good'),
       notes: this.getNullableValue(assetData?.notes),
       requestId: this.getNullableValue(assetData?.temp2),
-      reminderDays: parseInt(this.getNullableValue(assetData?.temp3) || '30')
+      reminderDays: parseInt(this.getNullableValue(assetData?.temp3) || '30'),
+      temp5: this.getNullableValue(assetData?.temp5)
     };
   }
 
@@ -989,9 +990,9 @@ export class AssetService {
             <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp3>${asset.reminderDays || 30}</temp3>
             <temp4 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp5 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp6 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp7 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <temp5>${asset.temp5 || '0'}</temp5>
+            <temp6>${asset.temp6 || '0'}</temp6>
+            <temp7>${asset.temp7 || '0'}</temp7>
           </m_assets>
         </new>
       </tuple>

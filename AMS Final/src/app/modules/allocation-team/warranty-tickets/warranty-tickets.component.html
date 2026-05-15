@@ -138,6 +138,14 @@
           <span class="label">Requested By</span>
           <span class="value">{{ selectedWarrantyRequest.requesterName }}</span>
         </div>
+        <div class="summary-item employee-remarks-item" style="grid-column: span 2; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px; margin-top: 8px;">
+          <span class="label" style="display: flex; align-items: center; gap: 4px; color: #475569; margin-bottom: 4px;">
+            <span class="material-icons" style="font-size: 16px;">person</span>
+            Employee Remarks
+          </span>
+          <span class="value" style="color: #334155; font-style: italic;" *ngIf="selectedWarrantyRequest.justification || selectedWarrantyRequest.reason">"{{ selectedWarrantyRequest.justification || selectedWarrantyRequest.reason }}"</span>
+          <span class="value" style="color: #94a3b8; font-style: italic;" *ngIf="!(selectedWarrantyRequest.justification || selectedWarrantyRequest.reason)">No remarks provided by the employee.</span>
+        </div>
         <div class="summary-item manager-remarks-item" style="grid-column: span 2; background: #f0f9ff; border: 1px dashed #0ea5e9; border-radius: 8px; padding: 12px; margin-top: 8px;">
           <span class="label" style="display: flex; align-items: center; gap: 4px; color: #0369a1; margin-bottom: 4px;">
             <span class="material-icons" style="font-size: 16px;">comment</span>

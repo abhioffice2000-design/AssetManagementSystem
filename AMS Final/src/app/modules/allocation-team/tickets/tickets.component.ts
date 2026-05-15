@@ -1,4 +1,5 @@
-﻿import { Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { AssetRequest, ApprovalEntry, RequestStatus, ApprovalStage, RequestType } from '../../../core/models/request.model';
@@ -65,8 +66,8 @@ export class AllocationTicketsComponent implements OnInit {
   // New filter for Resolved tab
   assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
   subCategoryMap: Map<string, string> = new Map();
-
-
+  typeToManagerMap: Map<string, string> = new Map();
+  myAssetTypes: string[] = [];
   // Pagination
   currentPage: number = 1;
   pageSize: number = 5;
@@ -76,14 +77,17 @@ export class AllocationTicketsComponent implements OnInit {
     private assetService: AssetService,
     private hs: HeroService,
     private mailService: MailService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private route: ActivatedRoute
   ) { }
 
 
-  private typeToManagerMap = new Map<string, string>();
-  private myAssetTypes: string[] = [];
-
-  async ngOnInit(): Promise<void> {
+  async ngOnInit(): Promise<void> {      // ✅ made async
+    this.route.queryParams.subscribe(params => {
+      if (params['tab']) {
+        this.activeTab = params['tab'];
+      }
+    });
     this.currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
     const userId = this.currentUser?.id ?? null;
 

@@ -1,4 +1,4 @@
-﻿import { Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetRequest, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
@@ -229,45 +229,35 @@ export class WarrantyRequestsComponent implements OnInit {
     this.selectedAllocationMemberId = req.assignedAllocationTeamId || '';
     this.assignedAllocationMemberName = (req as any).assignedAllocationTeamName || '';
 
-    // ── NEW SOURCE: Resolve AT member from the GetTeamAllocationMemberByAssetManager service ──
-    try {
-      const currentUser = this.authService.getCurrentUser();
-      const managerId = currentUser?.id || 'usr_004';
-      const members = await this.requestService.getTeamAllocationMemberByAssetManager(managerId);
-      
-      if (members && members.length > 0) {
-        // Check if any member specifically matches this request's asset type (via temp1 or similar if available)
-        // Otherwise, take the first one as the primary contact
-        const member = members[0];
-        this.assignedAllocationMemberName = member.name || '';
-        this.selectedAllocationMemberId = member.user_id || member.id || '';
-        console.log(`[WarrantyRequests] Resolved AT from Service Response: "${this.assignedAllocationMemberName}"`);
-      }
-    } catch (e) {
-      console.warn('[WarrantyRequests] Failed to resolve AT from specific service:', e);
-    }
-
-    if (this.assignedAllocationMemberName) {
-       console.log(`[WarrantyRequests] Modal opened for ${req.id} | AT resolved: ${this.assignedAllocationMemberName}`);
-       return; 
-    }
-
     // ── FALLBACK 1: Resolve by Asset Type Assignment ──
-    let allUsers: any[] = [];
-    try {
-      allUsers = await this.adminService.GetAllUserRoleProjectDetails();
-      const assetType = req.assetType || 'Hardware';
-      const assignment = await this.adminService.getAssignmentByAssetType(assetType);
-      
-      if (assignment && assignment.teamMembers) {
-        const memberIds = assignment.teamMembers.split(',').map((id: string) => id.trim());
-        const matched = allUsers.find(u => memberIds.includes(u.id));
-        if (matched) {
-          this.assignedAllocationMemberName = matched.name;
-          this.selectedAllocationMemberId = matched.id;
+    if (!this.assignedAllocationMemberName) {
+      let allUsers: any[] = [];
+      try {
+        allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        const assetType = req.assetType || 'Hardware';
+        const assignment = await this.adminService.getAssignmentByAssetType(assetType);
+        
+        if (assignment) {
+          if (assignment.teamMembers) {
+            const memberIds = assignment.teamMembers.split(',').map((id: string) => id.trim());
+            const matched = allUsers.find(u => memberIds.includes(u.id));
+            if (matched) {
+              this.assignedAllocationMemberName = matched.name;
+              this.selectedAllocationMemberId = matched.id;
+            }
+          }
+          
+          // Try matching by assetTypeId if teamMembers string is empty or didn't match
+          if (!this.assignedAllocationMemberName && assignment.id) {
+            const matchedByTypeId = allUsers.find(u => u.assetTypeId === assignment.id);
+            if (matchedByTypeId) {
+              this.assignedAllocationMemberName = matchedByTypeId.name;
+              this.selectedAllocationMemberId = matchedByTypeId.id;
+            }
+          }
         }
-      }
-    } catch (e) { /* ignore */ }
+      } catch (e) { /* ignore */ }
+    }
 
     // ── FALLBACK 2: Resolve from Progress Tracker ──
     if (!this.assignedAllocationMemberName) {
@@ -279,6 +269,47 @@ export class WarrantyRequestsComponent implements OnInit {
           this.selectedAllocationMemberId = atEntry.approverId;
         }
       } catch (e) { /* ignore */ }
+    }
+
+    // ── FALLBACK 3: Resolve AT member from the GetTeamAllocationMemberByAssetManager service ──
+    if (!this.assignedAllocationMemberName) {
+      try {
+        const currentUser = this.authService.getCurrentUser();
+        const managerId = currentUser?.id || 'usr_004';
+        const members = await this.requestService.getTeamAllocationMemberByAssetManager(managerId);
+        
+        if (members && members.length > 0) {
+          let bestMember = members[0];
+          
+          if (req.assetType) {
+             const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+             const assignment = await this.adminService.getAssignmentByAssetType(req.assetType);
+             
+             for (const m of members) {
+                const uId = m.user_id || m.id;
+                const fullUser = allUsers.find(u => u.id === uId);
+                if (fullUser) {
+                   if (assignment && fullUser.assetTypeId === assignment.id) {
+                      bestMember = m; break;
+                   }
+                   if (fullUser.assetTypeName && fullUser.assetTypeName.toLowerCase().includes(req.assetType.toLowerCase())) {
+                      bestMember = m; break;
+                   }
+                }
+             }
+          }
+
+          this.assignedAllocationMemberName = bestMember.name || '';
+          this.selectedAllocationMemberId = bestMember.user_id || bestMember.id || '';
+          console.log(`[WarrantyRequests] Resolved AT from Service Response (Fallback): "${this.assignedAllocationMemberName}"`);
+        }
+      } catch (e) {
+        console.warn('[WarrantyRequests] Failed to resolve AT from specific service:', e);
+      }
+    }
+
+    if (this.assignedAllocationMemberName) {
+       console.log(`[WarrantyRequests] Modal opened for ${req.id} | AT resolved: ${this.assignedAllocationMemberName}`);
     }
   }
 

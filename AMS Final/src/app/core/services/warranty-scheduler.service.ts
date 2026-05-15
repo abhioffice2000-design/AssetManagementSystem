@@ -48,17 +48,18 @@ export class WarrantySchedulerService {
       }
 
       const now = new Date();
-      const [hour, min] = config.time.split(':');
+      const timeStr = config.time || '09:00';
+      const [hour, min] = timeStr.split(':');
       const scheduledTime = new Date();
       scheduledTime.setHours(parseInt(hour, 10), parseInt(min, 10), 0, 0);
 
       // Check if current time is past the scheduled time
       if (now >= scheduledTime) {
-        console.log(`[WarrantyScheduler] Execution time reached (${config.time}). Triggering ExtendWarranty_BPM...`);
-        await this.triggerWarrantyEmails(config.days);
+        console.log(`[WarrantyScheduler] Execution time reached (${timeStr}). Triggering ExtendWarranty_BPM...`);
+        await this.triggerWarrantyEmails(config.days || config.reminder1);
         localStorage.setItem('warranty_scheduler_last_run', today);
       } else {
-        console.log(`[WarrantyScheduler] Waiting for scheduled time: ${config.time}. Current time: ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
+        console.log(`[WarrantyScheduler] Waiting for scheduled time: ${timeStr}. Current time: ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
       }
     } catch (e) {
       console.warn('[WarrantyScheduler] Could not process scheduler task:', e);
@@ -114,13 +115,17 @@ export class WarrantySchedulerService {
    *
    * SOAP method: ExtendWarranty_BPM_final_scheduler
    */
-  async extendWarrantyFinalScheduler(payload: { days: number; typeId: string; subCatId: string }): Promise<{
+  async extendWarrantyFinalScheduler(payload: { days: number; typeId: string; subCatId: string; assetId?: string; reminder1?: number; reminder2?: number; reminder3?: number }): Promise<{
     instanceId: string;
     rawResponse: any;
   }> {
     const days = Number(payload?.days) || 0;
     const typeId = String(payload?.typeId || '').trim();
     const subCatId = String(payload?.subCatId || '').trim();
+    const assetId = String(payload?.assetId || '').trim();
+    const reminder1 = payload?.reminder1 || '';
+    const reminder2 = payload?.reminder2 || '';
+    const reminder3 = payload?.reminder3 || '';
 
     if (!days || !typeId || !subCatId) {
       throw new Error('days, typeId, and subCatId are required.');
@@ -133,6 +138,10 @@ export class WarrantySchedulerService {
       <days>${days}</days>
       <typeid>${typeId}</typeid>
       <subcatid>${subCatId}</subcatid>
+      <assetid>${assetId}</assetid>
+      <reminder1>${reminder1}</reminder1>
+      <reminder2>${reminder2}</reminder2>
+      <reminder3>${reminder3}</reminder3>
     </ExtendWarranty_BPM_final_scheduler>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
@@ -176,15 +185,23 @@ export class WarrantySchedulerService {
     }
   }
 
-  async getConfiguration(): Promise<{ days: number, time: string } | null> {
+  async getConfiguration(): Promise<{ reminder1: number, reminder2: number, reminder3: number, assetId: string, days?: number, time?: string } | null> {
     try {
+      const r1 = localStorage.getItem('warranty_scheduler_reminder1');
+      const r2 = localStorage.getItem('warranty_scheduler_reminder2');
+      const r3 = localStorage.getItem('warranty_scheduler_reminder3');
+      const assetId = localStorage.getItem('warranty_scheduler_asset_id');
       const savedDays = localStorage.getItem('warranty_scheduler_days');
       const savedTime = localStorage.getItem('warranty_scheduler_time');
       
-      if (savedDays && savedTime) {
+      if (r1 || savedDays) {
         return {
-          days: parseInt(savedDays, 10),
-          time: savedTime
+          reminder1: r1 ? parseInt(r1, 10) : 7,
+          reminder2: r2 ? parseInt(r2, 10) : 15,
+          reminder3: r3 ? parseInt(r3, 10) : 30,
+          assetId: assetId || '',
+          days: savedDays ? parseInt(savedDays, 10) : undefined,
+          time: savedTime || undefined
         };
       }
       return null;
@@ -194,15 +211,39 @@ export class WarrantySchedulerService {
     }
   }
 
-  async saveConfiguration(days: number, time: string): Promise<void> {
+  async saveConfiguration(reminder1: number, reminder2: number, reminder3: number, assetId: string): Promise<void> {
     try {
-      localStorage.setItem('warranty_scheduler_days', days.toString());
-      localStorage.setItem('warranty_scheduler_time', time);
+      localStorage.setItem('warranty_scheduler_reminder1', reminder1.toString());
+      localStorage.setItem('warranty_scheduler_reminder2', reminder2.toString());
+      localStorage.setItem('warranty_scheduler_reminder3', reminder3.toString());
+      localStorage.setItem('warranty_scheduler_asset_id', assetId || '');
       
       // Clear last run so it can trigger again if the time is set to a future point today
       localStorage.removeItem('warranty_scheduler_last_run');
       
       console.log('[WarrantyScheduler] Configuration saved. Last run reset.');
+
+      // Also update the asset in the database if assetId is provided
+      if (assetId) {
+        const updateRequest = {
+          tuple: {
+            old: { m_assets: { asset_id: assetId } },
+            new: { m_assets: { temp5: reminder1.toString(), temp6: reminder2.toString(), temp7: reminder3.toString() } }
+          }
+        };
+
+        try {
+          const res = await this.hs.ajax(
+            'UpdateM_assets',
+            'http://schemas.cordys.com/AMS_Database_Metadata',
+            updateRequest
+          );
+          console.log(`[WarrantyScheduler] Asset ${assetId} reminders updated in DB:`, res);
+        } catch (dbErr) {
+          console.error(`[WarrantyScheduler] Failed to update asset ${assetId} reminders in DB:`, dbErr);
+          throw dbErr;
+        }
+      }
     } catch (e) {
       console.error('[WarrantyScheduler] Failed to save configuration to localStorage:', e);
       throw e;
@@ -214,7 +255,7 @@ export class WarrantySchedulerService {
    */
   async runNow() {
     const config = await this.getConfiguration();
-    if (config) {
+    if (config && config.days) {
       return this.triggerWarrantyEmails(config.days);
     }
     return null;

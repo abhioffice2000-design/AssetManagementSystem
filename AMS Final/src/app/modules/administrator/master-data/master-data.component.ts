@@ -17,6 +17,7 @@ type AddAssetForm = {
   serialNumber: string;
   purchaseDate: string;
   warrantyExpiry: string;
+  isExpiryMandatory: boolean;
 };
 type AssetCategoryGroup = {
   type: AssetType | string;
@@ -580,7 +581,10 @@ export class MasterDataComponent implements OnInit {
             vendor: 'Internal',
             serialNumber: serial,
             cost: 0,
-            condition: AssetCondition.GOOD
+            condition: AssetCondition.GOOD,
+            temp5: warrantyExpiry ? '30' : 'Not Set',
+            temp6: warrantyExpiry ? '15' : 'Not Set',
+            temp7: warrantyExpiry ? '7' : 'Not Set'
           };
 
           await this.assetService.addAssetCordys(asset, realTypeId, realSubCatId);
@@ -659,6 +663,11 @@ export class MasterDataComponent implements OnInit {
     }
   }
 
+  isWarrantyExpiryMandatory(): boolean {
+    const type = (this.newAsset.type as string)?.toLowerCase() || '';
+    return type === 'software' || type === 'hardware';
+  }
+
   async saveAsset(): Promise<void> {
     this.submittedAssetForm = true;
 
@@ -691,7 +700,9 @@ export class MasterDataComponent implements OnInit {
       return;
     }
 
-    if (!this.newAsset.type || !this.newAsset.category || !trimmedName || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !this.newAsset.warrantyExpiry || this.isSaving) {
+    const isExpiryFieldValid = this.isWarrantyExpiryMandatory() ? !!this.newAsset.warrantyExpiry : true;
+
+    if (!this.newAsset.type || !this.newAsset.category || !trimmedName || !this.newAsset.serialNumber || !this.newAsset.purchaseDate || !isExpiryFieldValid || this.isSaving) {
       return;
     }
 
@@ -722,7 +733,10 @@ export class MasterDataComponent implements OnInit {
         vendor: 'Internal',
         serialNumber: this.newAsset.serialNumber,
         cost: 0,
-        condition: AssetCondition.GOOD
+        condition: AssetCondition.GOOD,
+        temp5: this.newAsset.warrantyExpiry ? '30' : 'Not Set',
+        temp6: this.newAsset.warrantyExpiry ? '15' : 'Not Set',
+        temp7: this.newAsset.warrantyExpiry ? '7' : 'Not Set'
       };
 
       // Securely fetch exact IDs from DB based on mapped name
@@ -950,10 +964,14 @@ export class MasterDataComponent implements OnInit {
 
   isFieldInvalid(field: keyof typeof this.newAsset): boolean {
     if (this.submittedAssetForm) {
+      if (field === 'warrantyExpiry') {
+        if (this.newAsset.isExpiryMandatory && !this.newAsset.warrantyExpiry) return true;
+        return this.isWarrantyExpiryPast();
+      }
+
       if (!this.newAsset[field]) return true;
 
       if (field === 'purchaseDate') return this.isPurchaseDateFuture();
-      if (field === 'warrantyExpiry') return this.isWarrantyExpiryPast();
     }
     return false;
   }
@@ -1254,7 +1272,8 @@ export class MasterDataComponent implements OnInit {
       name: '',
       serialNumber: '',
       purchaseDate: '',
-      warrantyExpiry: ''
+      warrantyExpiry: '',
+      isExpiryMandatory: false
     };
   }
 }
