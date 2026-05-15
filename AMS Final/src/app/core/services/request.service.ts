@@ -2628,6 +2628,25 @@ ${fieldXml}
     }
   }
 
+  async hasActiveServiceRequestForAsset(assetId: string, userId: string): Promise<boolean> {
+    const normalizedAssetId = (assetId || '').trim().toLowerCase();
+    const normalizedUserId = (userId || '').trim().toLowerCase();
+    if (!normalizedAssetId || !normalizedUserId) return false;
+
+    const terminalStatuses = new Set(['rejected', 'closed', 'cancelled', 'canceled', 'completed']);
+    const requests = await this.getAllServiceRequests();
+
+    return requests.some((request: any) => {
+      const requestAssetId = (request?.asset_id || '').trim().toLowerCase();
+      const requestUserId = (request?.user_id || '').trim().toLowerCase();
+      const status = (request?.status || 'Pending').trim().toLowerCase();
+
+      return requestAssetId === normalizedAssetId &&
+        requestUserId === normalizedUserId &&
+        !terminalStatuses.has(status);
+    });
+  }
+
   /**
    * Fetches service requests for a specific employee and maps them to AssetRequest[].
    */

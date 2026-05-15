@@ -64,6 +64,12 @@ export class ServiceAssetComponent implements OnInit {
     const formVal = this.serviceForm.value;
 
     try {
+      const hasActiveService = await this.requestService.hasActiveServiceRequestForAsset(this.selectedAsset.id, user.id);
+      if (hasActiveService) {
+        this.notificationService.showToast('A service request is already active for this asset.', 'warning');
+        return;
+      }
+
       const assetManagerId = await this.requestService.resolveServiceAssetManagerId(this.selectedAsset.id);
       const freshUser = await this.authService.getUserDetails(user.id).catch(() => null);
       const teamLeadId = user.managerId || user.teamLeadId || freshUser?.managerId || freshUser?.teamLeadId || '';

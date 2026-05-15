@@ -3,6 +3,7 @@ import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
+import { AssetService } from '../../../core/services/asset.service';
 
 @Component({
   selector: 'app-service-collection',
@@ -33,7 +34,8 @@ export class ServiceCollectionComponent implements OnInit {
     private requestService: RequestService,
     private authService: AuthService,
     private notificationService: NotificationService,
-    private mailService: MailService
+    private mailService: MailService,
+    private assetService: AssetService
   ) {}
 
   ngOnInit(): void {
@@ -102,7 +104,13 @@ export class ServiceCollectionComponent implements OnInit {
   // ─── Drawer ─────────────────────────────────────────────────────────────
 
   async openDrawer(item: any): Promise<void> {
-    this.selectedItem = item;
+    const detailItem = await this.buildServiceCollectionDetailItem(item);
+    this.selectedItem = {
+      ...detailItem,
+      isHistoryDetail: item?.status !== 'Pending'
+    };
+    // History rows are approval-only rows, so enrich them before showing the drawer.
+    // this.selectedItem = item;
     this.drawerOpen = true;
     this.actionRemarks = '';
     this.approvalChain = [];
@@ -132,6 +140,46 @@ export class ServiceCollectionComponent implements OnInit {
     this.actionRemarks = '';
     this.approvalChain = [];
     this.loadingChain = false;
+  }
+
+  private async buildServiceCollectionDetailItem(item: any): Promise<any> {
+    let detailItem = { ...item };
+    const requestId = item?.service_request_id;
+
+    const allRequests = await this.requestService.getAllServiceRequests().catch(() => []);
+    const requestRow = allRequests.find((request: any) => request.service_request_id === requestId);
+    if (requestRow) {
+      detailItem = {
+        ...requestRow,
+        ...detailItem,
+        issue_description: detailItem.issue_description || requestRow.issue_description,
+        asset_id: detailItem.asset_id || requestRow.asset_id,
+        user_id: detailItem.user_id || requestRow.user_id,
+        urgency: detailItem.urgency || requestRow.urgency,
+        needs_temp_asset: detailItem.needs_temp_asset ?? requestRow.needs_temp_asset,
+        created_at: detailItem.created_at || requestRow.created_at,
+        approval_status: detailItem.approval_status || detailItem.status,
+        request_status: detailItem.request_status || requestRow.status,
+        req_temp1: detailItem.req_temp1 || requestRow.temp1,
+        req_temp2: detailItem.req_temp2 || requestRow.temp2,
+        req_temp3: detailItem.req_temp3 || requestRow.temp3
+      };
+    }
+
+    if (detailItem.user_id && !detailItem.requester_name) {
+      const employee = await this.getServiceUserContact(detailItem.user_id, detailItem.requester_name, '');
+      detailItem.requester_name = detailItem.requester_name || employee.name;
+    }
+
+    if (detailItem.asset_id && (!detailItem.asset_name || !detailItem.asset_serial)) {
+      const asset = await this.assetService.getAssetDetails(detailItem.asset_id).catch(() => null);
+      if (asset) {
+        detailItem.asset_name = detailItem.asset_name || asset.name;
+        detailItem.asset_serial = detailItem.asset_serial || asset.serialNumber || asset.assetTag;
+      }
+    }
+
+    return detailItem;
   }
 
   getStageLabel(stage: string): string {
