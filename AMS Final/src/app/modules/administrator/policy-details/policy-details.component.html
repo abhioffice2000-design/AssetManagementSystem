@@ -209,6 +209,20 @@
               <span class="error-msg" *ngIf="errors.policy_name">{{ errors.policy_name }}</span>
               <span class="hint-text" *ngIf="isEditMode">Policy name cannot be changed after creation.</span>
             </div>
+
+            <!-- Status Toggle (Only in Add Mode) -->
+            <div class="form-group full-width" *ngIf="!isEditMode && !isViewOnly">
+              <div class="toggle-control-wrapper">
+                <div class="toggle-info">
+                  <span class="toggle-label">Initial Policy Status: <span [style.color]="newPolicy.flag === 'Active' ? '#10b981' : '#ef4444'">{{ newPolicy.flag }}</span></span>
+                  <span class="toggle-hint">Set to Active to immediately enforce this policy, or Inactive to save as a draft.</span>
+                </div>
+                <label class="modern-toggle">
+                  <input type="checkbox" [checked]="newPolicy.flag === 'Active'" (change)="onFlagToggle($event)">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 
