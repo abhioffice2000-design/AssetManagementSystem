@@ -402,4 +402,9 @@ export class PolicyDetailsComponent implements OnInit {
     if (!toMailId) return [];
     return toMailId.split(';').map(e => e.trim()).filter(Boolean);
   }
+
+  onFlagToggle(event: Event) {
+    const isChecked = (event.target as HTMLInputElement).checked;
+    this.newPolicy.flag = isChecked ? 'Active' : 'Inactive';
+  }
 }
