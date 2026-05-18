@@ -167,6 +167,37 @@ export class AssetService {
     }
   }
 
+  async updateAssetTemp3(assetId: string, temp3Value: string): Promise<void> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_assets qConstraint="0">
+            <asset_id>${assetId}</asset_id>
+          </m_assets>
+        </old>
+        <new>
+          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <asset_id>${assetId}</asset_id>
+            <temp3>${temp3Value}</temp3>
+          </m_assets>
+        </new>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapMsg);
+      console.log(`Asset ${assetId} temp3 updated to ${temp3Value}.`);
+    } catch (err) {
+      console.error(`Failed to update temp3 for asset ${assetId}:`, err);
+      throw err;
+    }
+  }
+
   /**
    * Returns the stored asset detail records from the last Getassetdetails call.
    */
@@ -471,6 +502,7 @@ export class AssetService {
       notes: this.getNullableValue(assetData?.notes),
       requestId: this.getNullableValue(assetData?.temp2),
       reminderDays: parseInt(this.getNullableValue(assetData?.temp3) || '30'),
+      temp3: this.getNullableValue(assetData?.temp3),
       temp5: this.getNullableValue(assetData?.temp5)
     };
   }
@@ -769,7 +801,8 @@ export class AssetService {
         serialNumber: item.Serial_number || item.serial_number || item.serialNumber || 'N/A',
         cost: Number(item.Cost || item.cost || 0),
         condition: (item.Condition || item.condition) as AssetCondition || AssetCondition.GOOD,
-        specifications: item.Specifications || item.specifications || ''
+        specifications: item.Specifications || item.specifications || '',
+        temp3: item.temp3 || item.Temp3 || ''
       };
     } catch (error) {
       console.error('Error fetching asset details:', error);
@@ -988,7 +1021,7 @@ export class AssetService {
             <status>${asset.status || 'Available'}</status>
             <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp3>${asset.reminderDays || 30}</temp3>
+            <temp3>${asset.temp3 !== undefined ? asset.temp3 : (asset.reminderDays || 30)}</temp3>
             <temp4 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
             <temp5>${asset.temp5 || '0'}</temp5>
             <temp6>${asset.temp6 || '0'}</temp6>

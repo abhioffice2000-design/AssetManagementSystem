@@ -15,6 +15,7 @@ export interface WarrantyAllocatedRow {
   reminder1?: string;
   reminder2?: string;
   reminder3?: string;
+  temp3?: string;
 }
 
 @Component({
@@ -215,7 +216,8 @@ export class WarrantySchedulerComponent implements OnInit {
           userEmail: u?.email || '',
           reminder1: r.temp5 || 'Not Set',
           reminder2: r.temp6 || 'Not Set',
-          reminder3: r.temp7 || 'Not Set'
+          reminder3: r.temp7 || 'Not Set',
+          temp3: r.temp3 || '0'
         };
       });
       
@@ -322,6 +324,25 @@ export class WarrantySchedulerComponent implements OnInit {
       );
     } catch (error) {
       this.notificationService.showToast('Failed to trigger warranty extend BPM. Please check console.', 'error');
+      this.isSaving = false;
+    }
+  }
+
+  async toggleAssetReminder() {
+    if (!this.selectedAssetDetails) return;
+    
+    this.isSaving = true;
+    try {
+      const currentFlag = this.selectedAssetDetails.temp3 || '0';
+      const newFlag = currentFlag === '1' ? '0' : '1';
+      
+      await this.assetService.updateAssetTemp3(this.selectedAssetId, newFlag);
+      this.selectedAssetDetails.temp3 = newFlag;
+      
+      this.notificationService.showToast(`Warranty Expiry Reminder ${newFlag === '1' ? 'Activated' : 'Deactivated'} successfully.`, 'success');
+    } catch (error) {
+      console.error('Failed to toggle asset reminder flag:', error);
+      this.notificationService.showToast('Failed to update Warranty Expiry Reminder flag.', 'error');
     } finally {
       this.isSaving = false;
     }

@@ -23,6 +23,7 @@ export interface Asset {
   requestId?: string;
   reminderDays?: number;
   allocatedDate?: string;
+  temp3?: string;
   temp5?: string;
   temp6?: string;
   temp7?: string;

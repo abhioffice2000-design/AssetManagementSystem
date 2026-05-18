@@ -391,8 +391,8 @@ export class MasterDataComponent implements OnInit {
 
   downloadTemplate(): void {
     const wsData = [
-      ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry'],
-      ['Hardware', 'Laptops', 'Dell Latitude 7420', '15-01-2023', '15-01-2026']
+      ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry', 'Warrenty Expiry Reminder'],
+      ['Hardware', 'Laptops', 'Dell Latitude 7420', '15-01-2023', '15-01-2026', 'Active']
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -432,7 +432,7 @@ export class MasterDataComponent implements OnInit {
         }
 
         // 1. Header Validation
-        const expectedHeaders = ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry'];
+        const expectedHeaders = ['Type', 'Category', 'Name', 'Purchase Date', 'Warranty Expiry', 'Warrenty Expiry Reminder'];
         const actualHeaders = data[0].map(h => String(h || '').trim());
 
         const headersMatch = expectedHeaders.length === actualHeaders.length &&
@@ -463,16 +463,21 @@ export class MasterDataComponent implements OnInit {
           const name = String(row[2] || '').trim();
           const purchaseDate = String(row[3] || '').trim();
           const warrantyExpiry = String(row[4] || '').trim();
+          const reminderFlag = String(row[5] || '').trim();
+
+          const isMandatory = type.toLowerCase() === 'hardware' || type.toLowerCase() === 'software';
 
           // Check for missing data
           if (!type) errors.push(`Row ${rowNum}: 'Type' is missing.`);
           if (!category) errors.push(`Row ${rowNum}: 'Category' is missing.`);
           if (!name) errors.push(`Row ${rowNum}: 'Name' is missing.`);
           if (!purchaseDate) errors.push(`Row ${rowNum}: 'Purchase Date' is missing.`);
-          if (!warrantyExpiry) errors.push(`Row ${rowNum}: 'Warranty Expiry' is missing.`);
+          if (isMandatory && !warrantyExpiry) {
+            errors.push(`Row ${rowNum}: 'Warranty Expiry' is missing (mandatory for '${type}').`);
+          }
 
-          // Skip further checks for this row if mandatory fields are missing
-          if (!type || !category || !name || !purchaseDate || !warrantyExpiry) continue;
+          // Skip further checks for this row if critical mandatory fields are missing
+          if (!type || !category || !name || !purchaseDate || (isMandatory && !warrantyExpiry)) continue;
 
           // Validate existence of Type
           const matchedType = dbTypes.find(t =>
@@ -495,11 +500,42 @@ export class MasterDataComponent implements OnInit {
           }
 
           // Date format validation (DD-MM-YYYY)
-          if (!dateRegex.test(purchaseDate)) {
-            errors.push(`Row ${rowNum}: Invalid Purchase Date format ('${purchaseDate}'). Use DD-MM-YYYY.`);
+          if (purchaseDate) {
+            if (dateRegex.test(purchaseDate)) {
+              const [d, m, y] = purchaseDate.split('-').map(Number);
+              const pDate = new Date(y, m - 1, d);
+              pDate.setHours(0, 0, 0, 0);
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              if (pDate > today) {
+                errors.push(`Row ${rowNum}: Purchase Date cannot be in the future.`);
+              }
+            } else {
+              errors.push(`Row ${rowNum}: Invalid Purchase Date format ('${purchaseDate}'). Use DD-MM-YYYY.`);
+            }
           }
-          if (!dateRegex.test(warrantyExpiry)) {
-            errors.push(`Row ${rowNum}: Invalid Warranty Expiry format ('${warrantyExpiry}'). Use DD-MM-YYYY.`);
+
+          if (warrantyExpiry) {
+            if (dateRegex.test(warrantyExpiry)) {
+              const [d, m, y] = warrantyExpiry.split('-').map(Number);
+              const wDate = new Date(y, m - 1, d);
+              wDate.setHours(0, 0, 0, 0);
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              if (wDate < today) {
+                errors.push(`Row ${rowNum}: Warranty Expiry cannot be in the past.`);
+              }
+            } else {
+              errors.push(`Row ${rowNum}: Invalid Warranty Expiry format ('${warrantyExpiry}'). Use DD-MM-YYYY.`);
+            }
+          }
+
+          // Reminder flag validation
+          if (reminderFlag) {
+            const flagLower = reminderFlag.toLowerCase();
+            if (flagLower !== 'active' && flagLower !== 'inactive') {
+              errors.push(`Row ${rowNum}: 'Warrenty Expiry Reminder' must be either 'Active' or 'Inactive'.`);
+            }
           }
 
           if (errors.length > 20) {
@@ -513,8 +549,8 @@ export class MasterDataComponent implements OnInit {
           // Log full error list for admin
           console.error('Bulk Upload Validation Errors:', errors);
 
-          // Show the first few errors in the toast
-          this.notificationService.showToast(`Validation Failed (Row ${errors[0].split(':')[0].replace('Row ', '')}): ${errors.length} error(s) found. Check console for details.`, 'error');
+          // Show the exact first error message in the toast
+          this.notificationService.showToast(`Validation Failed: ${errors[0]}`, 'error');
           return;
         }
 
@@ -529,15 +565,18 @@ export class MasterDataComponent implements OnInit {
           const category = String(row[1]).trim();
           const name = String(row[2]).trim();
           const purchaseDateRaw = String(row[3]).trim();
-          const warrantyExpiryRaw = String(row[4]).trim();
+          const warrantyExpiryRaw = String(row[4] || '').trim();
+          const reminderFlagRaw = String(row[5] || '').trim().toLowerCase();
 
           // Convert DD-MM-YYYY to YYYY-MM-DD
           const convertDate = (d: string) => {
+            if (!d) return '';
             const [day, month, year] = d.split('-');
             return `${year}-${month}-${day}`;
           };
           const purchaseDate = convertDate(purchaseDateRaw);
           const warrantyExpiry = convertDate(warrantyExpiryRaw);
+          const temp3Val = reminderFlagRaw === 'active' ? '1' : '0';
 
           const matchedType = dbTypes.find(t =>
           (t.type_name?.toLowerCase() === type.toLowerCase() ||
@@ -582,6 +621,7 @@ export class MasterDataComponent implements OnInit {
             serialNumber: serial,
             cost: 0,
             condition: AssetCondition.GOOD,
+            temp3: temp3Val,
             temp5: warrantyExpiry ? '30' : 'Not Set',
             temp6: warrantyExpiry ? '15' : 'Not Set',
             temp7: warrantyExpiry ? '7' : 'Not Set'
@@ -664,6 +704,7 @@ export class MasterDataComponent implements OnInit {
   }
 
   isWarrantyExpiryMandatory(): boolean {
+    if (this.newAsset.isExpiryMandatory) return true;
     const type = (this.newAsset.type as string)?.toLowerCase() || '';
     return type === 'software' || type === 'hardware';
   }
@@ -734,6 +775,7 @@ export class MasterDataComponent implements OnInit {
         serialNumber: this.newAsset.serialNumber,
         cost: 0,
         condition: AssetCondition.GOOD,
+        temp3: this.newAsset.isExpiryMandatory ? '1' : '0',
         temp5: this.newAsset.warrantyExpiry ? '30' : 'Not Set',
         temp6: this.newAsset.warrantyExpiry ? '15' : 'Not Set',
         temp7: this.newAsset.warrantyExpiry ? '7' : 'Not Set'
