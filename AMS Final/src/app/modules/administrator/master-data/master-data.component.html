@@ -359,9 +359,9 @@
           <div class="field-error" *ngIf="submittedAssetForm && newAsset.warrantyExpiry && isWarrantyExpiryPast()">Warranty expiry cannot be in the past.</div>
         </div>
 
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 24px;" *ngIf="false">
+        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
           <input type="checkbox" id="isExpiryMandatory" [(ngModel)]="newAsset.isExpiryMandatory" style="width: 18px; height: 18px; cursor: pointer;">
-          <label for="isExpiryMandatory" style="margin: 0; cursor: pointer; font-weight: 500; color: #475569;">Mandatory Expiry Date</label>
+          <label for="isExpiryMandatory" style="margin: 0; cursor: pointer; font-weight: 500; color: #475569;">For Waranty Expiry Reminder check this box</label>
         </div>
 
 
@@ -568,6 +568,14 @@
           <label>Warranty Expiry</label>
           <div class="info-value" [class.text-danger]="isWarrantyExpired(selectedAssetForDetail.warrantyExpiry)">
             {{ selectedAssetForDetail.warrantyExpiry | date:'longDate' }}
+          </div>
+        </div>
+        <div class="info-item">
+          <label>Warranty Expiry Reminder</label>
+          <div class="info-value">
+            <span [style.color]="selectedAssetForDetail.temp3 === '1' ? '#10b981' : '#ef4444'" style="font-weight: 500;">
+              {{ selectedAssetForDetail.temp3 === '1' ? 'Active' : 'Inactive' }}
+            </span>
           </div>
         </div>
       </div>

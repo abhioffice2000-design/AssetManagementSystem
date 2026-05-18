@@ -111,6 +111,20 @@
                 <span class="detail-label" style="font-size: 0.85rem; color: #64748b; font-weight: 500;">Reminder 3</span>
                 <span class="detail-value" style="font-size: 0.95rem; color: #0f172a; font-weight: 600;">{{ asset.reminder3 !== 'Not Set' ? (asset.reminder3 === '1' ? '1 Day Before' : asset.reminder3 + ' Days Before') : 'Not Set' }}</span>
               </div>
+              <div class="detail-item" style="display: flex; flex-direction: column; gap: 4px;">
+                <span class="detail-label" style="font-size: 0.85rem; color: #64748b; font-weight: 500;">Warranty Expiry Reminder</span>
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                  <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px; margin: 0;">
+                    <input type="checkbox" [checked]="asset.temp3 === '1'" (change)="toggleAssetReminder()" [disabled]="isSaving" style="opacity: 0; width: 0; height: 0;">
+                    <span class="slider" [style.background-color]="asset.temp3 === '1' ? '#10b981' : '#94a3b8'" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; transition: .4s; border-radius: 24px;">
+                      <span [style.transform]="asset.temp3 === '1' ? 'translateX(20px)' : 'translateX(0px)'" style="position: absolute; content: ''; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; display: block;"></span>
+                    </span>
+                  </label>
+                  <span style="font-size: 0.95rem; font-weight: 600; transition: color 0.3s;" [style.color]="asset.temp3 === '1' ? '#10b981' : '#64748b'">
+                    {{ asset.temp3 === '1' ? 'Active' : 'Inactive' }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         <div class="results mt-24" *ngIf="allocatedAssets.length === 0 && selectedSubCatId && !isLoadingResults">
