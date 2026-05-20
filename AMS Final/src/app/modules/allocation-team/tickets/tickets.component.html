@@ -257,6 +257,11 @@
             <span class="detail-label">Asset Manager Remarks</span>
             <span class="detail-value">{{ getReturnAssetManagerRemarks(selectedTicket) }}</span>
           </div>
+
+          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET && getReturnAllocationTeamRemarks(selectedTicket)">
+            <span class="detail-label">Allocation Team Remarks</span>
+            <span class="detail-value">{{ getReturnAllocationTeamRemarks(selectedTicket) }}</span>
+          </div>
         </div>
       </div>
 

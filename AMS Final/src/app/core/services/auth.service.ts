@@ -131,7 +131,7 @@ export class AuthService {
       this.resolveProjectDetailsInBackground(finalUser);
     }
 
-    if (finalUser.assetTypeId && !finalUser.assetTypeName) {
+    if ((finalUser.role === UserRole.ASSET_MANAGER || finalUser.role === UserRole.ALLOCATION_TEAM) || (finalUser.assetTypeId && !finalUser.assetTypeName)) {
       this.resolveAssetTypeDetailsInBackground(finalUser);
     }
 
@@ -190,7 +190,7 @@ export class AuthService {
         await this.resolveProjectDetailsInBackground(user);
       }
 
-      if (user.assetTypeId && !user.assetTypeName) {
+      if ((user.role === UserRole.ASSET_MANAGER || user.role === UserRole.ALLOCATION_TEAM) || (user.assetTypeId && !user.assetTypeName)) {
         await this.resolveAssetTypeDetailsInBackground(user);
       }
 
@@ -271,31 +271,45 @@ export class AuthService {
           typesData = [typesData];
         }
 
-        let matchingType: any = null;
-        
-        // 1. Try matching by assetTypeId if we have it
-        if (user.assetTypeId) {
-          matchingType = typesData.find((t: any) => (t.type_id || t.Type_id) === user.assetTypeId);
-        }
+        const typeRows = typesData.map((row: any) => row?.old?.m_asset_types || row?.m_asset_types || row);
+        const assignedTypeIds = (user.assetTypeId || '')
+          .split(',')
+          .map(id => id.trim())
+          .filter(Boolean);
+        let matchingTypes = assignedTypeIds.length
+          ? typeRows.filter((t: any) => assignedTypeIds.includes((t.type_id || t.Type_id || '').toString().trim()))
+          : [];
 
-        // 2. If it's an asset role (Manager or AT), find ALL matching categories
+        // If it's an asset role (Manager or AT), find ALL matching categories
         if (isAssetRole) {
-          const myTypes = typesData.filter((t: any) => {
+          const myTypes = typeRows.filter((t: any) => {
             const managerId = (t.asset_manager_id || t.am_id || t.manager_id || t.temp1 || '').toString().trim();
             const teamMembers = (t.team_members || t.at_members || '').toString().trim();
-            return (managerId === user.id) || teamMembers.includes(user.id);
+            const memberTokens = teamMembers.split(',').map((member: string) => member.trim());
+            return (managerId === user.id) || memberTokens.includes(user.id) || memberTokens.includes(user.name);
           });
 
           if (myTypes.length > 0) {
-            user.assetTypeId = myTypes.map((t: any) => t.type_id || t.Type_id).join(',');
-            user.assetTypeName = myTypes.map((t: any) => t.type_name || t.asset_type_name || t.name).join(' & ');
-            matchingType = myTypes[0]; // Set this to trigger the update block below
+            const seenTypeIds = new Set(matchingTypes.map((t: any) => (t.type_id || t.Type_id || '').toString().trim()));
+            myTypes.forEach((t: any) => {
+              const typeId = (t.type_id || t.Type_id || '').toString().trim();
+              if (typeId && !seenTypeIds.has(typeId)) {
+                seenTypeIds.add(typeId);
+                matchingTypes.push(t);
+              }
+            });
           }
         }
 
-        if (matchingType) {
-          user.assetTypeId = user.assetTypeId || matchingType.type_id || matchingType.Type_id;
-          user.assetTypeName = matchingType.type_name || matchingType.asset_type_name || matchingType.name;
+        if (matchingTypes.length > 0) {
+          user.assetTypeId = matchingTypes
+            .map((t: any) => t.type_id || t.Type_id)
+            .filter(Boolean)
+            .join(',');
+          user.assetTypeName = matchingTypes
+            .map((t: any) => t.type_name || t.asset_type_name || t.name)
+            .filter(Boolean)
+            .join(' & ');
 
           // Update subject if this is the current user
           const current = this.currentUserSubject.value;

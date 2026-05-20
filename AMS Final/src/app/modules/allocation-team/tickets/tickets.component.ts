@@ -1258,6 +1258,14 @@ export class AllocationTicketsComponent implements OnInit {
     return stage ? (stage.comments || 'No remarks provided') : '';
   }
 
+  getReturnAllocationTeamRemarks(ticket: EnrichedTicket): string {
+    const stage = ticket.rawRequest.approvalChain?.find(entry =>
+      entry.stage === ApprovalStage.ALLOCATION &&
+      (entry.action === 'Approved' || entry.action === 'Rejected')
+    );
+    return stage ? (stage.comments || 'No remarks provided') : '';
+  }
+
   getReturnEmployeeReason(ticket: EnrichedTicket): string {
     return ticket.rawRequest.justification || ticket.reason || 'No reason provided';
   }
