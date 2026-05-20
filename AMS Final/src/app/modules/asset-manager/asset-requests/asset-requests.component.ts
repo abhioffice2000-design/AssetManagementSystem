@@ -150,12 +150,18 @@ export class AssetRequestsComponent implements OnInit {
       this.allRequests = this.allRequests.map((req: AssetRequest) => {
         if (
           req.status === RequestStatus.PENDING &&
+          req.currentStage !== ApprovalStage.TEAM_LEAD &&
           !pendingIds.has(req.id) &&
           !confirmationIds.has(req.id)
         ) {
           return { ...req, status: RequestStatus.APPROVED };
         }
         return req;
+      });
+
+      // Filter out requests that are still pending at the Team Lead stage from the Asset Manager's view
+      this.allRequests = this.allRequests.filter((req: AssetRequest) => {
+        return !(req.currentStage === ApprovalStage.TEAM_LEAD && req.status === RequestStatus.PENDING);
       });
 
       const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
@@ -1342,7 +1348,14 @@ export class AssetRequestsComponent implements OnInit {
         progress = await this.requestService.getRequestProgress(request.id);
       }
 
-      const stages = this.getStagesForRequest(request);
+      let stages = this.getStagesForRequest(request);
+      const hasTeamLeadProgress = progress.some(p =>
+        ['team lead', 'approver'].some(role => (p.stage || p.role || '').toLowerCase().includes(role))
+      );
+      if (!hasTeamLeadProgress) {
+        stages = stages.filter(s => s.name !== 'Team Lead Approval');
+      }
+
       let availableProgress = [...progress].sort((a: any, b: any) =>
         new Date(a.timestamp || a.action_date).getTime() - new Date(b.timestamp || b.action_date).getTime()
       );

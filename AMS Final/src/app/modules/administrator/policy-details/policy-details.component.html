@@ -250,7 +250,7 @@
                 <input type="date" [(ngModel)]="newPolicy.policy_expiry_date" 
                        [disabled]="isViewOnly" 
                        [class.error-border]="errors.expiry_date"
-                       [min]="newPolicy.policy_purchase_date || getTodayDate()">
+                       [min]="getMinExpiryDate()">
                 <span class="input-icon material-icons-outlined">event_busy</span>
               </div>
               <span class="error-msg" *ngIf="errors.expiry_date">{{ errors.expiry_date }}</span>
