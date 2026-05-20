@@ -315,8 +315,8 @@ export class PolicyDetailsComponent implements OnInit {
     }
     
     if (this.newPolicy.policy_expiry_date && this.newPolicy.policy_purchase_date && 
-        this.newPolicy.policy_expiry_date < this.newPolicy.policy_purchase_date) {
-      this.errors.expiry_date = 'Expiry date cannot be before purchase date';
+        this.newPolicy.policy_expiry_date <= this.newPolicy.policy_purchase_date) {
+      this.errors.expiry_date = 'Expiry date must be after purchase date';
       isValid = false;
     }
 
@@ -396,6 +396,15 @@ export class PolicyDetailsComponent implements OnInit {
 
   getTodayDate(): string {
     return new Date().toISOString().split('T')[0];
+  }
+
+  getMinExpiryDate(): string {
+    if (this.newPolicy.policy_purchase_date) {
+      const date = new Date(this.newPolicy.policy_purchase_date);
+      date.setDate(date.getDate() + 1);
+      return date.toISOString().split('T')[0];
+    }
+    return this.getTodayDate();
   }
 
   getEmailList(toMailId: string | undefined): string[] {

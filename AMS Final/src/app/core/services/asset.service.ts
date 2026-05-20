@@ -503,7 +503,8 @@ export class AssetService {
       requestId: this.getNullableValue(assetData?.temp2),
       reminderDays: parseInt(this.getNullableValue(assetData?.temp3) || '30'),
       temp3: this.getNullableValue(assetData?.temp3),
-      temp5: this.getNullableValue(assetData?.temp5)
+      temp5: this.getNullableValue(assetData?.temp5),
+      allocatedDate: assetData?.temp4 || ''
     };
   }
 
@@ -692,7 +693,8 @@ export class AssetService {
           requestId: actualItem.request_id || actualItem.temp2 || actualItem.temp1 || actualItem.temp3 || row.t_asset_requests?.request_id || '',
           cost: Number(actualItem.Cost || actualItem.cost || 0),
           condition: (actualItem.Condition || actualItem.condition) as AssetCondition || AssetCondition.GOOD,
-          specifications: actualItem.Specifications || actualItem.specifications || ''
+          specifications: actualItem.Specifications || actualItem.specifications || '',
+          allocatedDate: allocationDate || actualItem.temp4 || ''
         };
       });
 
@@ -802,6 +804,7 @@ export class AssetService {
         cost: Number(item.Cost || item.cost || 0),
         condition: (item.Condition || item.condition) as AssetCondition || AssetCondition.GOOD,
         specifications: item.Specifications || item.specifications || '',
+        allocatedDate: item.temp4 || item.Temp4 || '',
         temp3: item.temp3 || item.Temp3 || ''
       };
     } catch (error) {
