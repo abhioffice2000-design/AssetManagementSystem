@@ -90,6 +90,7 @@ export class AllocationTicketsComponent implements OnInit {
     });
     this.currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
     const userId = this.currentUser?.id ?? null;
+    const request = { Approver_id: userId };
 
     try {
       // 1. Fetch ALL Asset Type Assignments to resolve managers and my assigned types
@@ -108,6 +109,7 @@ export class AllocationTicketsComponent implements OnInit {
         typeArray.forEach((t: any) => {
           const typeName = (t.type_name || t.name || '').toLowerCase().trim();
           const managerName = t.asset_manager || '—';
+          console.log("managerName", managerName)
           const teamMembers = (t.team_members || t.at_members || '').toString();
 
           if (typeName) {
@@ -123,6 +125,28 @@ export class AllocationTicketsComponent implements OnInit {
       }
     } catch (err) {
       console.error('[AllocationTickets] Failed to resolve assignments:', err);
+    }
+
+    try {
+      const res = await this.hs.ajax(
+        'GetAssetManagerByTeamAllocationMember',
+        'http://schemas.cordys.com/AMS_Database_Metadata',
+        request
+      );
+
+
+      const tuples = this.hs.xmltojson(res, 'tuple');
+      console.log('Raw tuples:', tuples);
+      const tupleArray: any[] = tuples ? (Array.isArray(tuples) ? tuples : [tuples]) : [];
+      const firstTuple = tupleArray[0];
+      const mUsers = firstTuple?.old?.m_roles?.m_users ?? firstTuple?.m_roles?.m_users ?? {};
+
+      this.assetManagerNameForThisUser = this.getVal(mUsers?.name) ?? '';  // ✅ assigned
+      this.assetManagerIDForThisUser = this.getVal(mUsers?.user_id) ?? '';  // ✅ assigned
+      console.log("Asset Manager Name For This User", this.assetManagerNameForThisUser);
+      console.log("Asset Manager ID For This User", this.assetManagerIDForThisUser);
+    } catch (err) {
+      console.error('Failed to fetch asset manager info:', err);
     }
 
     // 2. Load subcategories for mapping
