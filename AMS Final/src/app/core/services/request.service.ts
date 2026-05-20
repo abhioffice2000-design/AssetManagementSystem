@@ -392,7 +392,26 @@ export class RequestService {
         return [];
       }
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
-      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+      const requests = tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+
+      return Promise.all(requests.map(async (req) => {
+        if (req.assignedAssetId) {
+          try {
+            const asset = await this.getAssetDetailsById(req.assignedAssetId);
+            if (asset) {
+              req.assetName = asset.asset_name || req.assetName;
+              req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+              req.category = asset.sub_category_id || req.category;
+              req.assignedSerial = asset.serial_number || req.assignedSerial;
+              req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
+              req.assignedWarrantyExpiry = asset.warranty_expiry || req.assignedWarrantyExpiry;
+            }
+          } catch (e) {
+            console.warn(`Failed to enrich pending warranty request ${req.id}:`, e);
+          }
+        }
+        return req;
+      }));
     } catch (err) {
       console.error('Failed to fetch warranty approvals from GetPendingWarrantyApprovalsForManager:', err);
       throw err;
@@ -424,7 +443,26 @@ export class RequestService {
       }
 
       const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
-      return tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+      const requests = tupleArray.map((tuple: any) => this.mapWarrantyTupleToRequest(tuple));
+
+      return Promise.all(requests.map(async (req) => {
+        if (req.assignedAssetId) {
+          try {
+            const asset = await this.getAssetDetailsById(req.assignedAssetId);
+            if (asset) {
+              req.assetName = asset.asset_name || req.assetName;
+              req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+              req.category = asset.sub_category_id || req.category;
+              req.assignedSerial = asset.serial_number || req.assignedSerial;
+              req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
+              req.assignedWarrantyExpiry = asset.warranty_expiry || req.assignedWarrantyExpiry;
+            }
+          } catch (e) {
+            console.warn(`Failed to enrich warranty request ${req.id}:`, e);
+          }
+        }
+        return req;
+      }));
     } catch (err) {
       console.error('Failed to fetch all warranty requests from GetT_extend_asset_requestsObjects:', err);
       return [];
