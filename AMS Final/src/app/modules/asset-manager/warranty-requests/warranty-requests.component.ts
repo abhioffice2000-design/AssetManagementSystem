@@ -120,12 +120,34 @@ export class WarrantyRequestsComponent implements OnInit {
           // 3. Asset Type fallback for AT Member
           if (!(req as any).assignedAllocationTeamName && req.assetType) {
             const assignment = await this.adminService.getAssignmentByAssetType(req.assetType);
-            if (assignment && assignment.teamMembers) {
-              const memberId = assignment.teamMembers.split(',')[0].trim();
-              const matched = allUsers.find((u: any) => u.id === memberId);
-              if (matched) {
-                req.assignedAllocationTeamId = matched.id;
-                (req as any).assignedAllocationTeamName = matched.name;
+            if (assignment) {
+              if (assignment.teamMembers) {
+                const memberTokens = assignment.teamMembers.split(/[,;|]/).map((t: string) => t.trim().toLowerCase());
+                const matched = allUsers.find((u: any) => {
+                  const uId = (u.id || '').toLowerCase();
+                  const uName = (u.name || u.user_name || '').toLowerCase();
+                  const uEmail = (u.email || '').toLowerCase();
+                  return memberTokens.some(token => 
+                    token === uId || 
+                    token === uName || 
+                    token === uEmail || 
+                    (uName && (token.includes(uName) || uName.includes(token)))
+                  );
+                });
+                if (matched) {
+                  req.assignedAllocationTeamId = matched.id;
+                  (req as any).assignedAllocationTeamName = matched.name;
+                }
+              }
+              if (!(req as any).assignedAllocationTeamName && assignment.id) {
+                const matchedByTypeId = allUsers.find((u: any) => 
+                  u.assetTypeId === assignment.id && 
+                  (u.role === 'Asset Allocation Team' || (u.role_id || '').toLowerCase() === 'rol_05')
+                );
+                if (matchedByTypeId) {
+                  req.assignedAllocationTeamId = matchedByTypeId.id;
+                  (req as any).assignedAllocationTeamName = matchedByTypeId.name;
+                }
               }
             }
           }
@@ -239,8 +261,18 @@ export class WarrantyRequestsComponent implements OnInit {
         
         if (assignment) {
           if (assignment.teamMembers) {
-            const memberIds = assignment.teamMembers.split(',').map((id: string) => id.trim());
-            const matched = allUsers.find(u => memberIds.includes(u.id));
+            const memberTokens = assignment.teamMembers.split(/[,;|]/).map((t: string) => t.trim().toLowerCase());
+            const matched = allUsers.find(u => {
+              const uId = (u.id || '').toLowerCase();
+              const uName = (u.name || u.user_name || '').toLowerCase();
+              const uEmail = (u.email || '').toLowerCase();
+              return memberTokens.some(token => 
+                token === uId || 
+                token === uName || 
+                token === uEmail || 
+                (uName && (token.includes(uName) || uName.includes(token)))
+              );
+            });
             if (matched) {
               this.assignedAllocationMemberName = matched.name;
               this.selectedAllocationMemberId = matched.id;
@@ -249,7 +281,10 @@ export class WarrantyRequestsComponent implements OnInit {
           
           // Try matching by assetTypeId if teamMembers string is empty or didn't match
           if (!this.assignedAllocationMemberName && assignment.id) {
-            const matchedByTypeId = allUsers.find(u => u.assetTypeId === assignment.id);
+            const matchedByTypeId = allUsers.find(u => 
+              u.assetTypeId === assignment.id && 
+              (u.role === 'Asset Allocation Team' || (u.role_id || '').toLowerCase() === 'rol_05')
+            );
             if (matchedByTypeId) {
               this.assignedAllocationMemberName = matchedByTypeId.name;
               this.selectedAllocationMemberId = matchedByTypeId.id;
