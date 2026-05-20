@@ -1,4 +1,4 @@
-﻿import { Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { AssetService } from '../../../core/services/asset.service';
 import { RequestService } from '../../../core/services/request.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -119,15 +119,27 @@ export class ManagerDashboardComponent implements OnInit {
       ]);
 
       // 2. Resolve manager's assigned types
-      const myAssignments = allAssignments.filter(a =>
+      const myAssignments = allAssignments.filter((a: any) =>
         a.assetManagerId && a.assetManagerId.toLowerCase().trim() === managerId.toLowerCase().trim()
       );
-      const managerTypeNames = myAssignments.map(a => a.name.toLowerCase().trim());
+      const managerTypeNames = myAssignments.map((a: any) => a.name.toLowerCase().trim());
       console.log(`[Dashboard] Manager ${managerId} assigned to types:`, managerTypeNames);
 
       const isMyType = (item: any) => {
+        if (managerTypeNames.length === 0) return true;
         const type = (item.type || item.assetType || '').toString().toLowerCase().trim();
-        return managerTypeNames.length === 0 || managerTypeNames.includes(type);
+        const typeId = (item.type_id || item.typeId || item.asset_type_id || '').toString().toLowerCase().trim();
+        
+        if (type && managerTypeNames.includes(type)) {
+          return true;
+        }
+        if (typeId) {
+          return myAssignments.some((a: any) => 
+            a.id.toLowerCase().trim() === typeId || 
+            a.name.toLowerCase().trim() === typeId
+          );
+        }
+        return false;
       };
 
       // 3. Filter ALL data based on assignments
