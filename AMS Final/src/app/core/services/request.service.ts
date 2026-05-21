@@ -190,9 +190,9 @@ export class RequestService {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <GetRequestsForAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
-      <userId>${userId}</userId>
-    </GetRequestsForAssetManager>
+    <Getallrequestsbyapproverandrequestid xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <approver_id>${userId}</approver_id>
+    </Getallrequestsbyapproverandrequestid>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
@@ -201,7 +201,7 @@ export class RequestService {
       const tuples = this.hs.xmltojson(response, 'tuple');
 
       if (!tuples) {
-        console.warn('No tuples found in GetRequestsForAssetManager response');
+        console.warn('No tuples found in Getallrequestsbyapproverandrequestid response');
         this.allRequestsList = [];
         return [];
       }
@@ -215,7 +215,7 @@ export class RequestService {
 
       return [...this.allRequestsList];
     } catch (err) {
-      console.error('Failed to fetch requests from GetRequestsForAssetManager:', err);
+      console.error('Failed to fetch requests from Getallrequestsbyapproverandrequestid:', err);
       throw err;
     }
   }
@@ -1209,60 +1209,93 @@ export class RequestService {
    */
   public mapTupleToRequest(tuple: any): AssetRequest {
     const parent = tuple?.old || tuple;
-    const reqData = parent?.t_asset_requests || parent;
+    const rawReqData = parent?.t_asset_requests;
+    const rawApprData = parent?.t_request_approvals;
+    
+    const approvalData = rawApprData || rawReqData?.t_request_approvals || parent;
+    const reqData = rawReqData || rawApprData?.t_asset_requests || parent;
 
     // Extract joined metadata from peer objects at the tuple level
-    const userInfo = parent?.m_users || reqData?.m_users || {};
-    const assetInfo = parent?.m_assets || reqData?.m_assets || {};
-    const subCatInfo = parent?.m_asset_subcategories || reqData?.m_asset_subcategories || {};
-    const typeInfo = parent?.m_asset_types || reqData?.m_asset_types || {};
+    const userInfo = parent?.m_users || reqData?.m_users || approvalData?.m_users || {};
+    const assetInfo = parent?.m_assets || reqData?.m_assets || approvalData?.m_assets || {};
+    const subCatInfo = parent?.m_asset_subcategories || reqData?.m_asset_subcategories || approvalData?.m_asset_subcategories || {};
+    const typeInfo = parent?.m_asset_types || reqData?.m_asset_types || approvalData?.m_asset_types || {};
+
+    // Handle single or multiple users in m_users
+    let userArray: any[] = [];
+    if (Array.isArray(userInfo)) {
+      userArray = userInfo;
+    } else if (userInfo && typeof userInfo === 'object') {
+      const keys = Object.keys(userInfo);
+      const arrayKey = keys.find(k => Array.isArray(userInfo[k]));
+      if (arrayKey) {
+        const len = userInfo[arrayKey].length;
+        for (let i = 0; i < len; i++) {
+          const u: any = {};
+          keys.forEach(k => {
+            u[k] = Array.isArray(userInfo[k]) ? userInfo[k][i] : userInfo[k];
+          });
+          userArray.push(u);
+        }
+      } else {
+        userArray = [userInfo];
+      }
+    }
+
+    const reqUserId = reqData?.user_id || approvalData?.user_id || '';
+    const requesterUser = userArray.find((u: any) => {
+      const uid = u?.user_id;
+      return uid && reqUserId && String(uid).trim() === String(reqUserId).trim();
+    }) || userArray[0] || {};
 
     // Map urgency string to enum
-    const urgency = this.mapToUrgency(reqData?.urgency || '');
+    const urgencyStr = this.getNullableValue(reqData?.urgency || approvalData?.urgency || '') || '';
+    const urgency = this.mapToUrgency(urgencyStr);
 
     // Map status string to enum
-    const status = this.mapToStatus(reqData?.status || '');
+    const statusStr = this.getNullableValue(approvalData?.status || reqData?.status || '') || '';
+    const status = this.mapToStatus(statusStr);
 
     // Determine request type from asset_type or default
-    const requestType = this.mapToRequestType(reqData?.request_type || reqData?.asset_type || '');
+    const requestType = this.mapToRequestType(reqData?.request_type || reqData?.asset_type || approvalData?.request_type || approvalData?.asset_type || '');
 
     // Determine current approval stage based on status and role
-    const role = parent?.t_request_approvals?.role || reqData?.t_request_approvals?.role || '';
+    const role = this.getNullableValue(approvalData?.role || reqData?.role || '') || '';
     const currentStage = this.determineStage(status, role);
 
     // Parse email approval
-    const hasEmailApproval = reqData?.email_approval === 'true' || reqData?.email_approval === true;
+    const hasEmailApproval = reqData?.email_approval === 'true' || reqData?.email_approval === true || approvalData?.email_approval === 'true';
 
     // Format date
-    const createdAt = reqData?.created_at || '';
+    const createdAt = this.getNullableValue(reqData?.created_at || approvalData?.action_date || approvalData?.created_at || '') || '';
     const requestDate = createdAt;
 
     return {
-      taskid: parent?.t_request_approvals?.temp1 || reqData?.t_request_approvals?.temp1 || parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
-      approvalId: parent?.t_request_approvals?.approval_id || reqData?.t_request_approvals?.approval_id || '',
-      id: reqData?.request_id || '',
-      requestNumber: reqData?.request_id || '',
-      requesterId: reqData?.user_id || userInfo?.user_id || '',
-      requesterName: userInfo?.name || '',
-      requesterEmail: userInfo?.email || '',
-      requesterDepartment: this.getNullableValue(userInfo?.department) || '',
-      requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || ''),
+      taskid: this.getNullableValue(approvalData?.temp1 || approvalData?.temp2 || reqData?.temp1 || reqData?.temp2 || '') || '',
+      approvalId: this.getNullableValue(approvalData?.approval_id || reqData?.approval_id || '') || '',
+      id: this.getNullableValue(reqData?.request_id || approvalData?.request_id || '') || '',
+      requestNumber: this.getNullableValue(reqData?.request_id || approvalData?.request_id || '') || '',
+      requesterId: this.getNullableValue(reqData?.user_id || approvalData?.user_id || requesterUser?.user_id || '') || '',
+      requesterName: this.getNullableValue(requesterUser?.name || '') || '',
+      requesterEmail: this.getNullableValue(requesterUser?.email || '') || '',
+      requesterDepartment: this.getNullableValue(requesterUser?.department) || '',
+      requesterTeam: this.getNullableValue(requesterUser?.team) || '',
+      assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || approvalData?.asset_type || ''),
       assetName: this.getNullableValue(
         reqData?.temp1 ||
         parent?.temp1 ||
         assetInfo?.asset_name ||
         assetInfo?.asset_id ||
-        parent?.t_request_approvals?.temp1 ||
+        approvalData?.temp1 ||
         subCatInfo?.name ||
         typeInfo?.type_name ||
         reqData?.asset_name ||
         ''
-      ),
+      ) || '',
       category: this.normalizeCategory(
         this.getNullableValue(
           assetInfo?.asset_id ||
-          parent?.t_request_approvals?.temp1 ||
+          approvalData?.temp1 ||
           assetInfo?.asset_name ||
           subCatInfo?.name ||
           typeInfo?.type_name ||
@@ -1325,11 +1358,11 @@ export class RequestService {
       assignedPurchaseDate: assetInfo?.purchase_date || '',
       assignedWarrantyExpiry: assetInfo?.warranty_expiry || '',
       // Requester details from nested m_users
-      requesterStatus: this.getNullableValue(userInfo?.status),
-      requesterProject: this.getNullableValue(userInfo?.project_id),
-      requesterRole: this.getNullableValue(userInfo?.role_id),
-      requesterProjectName: this.getNullableValue(userInfo?.project_name || userInfo?.m_projects?.project_name),
-      requesterRoleName: this.getNullableValue(userInfo?.role_name || userInfo?.m_roles?.role_name),
+      requesterStatus: this.getNullableValue(requesterUser?.status),
+      requesterProject: this.getNullableValue(requesterUser?.project_id),
+      requesterRole: this.getNullableValue(requesterUser?.role_id),
+      requesterProjectName: this.getNullableValue(requesterUser?.project_name || requesterUser?.m_projects?.project_name),
+      requesterRoleName: this.getNullableValue(requesterUser?.role_name || requesterUser?.m_roles?.role_name),
       teamLeadJustification: this.getNullableValue(
         parent?.t_request_approvals?.reason ||
         parent?.t_request_approvals?.remarks ||
