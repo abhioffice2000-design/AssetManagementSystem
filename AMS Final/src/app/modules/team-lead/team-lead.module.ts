@@ -9,14 +9,18 @@ import { PendingApprovalsComponent } from './pending-approvals/pending-approvals
 import { MyAssetComponent } from './my-asset/my-asset.component';
 import { RequestAssetComponent } from './request-asset/request-asset.component';
 import { ReturnAssetComponent } from './return-asset/return-asset.component';
+import { ServiceAssetComponent } from './service-asset/service-asset.component';
 import { ExtendWarrantyComponent } from './extend-warranty/extend-warranty.component';
+import { MyRequestsComponent } from './my-requests/my-requests.component';
 
 const routes: Routes = [
   { path: 'dashboard', component: LeadDashboardComponent },
   { path: 'pending-approval', component: PendingApprovalsComponent },
   { path: 'my-asset', component: MyAssetComponent },
+  { path: 'my-requests', component: MyRequestsComponent },
   { path: 'request-asset', component: RequestAssetComponent },
   { path: 'return-asset', component: ReturnAssetComponent },
+  { path: 'service-asset', component: ServiceAssetComponent },
   { path: 'extend-warranty', component: ExtendWarrantyComponent },
   { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
 ];
@@ -26,8 +30,10 @@ const routes: Routes = [
     LeadDashboardComponent,
     PendingApprovalsComponent,
     MyAssetComponent,
+    MyRequestsComponent,
     RequestAssetComponent,
     ReturnAssetComponent,
+    ServiceAssetComponent,
     ExtendWarrantyComponent
   ],
   imports: [

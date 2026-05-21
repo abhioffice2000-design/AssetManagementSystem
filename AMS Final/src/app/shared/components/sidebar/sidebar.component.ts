@@ -87,7 +87,11 @@ export class SidebarComponent implements OnInit, OnDestroy {
         this.navItems = [
           { label: 'Dashboard', icon: 'dashboard', route: `${base}/dashboard` },
           { label: 'Approval History', icon: 'fact_check', route: `${base}/pending-approval` },
-          { label: 'My Asset', icon: 'devices', route: `${base}/my-asset` }
+          { label: 'My Asset', icon: 'devices', route: `${base}/my-asset` },
+          { label: 'My Requests', icon: 'assignment', route: `${base}/my-requests` },
+          { label: 'Return Asset', icon: 'assignment_return', route: `${base}/return-asset` },
+          { label: 'Service Asset', icon: 'build', route: `${base}/service-asset` },
+          { label: 'Extend Warranty', icon: 'security', route: `${base}/extend-warranty` }
         ];
         break;
       case UserRole.EMPLOYEE:
