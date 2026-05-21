@@ -136,7 +136,7 @@ export class AssetRequestsComponent implements OnInit {
       };
 
       // Filter ALL data arrays based on these assignments
-      this.allRequests = (allReqs || []).filter(isMyType);
+      this.allRequests = (allReqs || []);
       this.confirmationRequests = (confirmReqs || []).filter(isMyType);
       const filteredPending = (pendingReqs || []).filter(isMyType);
       const filteredReturn = (returnReqs || []).filter(isMyType);
@@ -1364,7 +1364,7 @@ export class AssetRequestsComponent implements OnInit {
       const resolvedNames: Record<string, string> = {};
       Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
 
-      this.trackingSteps = stages.map((stage, index) => {
+      this.trackingSteps = await Promise.all(stages.map(async (stage, index) => {
         let foundIndex = availableProgress.findIndex(p =>
           stage.roles.some(role => (p.stage || p.role)?.toLowerCase().includes(role))
         );
@@ -1393,6 +1393,14 @@ export class AssetRequestsComponent implements OnInit {
             'Asset Allocation Team';
 
         let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[roleKey];
+        
+        // If resolvedName is an ID (e.g., usr_002), fetch the real name
+        if (resolvedName && resolvedName.toLowerCase().startsWith('usr_')) {
+          const user = await this.authService.getUserDetails(resolvedName).catch(() => null);
+          if (user && user.name) {
+            resolvedName = user.name;
+          }
+        }
 
         return {
           name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
@@ -1403,7 +1411,7 @@ export class AssetRequestsComponent implements OnInit {
           isCurrent: isCurrent,
           comments: data?.comments || data?.remarks
         };
-      });
+      }));
 
       // Special pass to handle "current" state based on the previous step
       let currentStepFound = false;
