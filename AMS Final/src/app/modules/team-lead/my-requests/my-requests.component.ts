@@ -149,9 +149,11 @@ export class MyRequestsComponent implements OnInit {
   get filteredRequests(): AssetRequest[] {
     const filtered = this.requests.filter(req => {
       // 1. Tab filtering
+      const statusText = String(req.status || '').toLowerCase();
       let isResolved = req.status === RequestStatus.COMPLETED ||
         req.status === RequestStatus.REJECTED ||
-        req.status === RequestStatus.CANCELLED;
+        req.status === RequestStatus.CANCELLED ||
+        statusText === 'closed';
 
       // For non-warranty requests, 'Approved' can be considered resolved (terminal for employee)
       // but for warranty, it still needs Allocation Team confirmation.
@@ -218,9 +220,11 @@ export class MyRequestsComponent implements OnInit {
 
   get pendingCount(): number {
     return this.requests.filter(req => {
+      const statusText = String(req.status || '').toLowerCase();
       let isResolved = req.status === RequestStatus.COMPLETED ||
         req.status === RequestStatus.REJECTED ||
-        req.status === RequestStatus.CANCELLED;
+        req.status === RequestStatus.CANCELLED ||
+        statusText === 'closed';
       if (req.requestType !== RequestType.EXTEND_WARRANTY && req.status === RequestStatus.APPROVED) {
         isResolved = true;
       }
@@ -230,9 +234,11 @@ export class MyRequestsComponent implements OnInit {
 
   get resolvedCount(): number {
     return this.requests.filter(req => {
+      const statusText = String(req.status || '').toLowerCase();
       let isResolved = req.status === RequestStatus.COMPLETED ||
         req.status === RequestStatus.REJECTED ||
-        req.status === RequestStatus.CANCELLED;
+        req.status === RequestStatus.CANCELLED ||
+        statusText === 'closed';
       if (req.requestType !== RequestType.EXTEND_WARRANTY && req.status === RequestStatus.APPROVED) {
         isResolved = true;
       }
