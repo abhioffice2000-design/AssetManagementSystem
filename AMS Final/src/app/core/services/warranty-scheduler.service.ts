@@ -55,8 +55,9 @@ export class WarrantySchedulerService {
 
       // Check if current time is past the scheduled time
       if (now >= scheduledTime) {
-        console.log(`[WarrantyScheduler] Execution time reached (${timeStr}). Triggering ExtendWarranty_BPM...`);
-        await this.triggerWarrantyEmails(config.days || config.reminder1);
+        console.log(`[WarrantyScheduler] Execution time reached (${timeStr}). ExtendWarranty_BPM trigger is disabled as per configuration.`);
+        // Commented out to prevent hitting ExtendWarranty_BPM service when configuration is saved or scheduler runs
+        // await this.triggerWarrantyEmails(config.days || config.reminder1);
         localStorage.setItem('warranty_scheduler_last_run', today);
       } else {
         console.log(`[WarrantyScheduler] Waiting for scheduled time: ${timeStr}. Current time: ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
@@ -67,7 +68,7 @@ export class WarrantySchedulerService {
   }
 
   /**
-   * Sends the SOAP request to the ExtendWarranty_BPM
+   * Sends the SOAP request to the ExtendWarranty_BPM (Bypassed as per user request)
    */
   async triggerWarrantyEmails(days: number) {
     const soapRequest = `
@@ -92,6 +93,8 @@ export class WarrantySchedulerService {
         }
       });
 
+      // Commented out to prevent hitting ExtendWarranty_BPM service as per user request
+      /*
       const response = await this.hs.ajax(null, null, {}, soapRequest);
       
       // Check for SOAP Fault
@@ -103,6 +106,9 @@ export class WarrantySchedulerService {
 
       console.log(`[WarrantyScheduler] SUCCESS: ExtendWarranty_BPM triggered for ${days} days threshold.`);
       return response;
+      */
+      console.log(`[WarrantyScheduler] ExtendWarranty_BPM service trigger bypassed for ${days} days.`);
+      return null;
     } catch (err) {
       console.error('[WarrantyScheduler] FAILED to trigger ExtendWarranty_BPM:', err);
       throw err;
