@@ -7,6 +7,7 @@ import { AssetRequest, RequestStatus, ApprovalStage, RequestType } from '../../.
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { AdminDataService } from '../../../core/services/admin-data.service';
 import { Chart, ChartConfiguration, ChartData, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -94,7 +95,8 @@ export class AllocationDashboardComponent implements OnInit {
     private notificationService: NotificationService,
     private mailService: MailService,
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private adminService: AdminDataService
   ) { }
 
   async ngOnInit(): Promise<void> {
@@ -169,12 +171,13 @@ export class AllocationDashboardComponent implements OnInit {
         return;
       }
 
-      const [resRequests, resInventory, resWarranty, resReturn, resService] = await Promise.all([
+      const [resRequests, resInventory, resWarranty, resReturn, resService, allRes] = await Promise.all([
         this.hs.ajax('GetallpendingrequestsForAllocationTeamMemberwithTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: userId }),
         this.fetchAllocationInventoryByUser(userId),
         this.requestService.fetchPendingWarrantyApprovalsFromService(userId),
         this.hs.ajax('GetPendingReturnApprovalsForManager', 'http://schemas.cordys.com/AMS_Database_Metadata', { Approver_id: userId }),
-        this.requestService.fetchPendingServiceApprovals(userId)
+        this.requestService.fetchPendingServiceApprovals(userId),
+        this.requestService.fetchAllWarrantyRequests().catch(() => [])
       ]);
 
       const requestTuples = this.hs.xmltojson(resRequests, 'tuple');
@@ -184,7 +187,62 @@ export class AllocationDashboardComponent implements OnInit {
       const allReturns = Array.isArray(returnTuples) ? returnTuples : (returnTuples ? [returnTuples] : []);
 
       const allAssets: Asset[] = resInventory || [];
-      this.pendingWarrantyRequests = resWarranty || [];
+      
+      let pendingWarrantyTickets = (resWarranty || []).filter(req => req.status === 'Pending' || req.status === 'In Progress');
+
+      // Robust discovery fallback
+      if (pendingWarrantyTickets.length === 0) {
+        console.log('[AllocationDashboard] Direct pending service returned 0. Trying robust discovery...');
+
+        // Broaden candidate search: check ALL non-terminal requests for pending stages for this user
+        const terminalStatuses = ['Completed', 'Rejected', 'Cancelled', 'Resolved'];
+        const candidateReqs = (allRes || []).filter((req: any) => !terminalStatuses.includes(req.status));
+        const userIdLower = userId.toLowerCase();
+
+        const discoveredReqs: AssetRequest[] = [];
+        for (const req of candidateReqs) {
+          try {
+            const progress = await this.requestService.getWarrantyProgress(req.id);
+            if (progress && progress.length > 0) {
+              const latest = [...progress].sort((a, b) => {
+                const idA = parseInt(a.approvalId?.replace(/\D/g, '') || '0');
+                const idB = parseInt(b.approvalId?.replace(/\D/g, '') || '0');
+                return idB - idA;
+              })[0];
+
+              if (latest && latest.status === 'Pending' && (latest.approverId || '').toLowerCase() === userIdLower) {
+                req.approvalId = latest.approvalId;
+                req.taskid = latest.temp1;
+                req.status = 'Pending' as any;
+                discoveredReqs.push(req);
+              }
+            }
+          } catch (pErr) { console.warn('Progress check failed:', pErr); }
+        }
+        pendingWarrantyTickets = discoveredReqs;
+      }
+
+      this.pendingWarrantyRequests = pendingWarrantyTickets.sort((a, b) => {
+        const idA = (a.id || '').toLowerCase();
+        const idB = (b.id || '').toLowerCase();
+        return idB.localeCompare(idA, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      // Enrich requester names
+      try {
+        const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+        if (allUsers && allUsers.length > 0) {
+          const userMap = new Map(allUsers.map((u: any) => [u.id || u.user_id, u.name]));
+          this.pendingWarrantyRequests.forEach(req => {
+            if (!req.requesterName || req.requesterName === 'Unknown') {
+              req.requesterName = userMap.get(req.requesterId) || req.requesterName || 'Employee';
+            }
+          });
+        }
+      } catch (userErr) {
+        console.warn('[AllocationDashboard] Failed to enrich requester names:', userErr);
+      }
+
       const allServices = (resService || []).filter((a: any) => a.stage === 'STAGE_2_ALLOCATION');
 
       this.stats.pendingNew = allRequests.length;

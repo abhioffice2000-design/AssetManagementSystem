@@ -36,21 +36,14 @@
       <div class="filter-actions ml-auto" style="display: flex; gap: 12px; align-items: center; margin-left: auto;">
         <div class="search-box" style="position: relative;">
           <span class="material-icons" style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 18px; color: #94a3b8;">search</span>
-          <input type="text" [(ngModel)]="searchTerm" placeholder="Search..." 
+          <input type="text" [(ngModel)]="searchTerm" (ngModelChange)="onFilterChange()" placeholder="Search..." 
                  style="padding: 8px 8px 8px 32px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s; width: 220px;">
         </div>
         
-        <select class="asset-filter" *ngIf="activeTab === 'pending'" [(ngModel)]="selectedAssetType"
+        <select class="asset-filter" [(ngModel)]="selectedAssetType" (ngModelChange)="onFilterChange()"
                 style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
           <option value="">All Asset Types</option>
           <option *ngFor="let opt of assetTypeOptions" [value]="opt">{{ opt }}</option>
-        </select>
-
-        <select class="asset-filter" *ngIf="activeTab === 'resolved'" [(ngModel)]="selectedResolvedStatus"
-                style="padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; background: white; cursor: pointer;">
-          <option value="">All Resolved</option>
-          <option value="Approved">Approved Requests</option>
-          <option value="Rejected">Rejected Requests</option>
         </select>
       </div>
     </div>
@@ -70,7 +63,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let req of filteredWarrantyTickets">
+            <tr *ngFor="let req of paginatedWarrantyTickets">
               <td class="req-id">{{ req.id }}</td>
               <td>
                 <div class="user-info">
@@ -101,6 +94,44 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- Pagination Footer -->
+        <div class="pagination-footer" *ngIf="totalFilteredCount > 0">
+          <div class="pagination-info">
+            Showing <strong>{{ totalFilteredCount === 0 ? 0 : (currentPage - 1) * pageSize + 1 }}</strong> to <strong>{{ Math.min(currentPage * pageSize, totalFilteredCount) }}</strong> of <strong>{{ totalFilteredCount }}</strong> requests
+          </div>
+          <div class="pagination-controls">
+            <!-- First page arrow -->
+            <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(1)" title="First page">
+              <span class="material-icons">first_page</span>
+            </button>
+            <!-- Previous arrow -->
+            <button class="page-btn page-nav" [disabled]="currentPage === 1" (click)="goToPage(currentPage - 1)" title="Previous page">
+              <span class="material-icons">chevron_left</span>
+            </button>
+
+            <!-- Page numbers with ellipsis -->
+            <ng-container *ngFor="let p of visiblePages">
+              <span class="page-ellipsis" *ngIf="p === '...'">…</span>
+              <button *ngIf="p !== '...'" class="page-btn" [class.active]="currentPage === p" (click)="goToPage(+p)">
+                {{ p }}
+              </button>
+            </ng-container>
+
+            <!-- Next arrow -->
+            <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)" title="Next page">
+              <span class="material-icons">chevron_right</span>
+            </button>
+            <!-- Last page arrow -->
+            <button class="page-btn page-nav" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)" title="Last page">
+              <span class="material-icons">last_page</span>
+            </button>
+          </div>
+          <div class="pagination-page-indicator">
+            Page {{ currentPage }} of {{ totalPages }}
+          </div>
+        </div>
+
       </div>
     </div>
 

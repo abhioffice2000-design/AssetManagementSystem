@@ -26,8 +26,12 @@ export class WarrantyTicketsComponent implements OnInit {
   // Search and Filter
   searchTerm: string = '';
   selectedAssetType: string = '';
-  selectedResolvedStatus: string = '';
   assetTypeOptions: string[] = ['Hardware', 'Software', 'Furniture', 'Network'];
+
+  // Pagination
+  currentPage = 1;
+  pageSize = 5;
+  Math = Math;
 
   constructor(
     private requestService: RequestService,
@@ -68,11 +72,70 @@ export class WarrantyTicketsComponent implements OnInit {
 
       const matchesType = !this.selectedAssetType || req.assetType === this.selectedAssetType;
 
-      const matchesStatus = this.activeTab === 'pending' ? true :
-        (!this.selectedResolvedStatus || (this.selectedResolvedStatus === 'Approved' ? (req.status === 'Approved' || req.status === 'Completed') : req.status === this.selectedResolvedStatus));
-
-      return matchesSearch && matchesType && matchesStatus;
+      return matchesSearch && matchesType;
     });
+  }
+
+  get totalFilteredCount(): number {
+    return this.filteredWarrantyTickets.length;
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.totalFilteredCount / this.pageSize);
+  }
+
+  get paginatedWarrantyTickets(): AssetRequest[] {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.filteredWarrantyTickets.slice(start, start + this.pageSize);
+  }
+
+  get visiblePages(): (number | string)[] {
+    const total = this.totalPages;
+    const current = this.currentPage;
+    const maxVisible = 5;
+
+    if (total <= maxVisible + 2) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+
+    const pages: (number | string)[] = [];
+    pages.push(1);
+
+    let start = Math.max(2, current - 1);
+    let end = Math.min(total - 1, current + 1);
+
+    if (current <= 3) {
+      start = 2;
+      end = Math.min(total - 1, maxVisible - 1);
+    } else if (current >= total - 2) {
+      start = Math.max(2, total - maxVisible + 2);
+      end = total - 1;
+    }
+
+    if (start > 2) {
+      pages.push('...');
+    }
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    if (end < total - 1) {
+      pages.push('...');
+    }
+
+    pages.push(total);
+    return pages;
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+    }
+  }
+
+  onFilterChange(): void {
+    this.currentPage = 1;
   }
 
   get pendingWarrantyCount(): number {
@@ -97,9 +160,7 @@ export class WarrantyTicketsComponent implements OnInit {
 
   setTab(tab: 'pending' | 'resolved'): void {
     this.activeTab = tab;
-    if (tab === 'resolved') {
-      this.selectedAssetType = '';
-    }
+    this.currentPage = 1;
   }
 
   async loadWarrantyTickets(): Promise<void> {
