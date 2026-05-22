@@ -177,6 +177,7 @@ export class AssetTransactionComponent implements OnInit {
           reason: r.issue_description || '',
           urgency: r.urgency || 'Medium',
           status: r.status || r.current_status || 'Pending',
+          rawStatus: r.status || r.current_status || 'Pending',
           emailApproval: false,
           document: r.document || '',
           createdAt: r.created_at || '',
@@ -591,26 +592,12 @@ export class AssetTransactionComponent implements OnInit {
     this.overallProgress = 0;
 
     try {
-      const progressData = await this.requestService.getRequestProgress(request.requestId);
+      const progressData = await this.getAdminProgressData(request);
 
       // Sort chronologically
       progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-      // Define standard stages for a new asset request
-      let stages: any[] = [];
-      if (request.requestType === 'Extend Warranty Requests') {
-        stages = [
-          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
-          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
-        ];
-      } else {
-        stages = [
-          { name: 'Team Lead', roles: ['team lead', 'approver'] },
-          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
-          { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
-          { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
-        ];
-      }
+      const stages = this.getAdminStagesForRequest(request);
 
       let availableProgress = [...progressData];
 
@@ -637,7 +624,9 @@ export class AssetTransactionComponent implements OnInit {
           isCompleted = data.status === 'Approved' || data.status === 'Completed';
           isCurrent = data.status === 'Pending';
         } else {
-          isCompleted = request.status.toLowerCase() === 'completed' || request.status.toLowerCase() === 'approved';
+          if (request.requestType !== 'Return Requests' && request.requestType !== 'Service Requests') {
+            isCompleted = request.status.toLowerCase() === 'completed' || request.status.toLowerCase() === 'approved';
+          }
         }
 
         // Resolve names: prefer DB name > resolved lookup name > fallback
@@ -651,7 +640,7 @@ export class AssetTransactionComponent implements OnInit {
         }
 
         return {
-          name: resolvedName || (isCompleted ? 'System Approved' : 'To be Assigned'),
+          name: resolvedName || (request.requestType === 'Service Requests' ? stage.name : (isCompleted ? 'System Approved' : 'To be Assigned')),
           roleName: stage.name + (isDistributionStep ? ' (Distribution)' : ''),
           status: data ? data.status : (isCompleted ? 'Approved' : 'Pending'),
           timestamp: data?.timestamp,
@@ -675,9 +664,16 @@ export class AssetTransactionComponent implements OnInit {
       }
 
       // Remove steps that have no approver assigned (not part of the actual flow)
-      this.trackingSteps = this.trackingSteps.filter(step =>
-        step.name !== 'To be Assigned'
-      );
+      if (request.requestType !== 'Service Requests') {
+        this.trackingSteps = this.trackingSteps.filter(step =>
+          step.name !== 'To be Assigned'
+        );
+      }
+
+      const rejectedIndex = this.trackingSteps.findIndex(s => s.status?.toLowerCase() === 'rejected');
+      if (rejectedIndex !== -1) {
+        this.trackingSteps = this.trackingSteps.slice(0, rejectedIndex + 1);
+      }
 
       this.overallProgress = this.calculateOverallProgress(request.status);
     } catch (error) {
@@ -685,6 +681,125 @@ export class AssetTransactionComponent implements OnInit {
     } finally {
       this.loadingProgress = false;
     }
+  }
+
+  private getAdminStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
+    if (request.requestType === 'Return Requests') {
+      return [
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+      ];
+    }
+
+    if (request.requestType === 'Extend Warranty Requests') {
+      return [
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
+      ];
+    }
+
+    if (request.requestType === 'Service Requests') {
+      return [
+        { name: 'Asset Manager', roles: ['stage_1'] },
+        { name: 'Allocation Team', roles: ['stage_2'] },
+        { name: 'Asset Manager (Final)', roles: ['stage_3'] },
+        { name: 'On Service', roles: ['on_service'] },
+        { name: 'Serviced', roles: ['serviced'] },
+        { name: 'Handover Complete', roles: ['closed'] }
+      ];
+    }
+
+    return [
+      { name: 'Team Lead', roles: ['team lead', 'approver'] },
+      { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+      { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+      { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+    ];
+  }
+
+  private async getAdminProgressData(request: AssetRequest): Promise<any[]> {
+    if (request.requestType === 'Service Requests') {
+      const serviceApprovals = await this.requestService.getServiceRequestApprovalChain(request.requestId);
+      const userMap = await this.getAdminUserNameMap();
+
+      const progressData = serviceApprovals.map((a: any) => ({
+        stage: a.stage || a.role || 'Unknown',
+        status: a.status || 'Pending',
+        approverId: a.approver_id,
+        approverName: userMap.get(a.approver_id) || 'Assigned Approver',
+        timestamp: a.action_date,
+        comments: a.remarks
+      }));
+
+      const reqStatus = this.getRawRequestStatus(request).toLowerCase();
+      const statusTimestamp = new Date().toISOString();
+
+      if (['onservice', 'on_service', 'serviced', 'closed', 'completed'].some(s => reqStatus.includes(s))) {
+        progressData.push({
+          stage: 'on_service',
+          status: 'Approved',
+          approverId: '',
+          approverName: 'System',
+          timestamp: statusTimestamp,
+          comments: 'Asset sent to service center'
+        });
+      }
+
+      if (['serviced', 'closed', 'completed'].some(s => reqStatus.includes(s))) {
+        progressData.push({
+          stage: 'serviced',
+          status: 'Approved',
+          approverId: '',
+          approverName: 'System',
+          timestamp: statusTimestamp,
+          comments: 'Service completed'
+        });
+      }
+
+      if (['closed', 'completed'].some(s => reqStatus.includes(s))) {
+        progressData.push({
+          stage: 'closed',
+          status: 'Approved',
+          approverId: '',
+          approverName: 'System',
+          timestamp: statusTimestamp,
+          comments: 'Original asset handed back to employee'
+        });
+      }
+
+      return progressData;
+    }
+
+    if (request.requestType === 'Return Requests') {
+      const returnApprovals = await this.requestService.getReturnRequestProgress(request.requestId);
+      const userMap = await this.getAdminUserNameMap();
+
+      return returnApprovals.map((a: any) => ({
+        stage: a.role || 'Unknown',
+        status: a.status || 'Pending',
+        approverId: a.approver_id,
+        approverName: userMap.get(a.approver_id) || 'Assigned Approver',
+        timestamp: a.action_date,
+        comments: a.remarks
+      }));
+    }
+
+    return this.requestService.getRequestProgress(request.requestId);
+  }
+
+  private async getAdminUserNameMap(): Promise<Map<string, string>> {
+    try {
+      const allUsers = await this.adminDataService.GetAllUserRoleProjectDetails();
+      return new Map(allUsers.map((u: any) => [u.id, u.name]));
+    } catch (e) {
+      console.warn('Failed to fetch users for admin tracking name resolution:', e);
+      return new Map<string, string>();
+    }
+  }
+
+  private getRawRequestStatus(request: AssetRequest): string {
+    return ((request as any).rawStatus || request.status || '').toString();
   }
 
   /**
