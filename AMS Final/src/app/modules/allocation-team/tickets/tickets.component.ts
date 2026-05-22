@@ -351,45 +351,69 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async loadResolvedTickets(): Promise<void> {
+    const currentUser = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const userId = currentUser?.id;
+    if (!userId) {
+      this.resolvedTickets = [];
+      return;
+    }
+
     try {
       const res = await this.hs.ajax(
-        'Getallrequest',
+        'Getallrequestsbyapproverandrequestid',
         'http://schemas.cordys.com/AMS_Database_Metadata',
-        {}
+        { approver_id: userId }
       );
       const tuples = this.hs.xmltojson(res, 'tuple');
       if (tuples) {
         const tupleArray: any[] = Array.isArray(tuples) ? tuples : [tuples];
-        this.resolvedTickets = tupleArray
-          .map((t: any) => this.mapTupleToEnrichedTicket(t))
-          .filter(t => {
-            const isResolved = (
-              t.status === RequestStatus.COMPLETED ||
-              t.status === RequestStatus.APPROVED ||
-              t.status === RequestStatus.REJECTED ||
-              t.status === RequestStatus.CANCELLED
-            );
+        console.log('[AllocationTickets] loadResolvedTickets - Raw tuples count:', tupleArray.length);
 
-            if (!isResolved) return false;
+        const mappedResolved: EnrichedTicket[] = [];
 
-            // Filter by asset type assignment (handles multiple categories joined by & or ,)
-            if (this.currentUser?.assetTypeName) {
-              const assignedTypes = this.currentUser.assetTypeName
-                .split(/[&,]/)
-                .map((s: string) => s.trim().toLowerCase());
+        for (const tuple of tupleArray) {
+          const parent = tuple?.old ?? tuple;
+          const approval = parent?.t_request_approvals ?? parent;
+          if (!approval) continue;
 
-              if (assignedTypes.length > 0) {
-                return assignedTypes.includes(t.assetType.toLowerCase());
-              }
+          const role = this.getVal(approval.role) || '';
+          const approvalStatusStr = this.getVal(approval.status) || '';
+
+          // Filter for allocation role and resolved approvals
+          const isAllocationRole = role.toLowerCase().includes('allocation');
+          const isApprovalResolved = ['approved', 'rejected', 'completed'].includes(approvalStatusStr.toLowerCase());
+
+          if (isAllocationRole && isApprovalResolved) {
+            const ticket = this.mapTupleToEnrichedTicket(tuple);
+            // Override ticket status with the specific action taken by this Allocation Team member
+            ticket.status = this.mapToStatus(approvalStatusStr);
+            mappedResolved.push(ticket);
+          }
+        }
+
+        // Apply filtering
+        this.resolvedTickets = mappedResolved.filter(t => {
+          // Filter by asset type assignment (handles multiple categories joined by & or ,)
+          if (currentUser?.assetTypeName) {
+            const assignedTypes = currentUser.assetTypeName
+              .split(/[&,]/)
+              .map((s: string) => s.trim().toLowerCase());
+
+            if (assignedTypes.length > 0) {
+              return assignedTypes.includes(t.assetType.toLowerCase());
             }
-            return true;
-          });
+          }
+          return true;
+        });
 
         // Enrich with asset details in parallel
         await Promise.all(this.resolvedTickets.map(ticket => this.enrichTicketWithAssetDetails(ticket)));
+      } else {
+        this.resolvedTickets = [];
       }
     } catch (err) {
       console.error('Failed to load resolved tickets:', err);
+      this.resolvedTickets = [];
     }
   }
 
@@ -761,37 +785,46 @@ export class AllocationTicketsComponent implements OnInit {
 
           console.log(`[AllocationTickets] Found ${commentEntries.length} meaningful comment entries for ${ticket.ticketId}`);
 
-          // 2. Identify Team Lead Remarks
-          const tlEntry = commentEntries.find(p => {
-            const combined = (p.stage + ' ' + p.role).toLowerCase();
-            return combined.includes('team lead') || combined.includes('lead');
+          // 2. Check if Team Lead is actually present in the approval flow
+          const isTeamLeadInFlow = progress.some(p => {
+            const stageLower = (p.stage || '').toLowerCase();
+            return stageLower.includes('team lead') || stageLower.includes('lead');
           });
 
-          if (tlEntry) {
-            ticket.teamLeadRemarks = tlEntry.comments;
-          } else if (commentEntries.length >= 1 && !ticket.teamLeadRemarks) {
-            ticket.teamLeadRemarks = commentEntries[0].comments;
+          // 3. Identify Team Lead Remarks — only if TL is in the flow
+          if (isTeamLeadInFlow) {
+            const tlEntry = commentEntries.find(p => {
+              const combined = (p.stage + ' ' + (p.role || '')).toLowerCase();
+              return combined.includes('team lead') || combined.includes('lead');
+            });
+            if (tlEntry) {
+              ticket.teamLeadRemarks = tlEntry.comments;
+            }
+          } else {
+            // TL is not in flow — clear any previously set teamLeadRemarks
+            ticket.teamLeadRemarks = undefined;
           }
 
-          // 3. Identify Asset Manager Remarks
+          // 4. Identify Asset Manager Remarks
           const amEntry = commentEntries.find(p => {
-            const combined = (p.stage + ' ' + p.role).toLowerCase();
+            const combined = (p.stage + ' ' + (p.role || '')).toLowerCase();
             return (combined.includes('asset manager') || combined.includes('manager')) &&
               !combined.includes('team lead') && !combined.includes('lead');
           });
 
           if (amEntry) {
             ticket.assetManagerRemarks = amEntry.comments;
-          } else if (commentEntries.length >= 2 && !ticket.assetManagerRemarks) {
-            // If we have at least 2 entries and AM isn't set, take the one that isn't the TL entry
+          } else if (!isTeamLeadInFlow && commentEntries.length >= 1 && !ticket.assetManagerRemarks) {
+            // TL not in flow: first comment belongs to AM
+            ticket.assetManagerRemarks = commentEntries[0].comments;
+          } else if (isTeamLeadInFlow && commentEntries.length >= 2 && !ticket.assetManagerRemarks) {
+            // TL is in flow: take the entry that isn't the TL entry
             const otherEntry = commentEntries.find(p => p.comments !== ticket.teamLeadRemarks);
             if (otherEntry) ticket.assetManagerRemarks = otherEntry.comments;
           }
 
-          // 4. Final check: If we still don't have AM remarks but we had them from the initial tuple, KEEP THEM
-          // (Already handled by !ticket.assetManagerRemarks checks above)
-
           console.log(`[AllocationTickets] Final extracted remarks for ${ticket.ticketId}:`, {
+            isTeamLeadInFlow,
             TL: ticket.teamLeadRemarks,
             AM: ticket.assetManagerRemarks
           });

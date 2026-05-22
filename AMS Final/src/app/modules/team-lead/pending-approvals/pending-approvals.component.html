@@ -39,22 +39,10 @@
               <td>{{req.category}}</td>
               <td>{{req.assetType}}</td>
               <td>
-                <span class="badge" [ngClass]="{
-                      'badge-warning': req.reqStatus === 'Pending' || req.reqStatus === 'In Progress', 
-                      'badge-success': req.reqStatus === 'Completed',
-                      'badge-danger': req.reqStatus === 'Rejected'
-                    }">
-                  {{req.reqStatus}}
-                </span>
+                <span class="badge" [ngClass]="{ 'badge-warning': req.reqStatus === 'Pending' || req.reqStatus === 'In Progress', 'badge-success': req.reqStatus === 'Approved' || req.reqStatus === 'Completed', 'badge-danger': req.reqStatus === 'Rejected' || req.reqStatus === 'Cancelled' }">{{req.reqStatus}}</span>
               </td>
               <td>
-                <span class="badge" [ngClass]="{
-                      'badge-warning': req.status === 'Pending' || req.status === 'In Progress', 
-                      'badge-success': req.status === 'Approved' || req.status === 'Completed',
-                      'badge-danger': req.status === 'Rejected' || req.status === 'Cancelled'
-                    }">
-                  {{req.status}}
-                </span>
+                <span class="badge" [ngClass]="{ 'badge-info': req.status === 'Pending', 'badge-success': req.status === 'Approved', 'badge-danger': req.status === 'Rejected', 'badge-secondary': !req.status }">{{req.status || 'N/A'}}</span>
               </td>
               <td>{{req.requestDate | date:'mediumDate'}}</td>
             </tr>

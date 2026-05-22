@@ -32,6 +32,9 @@ export class MyRequestsComponent implements OnInit {
   overallProgress = 0;
   rejectionInfo: { stage: string, reason: string, approver: string } | null = null;
 
+  // Track request IDs withdrawn in this session so buttons hide immediately
+  withdrawnRequestIds = new Set<string>();
+
   // File upload for resubmit
   selectedFileBase64: string | null = null;
   selectedFileName: string | null = null;
@@ -308,7 +311,13 @@ export class MyRequestsComponent implements OnInit {
 
   private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
     const type = request.requestType;
-    const isSkippedTl = request.hasEmailApproval || request.requesterRole?.toLowerCase().includes('lead') || request.requesterRole?.toLowerCase().includes('manager');
+    const isSkippedTl = request.hasEmailApproval ||
+                        request.requesterRole?.toLowerCase().includes('lead') ||
+                        request.requesterRole?.toLowerCase().includes('manager') ||
+                        request.requesterRoleName?.toLowerCase().includes('lead') ||
+                        request.requesterRoleName?.toLowerCase().includes('manager') ||
+                        request.requesterRoleName?.toLowerCase().includes('admin') ||
+                        ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
 
     switch (type) {
       case RequestType.RETURN_ASSET:
@@ -809,6 +818,7 @@ export class MyRequestsComponent implements OnInit {
         };
         await this.requestService.createEntryForReturn(updateReturnReq);
 
+        this.withdrawnRequestIds.add(request.requestNumber);
         this.notificationService.showToast('Return request withdrawn successfully.', 'info');
       } else {
         // Withdraw Standard Request: update t_asset_requests status
@@ -847,6 +857,9 @@ export class MyRequestsComponent implements OnInit {
         this.notificationService.showToast('Request withdrawn successfully.', 'info');
       }
 
+      // Mark this request as withdrawn so the buttons hide even if status
+      // comes back as 'Rejected' from the backend after reload.
+      this.withdrawnRequestIds.add(request.requestNumber);
       this.closeTrackingModal();
       await this.loadRequests();
     } catch (error) {

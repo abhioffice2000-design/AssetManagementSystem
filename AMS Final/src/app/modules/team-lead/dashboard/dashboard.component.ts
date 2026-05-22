@@ -123,8 +123,14 @@ export class LeadDashboardComponent implements OnInit {
 
   private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
     const type = request.requestType;
-    // Check if Team Lead stage is skipped (self-request or pre-approved)
-    const isSkippedTl = request.hasEmailApproval || request.requesterId === this.userDetails?.user_id;
+    const isSkippedTl = request.hasEmailApproval ||
+                        request.requesterId === this.userDetails?.user_id ||
+                        request.requesterRole?.toLowerCase().includes('lead') ||
+                        request.requesterRole?.toLowerCase().includes('manager') ||
+                        request.requesterRoleName?.toLowerCase().includes('lead') ||
+                        request.requesterRoleName?.toLowerCase().includes('manager') ||
+                        request.requesterRoleName?.toLowerCase().includes('admin') ||
+                        ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
 
     const stages = [
       { name: 'Team Lead Approval', roles: ['team lead', 'approver'] },
