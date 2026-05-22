@@ -1349,10 +1349,17 @@ export class AssetRequestsComponent implements OnInit {
       }
 
       let stages = this.getStagesForRequest(request);
+      const isSkippedTl = request.hasEmailApproval ||
+                          request.requesterRole?.toLowerCase().includes('lead') ||
+                          request.requesterRole?.toLowerCase().includes('manager') ||
+                          request.requesterRoleName?.toLowerCase().includes('lead') ||
+                          request.requesterRoleName?.toLowerCase().includes('manager') ||
+                          request.requesterRoleName?.toLowerCase().includes('admin') ||
+                          ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
       const hasTeamLeadProgress = progress.some(p =>
         ['team lead', 'approver'].some(role => (p.stage || p.role || '').toLowerCase().includes(role))
       );
-      if (!hasTeamLeadProgress) {
+      if (isSkippedTl || !hasTeamLeadProgress) {
         stages = stages.filter(s => s.name !== 'Team Lead Approval');
       }
 

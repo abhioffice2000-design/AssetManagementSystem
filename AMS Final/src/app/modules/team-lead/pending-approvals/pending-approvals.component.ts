@@ -102,22 +102,27 @@ export class PendingApprovalsComponent implements OnInit {
         };
       });
 
-      const uniqueRequestsMap = new Map();
-      mappedRequests.forEach(req => {
-        const existing = uniqueRequestsMap.get(req.id);
-        if (!existing) {
-          uniqueRequestsMap.set(req.id, req);
-        } else {
-          if (req.approverId === this.userDetails?.user_id) {
-            uniqueRequestsMap.set(req.id, req);
-          }
+      // Sort mapped requests by newest date first
+      const sortedByDate = mappedRequests.sort((a: any, b: any) => {
+        const dateA = new Date(a.requestDate || 0).getTime();
+        const dateB = new Date(b.requestDate || 0).getTime();
+        return dateB - dateA;
+      });
+
+      const uniqueRequestsMap = new Map<string, any>();
+      // Since sortedByDate is newest first, the first occurrence for each requestNumber is the latest version.
+      sortedByDate.forEach(req => {
+        const key = req.requestNumber || req.id;
+        if (!uniqueRequestsMap.has(key)) {
+          uniqueRequestsMap.set(key, req);
         }
       });
 
-      this.pendingRequests = Array.from(uniqueRequestsMap.values())
-        .sort((a: any, b: any) => (b.requestNumber || '').localeCompare(a.requestNumber || ''));
-
+      // Populate pendingRequests after deduplication
+      this.pendingRequests = Array.from(uniqueRequestsMap.values()).sort((a: any, b: any) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
       this.isLoading = false;
+
+
     }).catch(err => {
       console.error("Error fetching request history:", err);
       this.isLoading = false;
@@ -169,7 +174,14 @@ export class PendingApprovalsComponent implements OnInit {
   }
 
   private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
-    const isSkippedTl = request.hasEmailApproval || request.requesterId === this.userDetails?.user_id;
+    const isSkippedTl = request.hasEmailApproval ||
+      request.requesterId === this.userDetails?.user_id ||
+      request.requesterRole?.toLowerCase().includes('lead') ||
+      request.requesterRole?.toLowerCase().includes('manager') ||
+      request.requesterRoleName?.toLowerCase().includes('lead') ||
+      request.requesterRoleName?.toLowerCase().includes('manager') ||
+      request.requesterRoleName?.toLowerCase().includes('admin') ||
+      ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
 
     const stages = [
       { name: 'Team Lead Approval', roles: ['team lead', 'approver'] },
@@ -198,9 +210,14 @@ export class PendingApprovalsComponent implements OnInit {
       Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
 
       this.trackingSteps = stages.map((stage, index) => {
-        let foundIndex = availableProgress.findIndex(p =>
-          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
-        );
+        let foundIndex = -1;
+        for (let i = availableProgress.length - 1; i >= 0; i--) {
+          const p = availableProgress[i];
+          if (stage.roles.some(role => p.stage?.toLowerCase().includes(role))) {
+            foundIndex = i;
+            break;
+          }
+        }
 
         let data = null;
         if (foundIndex !== -1) {

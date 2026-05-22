@@ -267,7 +267,7 @@
       </div>
 
       <div class="resubmit-form-container animate-fade-in"
-        *ngIf="selectedRequest?.status === 'Rejected' && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Extend Warranty'">
+        *ngIf="selectedRequest?.status === 'Rejected' && selectedRequest?.requestType !== 'Return Asset' && selectedRequest?.requestType !== 'Extend Warranty' && !withdrawnRequestIds.has(selectedRequest?.requestNumber || '')">
         <!-- Rejection Reason Card -->
         <div class="rejection-details-card mb-24" *ngIf="rejectionInfo">
           <div class="rejection-header">

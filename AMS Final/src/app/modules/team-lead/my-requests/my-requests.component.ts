@@ -308,7 +308,13 @@ export class MyRequestsComponent implements OnInit {
 
   private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
     const type = request.requestType;
-    const isSkippedTl = request.hasEmailApproval || request.requesterRole?.toLowerCase().includes('lead') || request.requesterRole?.toLowerCase().includes('manager');
+    const isSkippedTl = request.hasEmailApproval ||
+                        request.requesterRole?.toLowerCase().includes('lead') ||
+                        request.requesterRole?.toLowerCase().includes('manager') ||
+                        request.requesterRoleName?.toLowerCase().includes('lead') ||
+                        request.requesterRoleName?.toLowerCase().includes('manager') ||
+                        request.requesterRoleName?.toLowerCase().includes('admin') ||
+                        ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
 
     switch (type) {
       case RequestType.RETURN_ASSET:
