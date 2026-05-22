@@ -410,12 +410,13 @@ export class MyAssetComponent implements OnInit {
       }
     } else if (type === RequestType.EXTEND_WARRANTY) {
       // Resolve the manager dynamically based on asset type
-      this.adminService.getAssignmentByAssetType(this.selectedAsset.type)
+      const normalizedType = this.requestService.normalizeAssetType(this.selectedAsset.type, this.selectedAsset.name);
+      this.adminService.getAssignmentByAssetType(normalizedType)
         .then((assignment) => {
           const resolvedManagerId = assignment?.assetManagerId;
           
           if (!resolvedManagerId) {
-            throw new Error(`No manager assigned for asset type: ${this.selectedAsset?.type}`);
+            throw new Error(`No manager assigned for asset type: ${normalizedType}`);
           }
 
           const soapData = {
@@ -428,7 +429,14 @@ export class MyAssetComponent implements OnInit {
                   urgency: 'Medium',
                   email_approval: 'false',
                   status: "Pending",
-                  created_at: new Date().toISOString()
+                  created_at: new Date().toISOString(),
+                  temp1: this.selectedAsset?.name || '',
+                  temp2: this.selectedAsset?.serialNumber || this.selectedAsset?.assetTag || '',
+                  temp3: this.selectedAsset?.warrantyExpiry || '',
+                  temp4: '',
+                  temp5: '',
+                  temp6: '',
+                  temp7: ''
                 }
               }
             }
@@ -454,7 +462,14 @@ export class MyAssetComponent implements OnInit {
                       role: 'Asset Manager',
                       status: 'Pending',
                       remarks: formVal.justification,
-                      action_date: new Date().toISOString()
+                      action_date: new Date().toISOString(),
+                      temp1: '',
+                      temp2: '',
+                      temp3: '',
+                      temp4: this.selectedAsset?.id || '',
+                      temp5: '',
+                      temp6: '',
+                      temp7: ''
                     }
                   }
                 }
@@ -512,7 +527,7 @@ export class MyAssetComponent implements OnInit {
       requesterName: user.name,
       requesterDepartment: user.department,
       requesterTeam: user.team,
-      assetType: this.selectedAsset.type,
+      assetType: this.requestService.normalizeAssetType(this.selectedAsset.type, this.selectedAsset.name),
       category: this.selectedAsset.category,
       subCategory: this.selectedAsset.subCategory,
       justification: justification,

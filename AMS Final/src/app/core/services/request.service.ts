@@ -319,7 +319,7 @@ export class RequestService {
           const asset = await this.getAssetDetailsById(req.assignedAssetId);
           if (asset) {
             req.assetName = asset.asset_name || req.assetName;
-            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType, asset.asset_name);
             req.category = asset.sub_category_id || req.category;
             req.assignedSerial = asset.serial_number || req.assignedSerial;
             req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
@@ -358,7 +358,7 @@ export class RequestService {
           const asset = await this.getAssetDetailsById(req.assignedAssetId);
           if (asset) {
             req.assetName = asset.asset_name || req.assetName;
-            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType, asset.asset_name);
             req.category = asset.sub_category_id || req.category;
             req.assignedSerial = asset.serial_number || req.assignedSerial;
             req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
@@ -400,7 +400,7 @@ export class RequestService {
             const asset = await this.getAssetDetailsById(req.assignedAssetId);
             if (asset) {
               req.assetName = asset.asset_name || req.assetName;
-              req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+              req.assetType = this.normalizeAssetType(asset.type_id || req.assetType, asset.asset_name);
               req.category = asset.sub_category_id || req.category;
               req.assignedSerial = asset.serial_number || req.assignedSerial;
               req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
@@ -451,7 +451,7 @@ export class RequestService {
             const asset = await this.getAssetDetailsById(req.assignedAssetId);
             if (asset) {
               req.assetName = asset.asset_name || req.assetName;
-              req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+              req.assetType = this.normalizeAssetType(asset.type_id || req.assetType, asset.asset_name);
               req.category = asset.sub_category_id || req.category;
               req.assignedSerial = asset.serial_number || req.assignedSerial;
               req.assignedPurchaseDate = asset.purchase_date || req.assignedPurchaseDate;
@@ -781,7 +781,7 @@ export class RequestService {
       requesterEmail: this.getNullableValue(userInfo?.email || userInfo?.Email || '') || '',
       requesterDepartment: this.getNullableValue(userInfo?.department || userInfo?.Department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team || userInfo?.Team) || '',
-      assetType: this.normalizeAssetType(rawAssetType),
+      assetType: this.normalizeAssetType(rawAssetType, assetName),
       category: 'Warranty extension',
       subCategory: assetName,
       assetName: assetName,
@@ -1211,7 +1211,7 @@ export class RequestService {
     const parent = tuple?.old || tuple;
     const rawReqData = parent?.t_asset_requests;
     const rawApprData = parent?.t_request_approvals;
-    
+
     const approvalData = rawApprData || rawReqData?.t_request_approvals || parent;
     const reqData = rawReqData || rawApprData?.t_asset_requests || parent;
 
@@ -1281,6 +1281,18 @@ export class RequestService {
       requesterDepartment: this.getNullableValue(requesterUser?.department) || '',
       requesterTeam: this.getNullableValue(requesterUser?.team) || '',
       assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || approvalData?.asset_type || ''),
+
+      // taskid: parent?.t_request_approvals?.temp1 || reqData?.t_request_approvals?.temp1 || parent?.t_request_approvals?.temp2 || reqData?.t_request_approvals?.temp2 || '',
+      // approvalId: parent?.t_request_approvals?.approval_id || reqData?.t_request_approvals?.approval_id || '',
+      // id: reqData?.request_id || '',
+      // requestNumber: reqData?.request_id || '',
+      // requesterId: reqData?.user_id || userInfo?.user_id || '',
+      // requesterName: userInfo?.name || '',
+      // requesterEmail: userInfo?.email || '',
+      // requesterDepartment: this.getNullableValue(userInfo?.department) || '',
+      // requesterTeam: this.getNullableValue(userInfo?.team) || '',
+      // assetType: this.normalizeAssetType(reqData?.asset_name || typeInfo?.type_name || reqData?.asset_type || reqData?.request_type || '', reqData?.temp1 || assetInfo?.asset_name || reqData?.asset_name),
+
       assetName: this.getNullableValue(
         reqData?.temp1 ||
         parent?.temp1 ||
@@ -1412,7 +1424,7 @@ export class RequestService {
       requesterEmail: this.getReturnValue(userInfo?.email) || '',
       requesterDepartment: this.getNullableValue(userInfo?.department) || '',
       requesterTeam: this.getNullableValue(userInfo?.team) || '',
-      assetType: this.normalizeAssetType(rawAssetType),
+      assetType: this.normalizeAssetType(rawAssetType, assetName),
       category: this.normalizeCategory(assetName || this.getReturnValue(assetInfo?.sub_category_id) || 'Asset Return'),
       subCategory: 'N/A',
       assetName,
@@ -1575,7 +1587,13 @@ export class RequestService {
     }
   }
 
-  public normalizeAssetType(type: string | undefined): string {
+  public normalizeAssetType(type: string | undefined, assetName?: string): string {
+    if (assetName) {
+      const nameLower = assetName.toLowerCase();
+      if (nameLower.includes('desk') || nameLower.includes('table') || nameLower.includes('chair') || nameLower.includes('furn')) {
+        return 'Furniture';
+      }
+    }
     if (!type) return 'Hardware';
     const t = type.toLowerCase().trim();
 
@@ -1820,7 +1838,7 @@ export class RequestService {
           const asset = await this.getAssetDetailsById(req.assignedAssetId);
           if (asset) {
             req.assetName = asset.asset_name || req.assetName;
-            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType);
+            req.assetType = this.normalizeAssetType(asset.type_id || req.assetType, asset.asset_name);
             req.category = asset.sub_category_id || req.category;
             req.assignedSerial = asset.serial_number || req.assignedSerial;
           }

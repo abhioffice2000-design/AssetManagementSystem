@@ -216,23 +216,7 @@
         </div>
       </section>
 
-      <section class="panel" *ngIf="stockAlerts.length > 0">
-        <div class="panel-header">
-          <div>
-            <h3>Stock Gaps</h3>
-            <p>Pending demand is higher than available inventory.</p>
-          </div>
-        </div>
-        <div class="alert-list">
-          <div class="alert-item" *ngFor="let s of stockAlerts">
-            <div>
-              <span class="alert-title">{{ s.category }}</span>
-              <span class="alert-meta">{{ s.available }} available / {{ s.waiting }} waiting</span>
-            </div>
-            <span class="alert-status">{{ s.available === 0 ? 'Out of Stock' : 'Low Stock' }}</span>
-          </div>
-        </div>
-      </section>
+
     </div>
 
     <section class="panel full-width">
