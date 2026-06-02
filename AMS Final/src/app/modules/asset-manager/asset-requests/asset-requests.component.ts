@@ -18,13 +18,14 @@ import { AdminDataService } from '../../../core/services/admin-data.service';
 })
 export class AssetRequestsComponent implements OnInit {
   allRequests: AssetRequest[] = [];
+  allAssetRequests: AssetRequest[] = [];
   filteredRequests: AssetRequest[] = [];
   pendingRequests: AssetRequest[] = [];
   // activeTab: 'pending' | 'all' | 'return' = 'pending';
   confirmationRequests: AssetRequest[] = [];
   filteredConfirmationRequests: AssetRequest[] = [];
   confirmationSearchTerm = '';
-  activeTab: 'pending' | 'all' | 'confirmation' | 'return' = 'pending';
+  activeTab: 'pending' | 'all' | 'allAssetRequests' | 'confirmation' | 'return' = 'pending';
   searchTerm = '';
   selectedStatus: RequestStatus | '' = RequestStatus.PENDING;
   selectedUrgency = '';
@@ -91,6 +92,7 @@ export class AssetRequestsComponent implements OnInit {
       const approverId = currentUser?.id;
       if (!approverId) {
         this.allRequests = [];
+        this.allAssetRequests = [];
         this.pendingRequests = [];
         this.confirmationRequests = [];
         this.returnConfirmationRequests = [];
@@ -123,13 +125,13 @@ export class AssetRequestsComponent implements OnInit {
         if (managerTypeNames.length === 0) return true;
         const type = (item.type || item.assetType || '').toString().toLowerCase().trim();
         const typeId = (item.type_id || item.typeId || item.asset_type_id || '').toString().toLowerCase().trim();
-        
+
         if (type && managerTypeNames.includes(type)) {
           return true;
         }
         if (typeId) {
-          return myAssignments.some((a: any) => 
-            a.id.toLowerCase().trim() === typeId || 
+          return myAssignments.some((a: any) =>
+            a.id.toLowerCase().trim() === typeId ||
             a.name.toLowerCase().trim() === typeId
           );
         }
@@ -150,6 +152,7 @@ export class AssetRequestsComponent implements OnInit {
 
       // Filter ALL data arrays based on these assignments
       this.allRequests = deduplicate(allReqs);
+      this.allAssetRequests = [...this.allRequests];
       const filteredPending = deduplicate(pendingReqs).filter(isMyType);
       const filteredReturn = deduplicate(returnReqs).filter(isMyType);
 
@@ -190,6 +193,7 @@ export class AssetRequestsComponent implements OnInit {
       console.error('Failed to load requests:', err);
       this.loadError = err?.message || err?.errorThrown || 'Failed to load request data. Please try again.';
       this.allRequests = [];
+      this.allAssetRequests = [];
       this.pendingRequests = [];
       this.confirmationRequests = [];
       this.filteredConfirmationRequests = [];
@@ -352,7 +356,7 @@ export class AssetRequestsComponent implements OnInit {
     return normalized;
   }
 
-  switchTab(tab: 'pending' | 'all' | 'confirmation' | 'return'): void {
+  switchTab(tab: 'pending' | 'all' | 'allAssetRequests' | 'confirmation' | 'return'): void {
     this.activeTab = tab;
     this.searchTerm = '';
     this.selectedStatus = (tab === 'pending' || tab === 'return') ? RequestStatus.PENDING : '';
@@ -371,10 +375,12 @@ export class AssetRequestsComponent implements OnInit {
       source = [...this.pendingRequests];
     } else if (this.activeTab === 'return') {
       source = this.returnRequests;
+    } else if (this.activeTab === 'allAssetRequests') {
+      source = [...this.allAssetRequests];
     } else if (this.activeTab === 'confirmation') {
       source = this.confirmationRequests;
     } else {
-      source = [...this.allRequests, ...this.returnRequests];
+      source = [...this.allAssetRequests, ...this.returnRequests];
     }
 
     const currentSearch = this.activeTab === 'confirmation' ? this.confirmationSearchTerm : this.searchTerm;
@@ -1351,12 +1357,12 @@ export class AssetRequestsComponent implements OnInit {
 
       let stages = this.getStagesForRequest(request);
       const isSkippedTl = request.hasEmailApproval ||
-                          request.requesterRole?.toLowerCase().includes('lead') ||
-                          request.requesterRole?.toLowerCase().includes('manager') ||
-                          request.requesterRoleName?.toLowerCase().includes('lead') ||
-                          request.requesterRoleName?.toLowerCase().includes('manager') ||
-                          request.requesterRoleName?.toLowerCase().includes('admin') ||
-                          ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
+        request.requesterRole?.toLowerCase().includes('lead') ||
+        request.requesterRole?.toLowerCase().includes('manager') ||
+        request.requesterRoleName?.toLowerCase().includes('lead') ||
+        request.requesterRoleName?.toLowerCase().includes('manager') ||
+        request.requesterRoleName?.toLowerCase().includes('admin') ||
+        ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
       const hasTeamLeadProgress = progress.some(p =>
         ['team lead', 'approver'].some(role => (p.stage || p.role || '').toLowerCase().includes(role))
       );
@@ -1401,7 +1407,7 @@ export class AssetRequestsComponent implements OnInit {
             'Asset Allocation Team';
 
         let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[roleKey];
-        
+
         // If resolvedName is an ID (e.g., usr_002), fetch the real name
         if (resolvedName && resolvedName.toLowerCase().startsWith('usr_')) {
           const user = await this.authService.getUserDetails(resolvedName).catch(() => null);
@@ -1451,7 +1457,7 @@ export class AssetRequestsComponent implements OnInit {
           allUsers = await this.adminService.GetAllUserRoleProjectDetails();
           const assetType = request.assetType || request.category || 'Hardware';
           const assignment = await this.adminService.getAssignmentByAssetType(assetType);
-          
+
           if (assignment) {
             if (assignment.teamMembers) {
               const memberTokens = assignment.teamMembers.split(/[,;|]/).map((t: string) => t.trim().toLowerCase());
@@ -1459,10 +1465,10 @@ export class AssetRequestsComponent implements OnInit {
                 const uId = (u.id || '').toLowerCase();
                 const uName = (u.name || u.user_name || '').toLowerCase();
                 const uEmail = (u.email || '').toLowerCase();
-                return memberTokens.some(token => 
-                  token === uId || 
-                  token === uName || 
-                  token === uEmail || 
+                return memberTokens.some(token =>
+                  token === uId ||
+                  token === uName ||
+                  token === uEmail ||
                   (uName && (token.includes(uName) || uName.includes(token)))
                 );
               });
@@ -1471,10 +1477,10 @@ export class AssetRequestsComponent implements OnInit {
                 this.selectedAllocationMemberId = matched.id;
               }
             }
-            
+
             if (!this.assignedAllocationMemberName && assignment.id) {
-              const matchedByTypeId = allUsers.find(u => 
-                u.assetTypeId === assignment.id && 
+              const matchedByTypeId = allUsers.find(u =>
+                u.assetTypeId === assignment.id &&
                 (u.role === 'Asset Allocation Team' || (u.role_id || '').toLowerCase() === 'rol_05')
               );
               if (matchedByTypeId) {
@@ -1503,24 +1509,24 @@ export class AssetRequestsComponent implements OnInit {
           const currentUser = this.authService.getCurrentUser();
           const managerId = currentUser?.id || 'usr_004';
           const members = await this.requestService.getTeamAllocationMemberByAssetManager(managerId);
-          
+
           if (members && members.length > 0) {
             let bestMember = members[0];
             if (request.assetType) {
-               const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
-               const assignment = await this.adminService.getAssignmentByAssetType(request.assetType || request.category);
-               for (const m of members) {
-                  const uId = m.user_id || m.id;
-                  const fullUser = allUsers.find(u => u.id === uId);
-                  if (fullUser) {
-                     if (assignment && fullUser.assetTypeId === assignment.id) {
-                        bestMember = m; break;
-                     }
-                     if (fullUser.assetTypeName && fullUser.assetTypeName.toLowerCase().includes((request.assetType || request.category).toLowerCase())) {
-                        bestMember = m; break;
-                     }
+              const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+              const assignment = await this.adminService.getAssignmentByAssetType(request.assetType || request.category);
+              for (const m of members) {
+                const uId = m.user_id || m.id;
+                const fullUser = allUsers.find(u => u.id === uId);
+                if (fullUser) {
+                  if (assignment && fullUser.assetTypeId === assignment.id) {
+                    bestMember = m; break;
                   }
-               }
+                  if (fullUser.assetTypeName && fullUser.assetTypeName.toLowerCase().includes((request.assetType || request.category).toLowerCase())) {
+                    bestMember = m; break;
+                  }
+                }
+              }
             }
             this.assignedAllocationMemberName = bestMember.name || '';
             this.selectedAllocationMemberId = bestMember.user_id || bestMember.id || '';
