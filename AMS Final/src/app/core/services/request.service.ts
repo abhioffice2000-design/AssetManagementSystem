@@ -190,9 +190,9 @@ export class RequestService {
     const soapRequest = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <GetApprovedAssetRequestsByAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+    <Getallrequestsbyapproverandrequestid xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
       <approver_id>${userId}</approver_id>
-    </GetApprovedAssetRequestsByAssetManager>
+    </Getallrequestsbyapproverandrequestid>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
 
@@ -201,7 +201,7 @@ export class RequestService {
       const tuples = this.hs.xmltojson(response, 'tuple');
 
       if (!tuples) {
-        console.warn('No tuples found in GetApprovedAssetRequestsByAssetManager response');
+        console.warn('No tuples found in Getallrequestsbyapproverandrequestid response');
         this.allRequestsList = [];
         return [];
       }
@@ -210,12 +210,12 @@ export class RequestService {
 
       this.allRequestsList = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
 
-      console.log(`[RequestService] fetchAllRequestsFromService: Fetched ${this.allRequestsList.length} approved asset request(s)`);
+      console.log(`[RequestService] fetchAllRequestsFromService: Fetched ${this.allRequestsList.length} total requests`);
       console.log(`[RequestService] Sample of fetched requests:`, this.allRequestsList.slice(0, 5).map(r => ({ id: r.id, status: r.status })));
 
       return [...this.allRequestsList];
     } catch (err) {
-      console.error('Failed to fetch requests from GetApprovedAssetRequestsByAssetManager:', err);
+      console.error('Failed to fetch requests from Getallrequestsbyapproverandrequestid:', err);
       throw err;
     }
   }

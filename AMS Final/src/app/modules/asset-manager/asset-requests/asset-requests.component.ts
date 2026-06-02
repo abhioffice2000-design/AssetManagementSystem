@@ -105,7 +105,7 @@ export class AssetRequestsComponent implements OnInit {
 
       // Fetch all data including assignments in parallel
       const [allReqs, pendingReqs, confirmReqs, returnReqs, allReturnReqs, allAssignments] = await Promise.all([
-        this.requestService.fetchAllRequestsFromService(approverId).catch(err => { console.error('All Req fetch failed:', err); return []; }),
+        this.fetchApprovedAssetRequestsByAssetManager(approverId).catch(err => { console.error('Approved Asset Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingRequestsFromService(approverId).catch(err => { console.error('Pending Req fetch failed:', err); return []; }),
         this.requestService.fetchConfirmationRequestsFromService(approverId).catch(err => { console.error('Confirm Req fetch failed:', err); return []; }),
         this.requestService.fetchPendingReturnApprovalsFromService(approverId).catch(err => { console.error('Return Req fetch failed:', err); return []; }),
@@ -219,6 +219,26 @@ export class AssetRequestsComponent implements OnInit {
     } catch (err) {
       console.error("[AssetManager] Error fetching latest task ID:", err);
     }
+  }
+
+  private async fetchApprovedAssetRequestsByAssetManager(approverId: string): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetApprovedAssetRequestsByAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <approver_id>${approverId}</approver_id>
+    </GetApprovedAssetRequestsByAssetManager>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    const response = await this.hs.ajax(null, null, {}, soapRequest);
+    const tuples = this.hs.xmltojson(response, 'tuple');
+    if (!tuples) {
+      return [];
+    }
+
+    const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+    return tupleArray.map((tuple: any) => this.requestService.mapTupleToRequest(tuple));
   }
 
 

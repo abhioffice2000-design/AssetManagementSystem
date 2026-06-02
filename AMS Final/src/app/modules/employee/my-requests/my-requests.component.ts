@@ -692,7 +692,7 @@ export class MyRequestsComponent implements OnInit {
   task_id = '';
 
   async Getassetidbyapprovalid(request_id: any) {
-    debugger
+
     try {
       const resp: any = await this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
         { Request_id: request_id }
