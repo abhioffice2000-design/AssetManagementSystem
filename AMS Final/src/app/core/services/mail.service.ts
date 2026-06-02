@@ -889,8 +889,8 @@ IT Support Team
 Adnate IT Solutions
     `.trim();
 
-    // Recipients list: Registered user + monitoring accounts
-    const recipients = [userEmail, "sourabhsharma1003@gmail.com", "sourabhs@adnatesolutions.com"];
+    // Recipients list: Registered user
+    const recipients = [userEmail];
 
     // Remove duplicates and empty values
     const uniqueRecipients = Array.from(new Set(recipients.filter(email => !!email && email.trim() !== "")));
