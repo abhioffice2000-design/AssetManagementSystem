@@ -461,13 +461,16 @@
                   </select>
                 </div>
                 <div class="detail-item full-col" *ngIf="activeTab !== 'confirmation' && detailRequest.requestType !== 'Extend Warranty'">
-                  <label>Assign Allocation Team Member</label>
-                  <select class="form-control" [(ngModel)]="selectedAllocationMemberId" (ngModelChange)="onAllocationMemberChange($event)" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #e2e8f0;">
-                    <option value="" disabled>-- Select Member --</option>
-                    <option *ngFor="let member of allocationTeamMemberList" [value]="member.user_id">
-                      {{ member.name }} ({{ member.email }})
-                    </option>
-                  </select>
+                  <label>Allocation Team Member</label>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px; padding: 10px 14px; background: var(--surface-bg, #f8fafc); border: 1.5px solid var(--border-color); border-radius: 10px;">
+                    <span class="material-icons-outlined" style="font-size: 1.2rem;"
+                      [style.color]="detailRequest.status === 'Pending' ? '#3b82f6' : '#10b981'">
+                      {{ detailRequest.status === 'Pending' ? 'person' : 'verified_user' }}
+                    </span>
+                    <span style="font-weight: 600; color: var(--text-primary, #1e293b);">
+                      {{ assignedAllocationMemberName || 'Fetching...' }}
+                    </span>
+                  </div>
                 </div>
               </ng-container>
 
