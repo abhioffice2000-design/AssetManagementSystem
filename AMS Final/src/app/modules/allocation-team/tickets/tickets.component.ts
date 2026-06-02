@@ -216,7 +216,7 @@ export class AllocationTicketsComponent implements OnInit {
       } catch (discoveryErr) { console.warn('Task discovery failed:', discoveryErr); }
 
       await this.loadReturnTickets();
-      await this.loadPendingWarrantyTickets();
+      // await this.loadPendingWarrantyTickets();
 
       this.allTickets = [...this.allTickets, ...this.returnTickets, ...this.pendingWarrantyTickets];
 
@@ -636,7 +636,7 @@ export class AllocationTicketsComponent implements OnInit {
       taskid: this.getVal(approval?.temp2) ?? '—',
       approvalid: this.getVal(approval?.approval_id) ?? '—',
       ticketId: this.getVal(reqData?.request_id) ?? this.getVal(approval?.request_id) ?? '—',
-      requestorName: this.getVal(userData?.name) ?? '—',
+      requestorName: this.getVal(approval?.m_users?.name[0]) ?? '—',
       assetType,
       subCategory: this.subCategoryMap.get(this.getVal(assetData?.sub_category_id) || '') ?? this.getVal(assetData?.sub_category_id) ?? this.getVal(reqData?.temp1) ?? '—',
       assetName: this.getVal(assetData?.asset_name) ?? '—',

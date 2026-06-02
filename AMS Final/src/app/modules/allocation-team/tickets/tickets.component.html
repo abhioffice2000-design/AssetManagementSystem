@@ -135,12 +135,12 @@
                   <span class="material-icons">visibility</span>
                   View Details
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (ticket.status === 'Pending' || ticket.status === 'In Progress')) || (activeTab === 'resolved' && ticket.status === 'Approved')"
+                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (ticket.status === 'Pending' || ticket.status === 'In Progress'))"
                   class="btn-allocate"
                   (click)="ticket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(ticket) : allocate(ticket)">
                   <span class="material-icons">check_circle</span>
                 </button>
-                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (ticket.status === 'Pending' || ticket.status === 'In Progress')) || (activeTab === 'resolved' && ticket.status === 'Approved')"
+                <button *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (ticket.status === 'Pending' || ticket.status === 'In Progress'))"
                   class="btn-reject" (click)="handleTableRejectClick(ticket)">
                   <span class="material-icons">cancel</span>
                 </button>
@@ -223,10 +223,6 @@
           <div class="detail-item">
             <span class="detail-label">Request Date</span>
             <span class="detail-value">{{ selectedTicket.assignedDate | date:'longDate' }}</span>
-          </div>
-          <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET">
-            <span class="detail-label">Team Lead</span>
-            <span class="detail-value">{{ selectedTicket.teamLeadName }}</span>
           </div>
           <div class="detail-item" *ngIf="selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET">
             <span class="detail-label">Urgency</span>
@@ -312,9 +308,9 @@
           class="remarks-textarea"></textarea>
       </div>
 
-      <!-- Action Buttons inside Drawer -->
+      <!-- Action Buttons inside Drawer — only for unresolved/active return tickets -->
       <div class="drawer-actions"
-        *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (selectedTicket.status === 'Pending' || selectedTicket.status === 'In Progress')) || (activeTab === 'resolved' && selectedTicket.status === 'Approved')">
+        *ngIf="activeTab === 'unresolved' || (activeTab === 'return' && (selectedTicket.status === 'Pending' || selectedTicket.status === 'In Progress'))">
         <button class="drawer-btn-allocate"
           (click)="selectedTicket.rawRequest.requestType === RequestType.RETURN_ASSET ? allocateAssetReturn(selectedTicket) : allocate(selectedTicket); selectedTicket.rawRequest.requestType !== RequestType.RETURN_ASSET && closeDetails()">
           <span class="material-icons">check_circle</span>
