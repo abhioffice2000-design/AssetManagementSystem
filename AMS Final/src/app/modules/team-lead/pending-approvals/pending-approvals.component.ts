@@ -70,7 +70,7 @@ export class PendingApprovalsComponent implements OnInit {
 
   getallrequests() {
     this.isLoading = true;
-    debugger;
+   
     this.hs.ajax('GetRequestsForTeamLead', 'http://schemas.cordys.com/AMS_Database_Metadata',
       {}
     ).then((resp: any) => {

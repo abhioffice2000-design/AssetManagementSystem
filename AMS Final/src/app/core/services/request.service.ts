@@ -220,6 +220,36 @@ export class RequestService {
     }
   }
 
+  async fetchApprovedAssetRequestsByAssetManager(approverId: string): Promise<AssetRequest[]> {
+    const soapRequest = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetApprovedAssetRequestsByAssetManager xmlns="http://schemas.cordys.com/AMS_Database_Metadata" preserveSpace="no" qAccess="0" qValues="">
+      <approver_id>${approverId}</approver_id>
+    </GetApprovedAssetRequestsByAssetManager>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      const response = await this.hs.ajax(null, null, {}, soapRequest);
+      const tuples = this.hs.xmltojson(response, 'tuple');
+
+      if (!tuples) {
+        console.warn('[RequestService] No tuples found in GetApprovedAssetRequestsByAssetManager response');
+        return [];
+      }
+
+      const tupleArray = Array.isArray(tuples) ? tuples : [tuples];
+      const requests = tupleArray.map((tuple: any) => this.mapTupleToRequest(tuple));
+
+      console.log(`[RequestService] fetchApprovedAssetRequestsByAssetManager: Fetched ${requests.length} request(s)`);
+      return requests;
+    } catch (err) {
+      console.error('[RequestService] Failed to fetch approved asset requests by manager:', err);
+      return [];
+    }
+  }
+
   /**
    * Fetches pending confirmation requests for the Asset Manager
    * from the GetallpendingrequestsForAssetManagerConfirmation SOAP service.
@@ -1362,8 +1392,8 @@ export class RequestService {
         }
       ],
       comments: [],
-      allocatedAssetId: reqData?.temp4 || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
-      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
+      allocatedAssetId: reqData?.temp4 || approvalData?.temp1 || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
+      assignedAssetId: assetInfo?.asset_id || reqData?.asset_id || approvalData?.temp1 || parent?.t_request_approvals?.temp4 || parent?.t_extend_request_approvals?.temp4 || '',
       assignedTypeId: assetInfo?.type_id || '',
       assignedSubCategoryId: assetInfo?.sub_category_id || '',
       assignedSerial: assetInfo?.serial_number || '',
