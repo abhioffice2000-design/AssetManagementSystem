@@ -38,6 +38,7 @@ export class AssetRequestsComponent implements OnInit {
   selectedAssetId = '';
   allocationTeamMemberList: any[] = [];
   selectedAllocationMemberId = '';
+  assignedAllocationMemberName = '';
   showActionModal = false;
   selectedRequest: AssetRequest | null = null;
   actionType: string | null = null;
@@ -135,24 +136,36 @@ export class AssetRequestsComponent implements OnInit {
         return false;
       };
 
-      // Filter ALL data arrays based on these assignments
-      this.allRequests = (allReqs || []);
-      this.confirmationRequests = (confirmReqs || []).filter(isMyType);
-      const filteredPending = (pendingReqs || []).filter(isMyType);
-      const filteredReturn = (returnReqs || []).filter(isMyType);
+      // Deduplicate requests by ID to handle API returning multiple entries
+      const deduplicate = (reqs: any[]) => {
+        const map = new Map();
+        (reqs || []).forEach(req => {
+          const key = req.id || req.requestNumber;
+          if (key && !map.has(key)) {
+            map.set(key, req);
+          }
+        });
+        return Array.from(map.values());
+      };
 
-      // Filter out confirmation requests from the pending approvals list to prevent duplication
-      const confirmationIds = new Set(this.confirmationRequests.map((r: AssetRequest) => r.id));
-      this.pendingRequests = filteredPending.filter((r: AssetRequest) => !confirmationIds.has(r.id));
+      // Filter ALL data arrays based on these assignments
+      this.allRequests = deduplicate(allReqs);
+      const filteredPending = deduplicate(pendingReqs).filter(isMyType);
+      const filteredReturn = deduplicate(returnReqs).filter(isMyType);
+
+      // Build the confirmationIds set AFTER confirmationRequests is finalized (done later below)
+      // For now build a preliminary set from confirmReqs for filtering pending
+      const rawConfirmIds = new Set(deduplicate(confirmReqs).map((r: AssetRequest) => String(r.id).toLowerCase().trim()));
+      this.pendingRequests = filteredPending.filter((r: AssetRequest) => !rawConfirmIds.has(String(r.id).toLowerCase().trim()));
 
       // Reconcile allRequests statuses against the approvals table
-      const pendingIds = new Set(this.pendingRequests.map((r: AssetRequest) => r.id));
+      const pendingIds = new Set(this.pendingRequests.map((r: AssetRequest) => String(r.id).toLowerCase().trim()));
       this.allRequests = this.allRequests.map((req: AssetRequest) => {
         if (
           req.status === RequestStatus.PENDING &&
           req.currentStage !== ApprovalStage.TEAM_LEAD &&
-          !pendingIds.has(req.id) &&
-          !confirmationIds.has(req.id)
+          !pendingIds.has(String(req.id).toLowerCase().trim()) &&
+          !rawConfirmIds.has(String(req.id).toLowerCase().trim())
         ) {
           return { ...req, status: RequestStatus.APPROVED };
         }
@@ -164,20 +177,9 @@ export class AssetRequestsComponent implements OnInit {
         return !(req.currentStage === ApprovalStage.TEAM_LEAD && req.status === RequestStatus.PENDING);
       });
 
-      const memberResult = await this.requestService.getAllocationTeamMemberAccordingtoManager(approverId);
-      const rawMembers = Array.isArray(memberResult) ? memberResult : (memberResult ? [memberResult] : []);
-      this.allocationTeamMemberList = rawMembers.map((m: any) => ({
-        user_id: m?.old?.m_users?.user_id || m?.m_users?.user_id || m?.user_id || '',
-        name: m?.old?.m_users?.name || m?.m_users?.name || m?.name || 'Unknown',
-        email: m?.old?.m_users?.email || m?.m_users?.email || m?.email || ''
-      }));
-
-      if (this.allocationTeamMemberList.length > 0) {
-        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
-      }
-      console.log('Allocation Team Members:', this.allocationTeamMemberList);
+      // Allocation Team Member Dropdown removed per user request. We resolve in openDetailModal instead.
       this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, returnReqs, approverId);
-      this.confirmationRequests = [...confirmReqs, ...this.returnConfirmationRequests];
+      this.confirmationRequests = [...deduplicate(confirmReqs), ...this.returnConfirmationRequests];
       console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
 
       this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, filteredReturn, approverId);
@@ -970,14 +972,13 @@ export class AssetRequestsComponent implements OnInit {
         }
 
         // Send Mail
-        const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
         await this.mailService.sendAssetManagerStatusUpdate({
           requestId: this.selectedRequest.id,
           employeeName: this.selectedRequest.requesterName,
           status: 'Approved',
           managerName: currentUser.name,
           remarks: this.actionComments,
-          allocationMemberName: member ? member.name : 'Allocation Team',
+          allocationMemberName: this.assignedAllocationMemberName || 'Allocation Team',
           assetName: this.selectedRequest.assetType
         });
 
@@ -1440,12 +1441,97 @@ export class AssetRequestsComponent implements OnInit {
 
       this.overallProgress = this.calculateOverallProgress(request);
 
-      // Initialize selectedAllocationMemberId if not already set
-      if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
-        this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
+      // Initialize selectedAllocationMemberId and assignedAllocationMemberName automatically
+      this.selectedAllocationMemberId = request.assignedAllocationTeamId || '';
+      this.assignedAllocationMemberName = (request as any).assignedAllocationTeamName || '';
+
+      if (!this.assignedAllocationMemberName) {
+        let allUsers: any[] = [];
+        try {
+          allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+          const assetType = request.assetType || request.category || 'Hardware';
+          const assignment = await this.adminService.getAssignmentByAssetType(assetType);
+          
+          if (assignment) {
+            if (assignment.teamMembers) {
+              const memberTokens = assignment.teamMembers.split(/[,;|]/).map((t: string) => t.trim().toLowerCase());
+              const matched = allUsers.find(u => {
+                const uId = (u.id || '').toLowerCase();
+                const uName = (u.name || u.user_name || '').toLowerCase();
+                const uEmail = (u.email || '').toLowerCase();
+                return memberTokens.some(token => 
+                  token === uId || 
+                  token === uName || 
+                  token === uEmail || 
+                  (uName && (token.includes(uName) || uName.includes(token)))
+                );
+              });
+              if (matched) {
+                this.assignedAllocationMemberName = matched.name;
+                this.selectedAllocationMemberId = matched.id;
+              }
+            }
+            
+            if (!this.assignedAllocationMemberName && assignment.id) {
+              const matchedByTypeId = allUsers.find(u => 
+                u.assetTypeId === assignment.id && 
+                (u.role === 'Asset Allocation Team' || (u.role_id || '').toLowerCase() === 'rol_05')
+              );
+              if (matchedByTypeId) {
+                this.assignedAllocationMemberName = matchedByTypeId.name;
+                this.selectedAllocationMemberId = matchedByTypeId.id;
+              }
+            }
+          }
+        } catch (e) { /* ignore */ }
       }
+
+      if (!this.assignedAllocationMemberName) {
+        try {
+          if (progress) {
+            const atEntry = progress.find((p: any) => (p.stage || '').toLowerCase().includes('allocation'));
+            if (atEntry?.approverId) {
+              this.assignedAllocationMemberName = atEntry.approverName || 'Assigned Member';
+              this.selectedAllocationMemberId = atEntry.approverId;
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      if (!this.assignedAllocationMemberName) {
+        try {
+          const currentUser = this.authService.getCurrentUser();
+          const managerId = currentUser?.id || 'usr_004';
+          const members = await this.requestService.getTeamAllocationMemberByAssetManager(managerId);
+          
+          if (members && members.length > 0) {
+            let bestMember = members[0];
+            if (request.assetType) {
+               const allUsers = await this.adminService.GetAllUserRoleProjectDetails();
+               const assignment = await this.adminService.getAssignmentByAssetType(request.assetType || request.category);
+               for (const m of members) {
+                  const uId = m.user_id || m.id;
+                  const fullUser = allUsers.find(u => u.id === uId);
+                  if (fullUser) {
+                     if (assignment && fullUser.assetTypeId === assignment.id) {
+                        bestMember = m; break;
+                     }
+                     if (fullUser.assetTypeName && fullUser.assetTypeName.toLowerCase().includes((request.assetType || request.category).toLowerCase())) {
+                        bestMember = m; break;
+                     }
+                  }
+               }
+            }
+            this.assignedAllocationMemberName = bestMember.name || '';
+            this.selectedAllocationMemberId = bestMember.user_id || bestMember.id || '';
+          }
+        } catch (e) { /* ignore */ }
+      }
+
       // Trigger initial update for the tracker if a member is already selected
-      this.onAllocationMemberChange(this.selectedAllocationMemberId);
+      if (this.selectedAllocationMemberId) {
+        this.onAllocationMemberChange(this.selectedAllocationMemberId);
+      }
 
       // Legacy update for approvalChain if needed by other logic
       if (progress && progress.length > 0) {
@@ -1534,13 +1620,14 @@ export class AssetRequestsComponent implements OnInit {
   onAllocationMemberChange(memberId: string): void {
     if (!memberId || !this.trackingSteps || this.trackingSteps.length === 0) return;
 
-    const member = this.allocationTeamMemberList.find(m => m.user_id === memberId);
-    if (!member) return;
+    // We no longer rely on allocationTeamMemberList, we use the resolved assignedAllocationMemberName
+    const memberName = this.assignedAllocationMemberName;
+    if (!memberName) return;
 
     // Find the allocation team step in the tracker
     const allocationStep = this.trackingSteps.find(step => step.roleName === 'Asset Allocation Team');
     if (allocationStep && (allocationStep.status === 'Pending' || !allocationStep.isCompleted)) {
-      allocationStep.name = member.name;
+      allocationStep.name = memberName;
     }
   }
 
@@ -1837,14 +1924,7 @@ export class AssetRequestsComponent implements OnInit {
   }
 
   getSelectedAllocationMemberName(): string {
-    if (!this.selectedAllocationMemberId && this.allocationTeamMemberList.length > 0) {
-      this.selectedAllocationMemberId = this.allocationTeamMemberList[0].user_id;
-    }
-
-    const member = this.allocationTeamMemberList.find(m => m.user_id === this.selectedAllocationMemberId);
-    if (!member) return 'Not Assigned';
-
-    return member.email ? `${member.name} — ${member.email}` : member.name;
+    return this.assignedAllocationMemberName || 'Not Assigned';
   }
 
   getTlRemarks(req: AssetRequest): string {
