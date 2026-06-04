@@ -18,6 +18,7 @@ export class AssetTransactionComponent implements OnInit {
   allRequests: AssetRequest[] = [];
   filteredRequests: AssetRequest[] = [];
   pagedRequests: AssetRequest[] = [];
+  userRolesMap = new Map<string, string>();
 
   selectedStatus = 'All';
   selectedRequestType = 'All';
@@ -106,8 +107,13 @@ export class AssetTransactionComponent implements OnInit {
 
       // Create a lookup map for resolving missing user info
       const userMap = new Map<string, { name: string, email: string }>();
+      this.userRolesMap.clear();
       allUsers.forEach(u => {
-        if (u.id) userMap.set(u.id.toString().trim().toLowerCase(), { name: u.name, email: u.email });
+        if (u.id) {
+          const key = u.id.toString().trim().toLowerCase();
+          userMap.set(key, { name: u.name, email: u.email });
+          this.userRolesMap.set(key, u.role || 'Employee');
+        }
       });
 
       const resolveInfo = (id: any, name: string, email: string) => {
@@ -607,9 +613,14 @@ export class AssetTransactionComponent implements OnInit {
       this.trackingSteps = stages.map((stage, index) => {
         const isDistributionStep = index === (stages.length - 1) && stage.name === 'Asset Manager' && stages.length > 2;
 
-        const foundIndex = availableProgress.findIndex(p =>
-          stage.roles.some((role: string) => p.stage?.toLowerCase().includes(role))
-        );
+        let foundIndex = -1;
+        for (let i = availableProgress.length - 1; i >= 0; i--) {
+          const p = availableProgress[i];
+          if (stage.roles.some((role: string) => p.stage?.toLowerCase().includes(role))) {
+            foundIndex = i;
+            break;
+          }
+        }
 
         let data = null;
         if (foundIndex !== -1) {
@@ -710,6 +721,31 @@ export class AssetTransactionComponent implements OnInit {
       ];
     }
 
+    // Default: New Asset Requests
+    const requesterId = (request.userId || '').toString().trim().toLowerCase();
+    const requesterRole = this.userRolesMap.get(requesterId) || 'Employee';
+    const isTeamLead = requesterRole.toLowerCase().includes('lead') || requesterRole === 'rol_02';
+    const hasDocument = request.emailApproval || (request.document && request.document !== 'null' && request.document !== '');
+
+    if (isTeamLead) {
+      // If request is raised by team lead then tracker shouldnot show the team lead in tracker, only show asset manager-> allocation team-> asset manager
+      return [
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+      ];
+    }
+
+    if (hasDocument) {
+      // If request is raised by employee and document is there, then tracker should show asset manager-> asset allocation-> asset manager
+      return [
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
+        { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+        { name: 'Asset Manager', roles: ['asset manager', 'mgr'] }
+      ];
+    }
+
+    // If request is raised by employee (without document), then show team lead-> asset manager-> asset allocation-> asset manager
     return [
       { name: 'Team Lead', roles: ['team lead', 'approver'] },
       { name: 'Asset Manager', roles: ['asset manager', 'mgr'] },
@@ -854,6 +890,9 @@ export class AssetTransactionComponent implements OnInit {
       if (completedCount === 1) return 33;
       if (completedCount === 2) return 66;
       if (completedCount === 3) return 90;
+    } else if (totalSteps === 3) {
+      if (completedCount === 1) return 33;
+      if (completedCount === 2) return 66;
     } else if (totalSteps === 2) {
       if (completedCount === 1) return 50;
     }

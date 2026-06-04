@@ -159,9 +159,14 @@ export class LeadDashboardComponent implements OnInit {
       Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
 
       this.trackingSteps = stages.map((stage, index) => {
-        let foundIndex = availableProgress.findIndex(p =>
-          stage.roles.some(role => p.stage?.toLowerCase().includes(role))
-        );
+        let foundIndex = -1;
+        for (let i = availableProgress.length - 1; i >= 0; i--) {
+          const p = availableProgress[i];
+          if (stage.roles.some(role => p.stage?.toLowerCase().includes(role))) {
+            foundIndex = i;
+            break;
+          }
+        }
 
         let data = null;
         if (foundIndex !== -1) {
