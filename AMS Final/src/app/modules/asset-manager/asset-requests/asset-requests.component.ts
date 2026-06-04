@@ -1074,13 +1074,15 @@ export class AssetRequestsComponent implements OnInit {
         };
         await this.requestService.updateEntryForAssetManager(reqReject as any);
 
+        const nextRole = (this.selectedRequest.requesterRole?.toLowerCase().includes('lead') || this.selectedRequest.requesterRoleName?.toLowerCase().includes('lead')) ? 'Team Lead' : 'Employee';
+
         const employeeApprovalPayload = {
           tuple: {
             new: {
               t_request_approvals: {
                 request_id: this.selectedRequest.id,
                 approver_id: this.selectedRequest.requesterId,
-                role: "Employee",
+                role: nextRole,
                 status: "Pending"
               }
             }
@@ -1243,6 +1245,8 @@ export class AssetRequestsComponent implements OnInit {
       console.log('[Confirmation] Reject payload (step 1):', rejectApprovalPayload);
       await this.requestService.updateEntryForAssetManager(rejectApprovalPayload as any);
 
+      const nextRole = (this.selectedRequest.requesterRole?.toLowerCase().includes('lead') || this.selectedRequest.requesterRoleName?.toLowerCase().includes('lead')) ? 'Team Lead' : 'Employee';
+
       // Step 1.5 — Create new entry for Employee (same as Team Lead logic)
       const employeeApprovalPayload = {
         tuple: {
@@ -1250,7 +1254,7 @@ export class AssetRequestsComponent implements OnInit {
             t_request_approvals: {
               request_id: this.selectedRequest.id,
               approver_id: this.selectedRequest.requesterId,
-              role: "Employee",
+              role: nextRole,
               status: "Pending"
             }
           }
@@ -1399,9 +1403,14 @@ export class AssetRequestsComponent implements OnInit {
       Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
 
       this.trackingSteps = await Promise.all(stages.map(async (stage, index) => {
-        let foundIndex = availableProgress.findIndex(p =>
-          stage.roles.some(role => (p.stage || p.role)?.toLowerCase().includes(role))
-        );
+        let foundIndex = -1;
+        for (let i = availableProgress.length - 1; i >= 0; i--) {
+          const p = availableProgress[i];
+          if (stage.roles.some(role => (p.stage || p.role)?.toLowerCase().includes(role))) {
+            foundIndex = i;
+            break;
+          }
+        }
 
         let data = null;
         if (foundIndex !== -1) {

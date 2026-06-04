@@ -309,12 +309,12 @@ export class MyRequestsComponent implements OnInit {
   private getStagesForRequest(request: AssetRequest): Array<{ name: string, roles: string[] }> {
     const type = request.requestType;
     const isSkippedTl = request.hasEmailApproval ||
-                        request.requesterRole?.toLowerCase().includes('lead') ||
-                        request.requesterRole?.toLowerCase().includes('manager') ||
-                        request.requesterRoleName?.toLowerCase().includes('lead') ||
-                        request.requesterRoleName?.toLowerCase().includes('manager') ||
-                        request.requesterRoleName?.toLowerCase().includes('admin') ||
-                        ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
+      request.requesterRole?.toLowerCase().includes('lead') ||
+      request.requesterRole?.toLowerCase().includes('manager') ||
+      request.requesterRoleName?.toLowerCase().includes('lead') ||
+      request.requesterRoleName?.toLowerCase().includes('manager') ||
+      request.requesterRoleName?.toLowerCase().includes('admin') ||
+      ['rol_01', 'rol_02', 'rol_04', 'rol_05'].includes(request.requesterRole || '');
 
     switch (type) {
       case RequestType.RETURN_ASSET:
@@ -689,7 +689,7 @@ export class MyRequestsComponent implements OnInit {
   task_id = '';
 
   async Getassetidbyapprovalid(request_id: any) {
- 
+
     try {
       const resp: any = await this.hs.ajax('Getassetidbyapprovalid', 'http://schemas.cordys.com/AMS_Database_Metadata',
         { Request_id: request_id }
@@ -1031,8 +1031,8 @@ export class MyRequestsComponent implements OnInit {
           new: {
             t_request_approvals: {
               request_id: this.selectedRequest.requestNumber,
-              approver_id: formVal.hasEmailApproval ? assetManagerId : teamLeadId,
-              role: formVal.hasEmailApproval ? 'Asset Manager' : 'Team Lead',
+              approver_id: assetManagerId,
+              role: 'Asset Manager',
               status: 'Pending'
             }
           }

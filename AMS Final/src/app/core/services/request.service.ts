@@ -1301,7 +1301,7 @@ export class RequestService {
     const requestDate = createdAt;
 
     return {
-      taskid: this.getNullableValue(approvalData?.temp1 || approvalData?.temp2 || reqData?.temp1 || reqData?.temp2 || '') || '',
+      taskid: this.getNullableValue(approvalData?.temp2 || approvalData?.temp1 || reqData?.temp2 || reqData?.temp1 || '') || '',
       approvalId: this.getNullableValue(approvalData?.approval_id || reqData?.approval_id || '') || '',
       id: this.getNullableValue(reqData?.request_id || approvalData?.request_id || '') || '',
       requestNumber: this.getNullableValue(reqData?.request_id || approvalData?.request_id || '') || '',
