@@ -1398,13 +1398,26 @@ export class AssetRequestsComponent implements OnInit {
         new Date(a.timestamp || a.action_date).getTime() - new Date(b.timestamp || b.action_date).getTime()
       );
 
+      // Filter out stale records from previous approval cycles (resubmit condition)
+      // If there are any records after the last 'Rejected' status, a resubmit happened.
+      let lastRejectedIndex = -1;
+      for (let i = 0; i < availableProgress.length; i++) {
+        const s = (availableProgress[i].status || availableProgress[i].action || '').toLowerCase();
+        if (s === 'rejected') {
+          lastRejectedIndex = i;
+        }
+      }
+      if (lastRejectedIndex !== -1 && lastRejectedIndex < availableProgress.length - 1) {
+        availableProgress = availableProgress.slice(lastRejectedIndex + 1);
+      }
+
       const approverDetails = await this.resolveApproverDetails(request);
       const resolvedNames: Record<string, string> = {};
       Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);
 
       this.trackingSteps = await Promise.all(stages.map(async (stage, index) => {
         let foundIndex = -1;
-        for (let i = availableProgress.length - 1; i >= 0; i--) {
+        for (let i = 0; i < availableProgress.length; i++) {
           const p = availableProgress[i];
           if (stage.roles.some(role => (p.stage || p.role)?.toLowerCase().includes(role))) {
             foundIndex = i;
@@ -1432,7 +1445,7 @@ export class AssetRequestsComponent implements OnInit {
         const isPlaceholder = (val: string | undefined) => !val || genericPlaceholders.includes(val.toLowerCase().trim());
 
         const roleKey = stage.name === 'Team Lead Approval' ? 'Team Lead' :
-          stage.name === 'Asset Manager Approval' ? 'Asset Manager' :
+          (stage.name === 'Asset Manager Approval' || stage.name === 'Asset Manager Confirmation') ? 'Asset Manager' :
             'Asset Allocation Team';
 
         let resolvedName = !isPlaceholder(dbName) ? dbName : resolvedNames[roleKey];
@@ -1670,7 +1683,8 @@ export class AssetRequestsComponent implements OnInit {
     return [
       { name: 'Team Lead Approval', roles: ['team lead', 'approver'] },
       { name: 'Asset Manager Approval', roles: ['asset manager', 'mgr'] },
-      { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] }
+      { name: 'Asset Allocation Team', roles: ['asset allocation', 'allocation', 'team'] },
+      { name: 'Asset Manager Confirmation', roles: ['asset manager'] }
     ];
   }
 

@@ -154,6 +154,18 @@ export class LeadDashboardComponent implements OnInit {
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
 
+      // Filter out stale records from previous approval cycles (resubmit condition)
+      // If there are records after a 'Rejected' status, a resubmit happened.
+      let lastRejectedIndex = -1;
+      for (let i = 0; i < availableProgress.length; i++) {
+        if (availableProgress[i].status?.toLowerCase() === 'rejected') {
+          lastRejectedIndex = i;
+        }
+      }
+      if (lastRejectedIndex !== -1 && lastRejectedIndex < availableProgress.length - 1) {
+        availableProgress = availableProgress.slice(lastRejectedIndex + 1);
+      }
+
       const approverDetails = await this.resolveApproverDetails(this.selectedRequest);
       const resolvedNames: Record<string, string> = {};
       Object.keys(approverDetails).forEach(role => resolvedNames[role] = approverDetails[role].name);

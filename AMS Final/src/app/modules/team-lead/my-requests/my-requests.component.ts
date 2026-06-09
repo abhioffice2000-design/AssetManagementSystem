@@ -457,6 +457,18 @@ export class MyRequestsComponent implements OnInit {
       // Sort to ensure chronological order for multi-stage roles like Asset Manager
       progressData.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+      // Filter out stale records from previous approval cycles (resubmit condition)
+      // If there are records after a 'Rejected' status, a resubmit happened.
+      let lastRejectedIndex = -1;
+      for (let i = 0; i < progressData.length; i++) {
+        if (progressData[i].status?.toLowerCase() === 'rejected') {
+          lastRejectedIndex = i;
+        }
+      }
+      if (lastRejectedIndex !== -1 && lastRejectedIndex < progressData.length - 1) {
+        progressData = progressData.slice(lastRejectedIndex + 1);
+      }
+
       const stages = this.getStagesForRequest(request);
 
       let availableProgress = [...progressData];
@@ -480,19 +492,6 @@ export class MyRequestsComponent implements OnInit {
             foundIndex = availableProgress.findIndex(p =>
               stage.roles.some(role => p.stage?.toLowerCase().includes(role))
             );
-          }
-
-          // If we found a match and it's rejected, check if there's a LATER record for the same role(s)
-          if (foundIndex !== -1 && availableProgress[foundIndex].status === 'Rejected') {
-            const hasLaterMatch = availableProgress.slice(foundIndex + 1).some(p =>
-              stage.roles.some(role => p.stage?.toLowerCase().includes(role))
-            );
-
-            if (hasLaterMatch) {
-              // Stale record detected. Remove it and look for the newer one in the next iteration.
-              availableProgress.splice(foundIndex, 1);
-              continue;
-            }
           }
           break;
         }
