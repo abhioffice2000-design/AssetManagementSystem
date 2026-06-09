@@ -751,3 +751,24 @@
  .border-dashed { border-style: dashed !important; }
  .text-xs { font-size: 0.75rem; }
  .text-muted { color: #64748b; }
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+
+  h4 {
+    margin: 16px 0 4px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary, #1e293b);
+  }
+  
+  p {
+    font-size: 0.9rem;
+    color: var(--text-muted, #64748b);
+  }
+}

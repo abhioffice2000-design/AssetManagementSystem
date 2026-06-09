@@ -1,6 +1,7 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { RoleGuard } from './core/guards/role.guard';
+import { AuthRedirectGuard } from './core/guards/auth-redirect.guard';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { UserRole } from './core/models/user.model';
 
@@ -48,11 +49,13 @@ const routes: Routes = [
   },
   {
     path: 'home',
-    loadChildren: () => import('./modules/home/home.module').then(m => m.HomeModule)
+    loadChildren: () => import('./modules/home/home.module').then(m => m.HomeModule),
+    canActivate: [AuthRedirectGuard]
   },
   {
     path: 'auth',
-    loadChildren: () => import('./modules/auth/auth.module').then(m => m.AuthModule)
+    loadChildren: () => import('./modules/auth/auth.module').then(m => m.AuthModule),
+    canActivate: [AuthRedirectGuard]
   }
 ];
 
