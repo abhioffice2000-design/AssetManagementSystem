@@ -181,11 +181,9 @@ export class AssetRequestsComponent implements OnInit {
       });
 
       // Allocation Team Member Dropdown removed per user request. We resolve in openDetailModal instead.
-      this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, returnReqs, approverId);
+      this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, filteredReturn, approverId);
       this.confirmationRequests = [...deduplicate(confirmReqs), ...this.returnConfirmationRequests];
       console.log(`Confirmation Requests loaded: ${this.confirmationRequests.length}`);
-
-      this.returnRequests = await this.buildManagerReturnRequests(allReturnReqs, filteredReturn, approverId);
       this.requestStats = this.requestService.getAllRequestStats(this.getDashboardStatsRequests());
 
       this.applyFilters();
@@ -484,6 +482,12 @@ export class AssetRequestsComponent implements OnInit {
         approval.approver_id === approverId &&
         this.isAssetManagerReturnRole(approval.role)
       );
+
+      // All return requests are fetched for history, so ignore requests that never involved this manager.
+      if (!pendingSource && managerApprovals.length === 0) {
+        continue;
+      }
+
       const hasManagerPendingAction = managerApprovals.some((approval: any) =>
         approval.approver_id === approverId &&
         this.normalizeStatusText(approval.status) === RequestStatus.PENDING &&
@@ -506,7 +510,11 @@ export class AssetRequestsComponent implements OnInit {
           row.lastUpdated = approval.action_date || row.lastUpdated;
           row.approvalChain = chain.length ? chain : row.approvalChain;
           // requests.push(row);
-          if (this.isFinalManagerReturnApproval(orderedProgress, approval)) {
+          const isPendingFinalConfirmation =
+            this.isFinalManagerReturnApproval(orderedProgress, approval) &&
+            this.normalizeStatusText(approval.status) === RequestStatus.PENDING;
+
+          if (isPendingFinalConfirmation) {
             confirmationRequests.push(row);
           } else {
             requests.push(row);
@@ -543,8 +551,8 @@ export class AssetRequestsComponent implements OnInit {
       requests.push(base);
     }
 
-    this.returnConfirmationRequests = confirmationRequests;
-    return requests;
+    this.returnConfirmationRequests = this.mergeRequests(confirmationRequests);
+    return this.mergeRequests(requests);
   }
 
   private async buildReturnApprovalChain(progress: any[]): Promise<ApprovalEntry[]> {
