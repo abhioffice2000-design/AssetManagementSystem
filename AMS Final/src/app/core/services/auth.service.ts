@@ -17,6 +17,7 @@ export class AuthService {
   public currentUser$: Observable<User | null>;
   private themeSubject = new BehaviorSubject<string>('light');
   public theme$ = this.themeSubject.asObservable();
+  private autoLoginChecked = false;
 
 
 
@@ -71,7 +72,9 @@ export class AuthService {
     return await this.getUserFromDB(email);
   }
 
-  private async getUserFromDB(email: string): Promise<User> {
+
+
+  public async getUserFromDB(email: string): Promise<User> {
     const getAllUsersSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -616,6 +619,18 @@ export class AuthService {
 
   getCurrentUser(): User | null {
     return this.currentUserSubject.value;
+  }
+
+  setCurrentUser(user: User | null): void {
+    this.currentUserSubject.next(user);
+  }
+
+  hasCheckedAutoLogin(): boolean {
+    return this.autoLoginChecked;
+  }
+
+  setAutoLoginChecked(value: boolean): void {
+    this.autoLoginChecked = value;
   }
 
 
