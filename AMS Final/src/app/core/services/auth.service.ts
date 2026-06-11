@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+﻿import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { User, UserRole } from '../models/user.model';
 import { Router } from '@angular/router';
@@ -71,6 +71,8 @@ export class AuthService {
     // 2. Fetch User Details from DB
     return await this.getUserFromDB(email);
   }
+
+
 
   public async getUserFromDB(email: string): Promise<User> {
     const getAllUsersSoap = `
