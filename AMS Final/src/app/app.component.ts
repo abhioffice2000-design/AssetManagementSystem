@@ -21,11 +21,10 @@ export class AppComponent implements OnInit {
     if (typeof $ !== 'undefined' && $.cordys) {
       console.log('Cordys SDK found. Configuring paths...');
       if ($.cordys.authentication && $.cordys.authentication.defaults) {
-        $.cordys.authentication.defaults.preLoginInfoURL = "/com.eibus.sso.web.authentication.PreLoginInfo.wcp";
-        $.cordys.authentication.defaults.loginURL = "/com.eibus.web.soap.Gateway.wcp";
-
-        // $.cordys.authentication.defaults.preLoginInfoURL = "home/training2025/com.eibus.sso.web.authentication.PreLoginInfo.wcp";
-        // $.cordys.authentication.defaults.loginURL = "home/training2025/com.eibus.web.soap.Gateway.wcp";
+        $.cordys.authentication.defaults.preloginGatewayURL = "/com.eibus.sso.web.authentication.PreLoginInfo.wcp";
+        if ($.cordys.authentication.sso && $.cordys.authentication.sso.defaults) {
+          $.cordys.authentication.sso.defaults.loginGatewayURL = "/com.eibus.web.soap.Gateway.wcp";
+        }
         console.log('Cordys paths configured.');
       }
 
