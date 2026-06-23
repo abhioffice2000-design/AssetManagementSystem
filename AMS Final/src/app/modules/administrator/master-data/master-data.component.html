@@ -30,6 +30,10 @@
         <span class="material-icons-outlined">inventory_2</span>
         Assets ({{ assets.length }})
       </button>
+      <button class="tab-btn" [class.active]="activeTab === 'defected'" (click)="setTab('defected')">
+        <span class="material-icons-outlined">report_problem</span>
+        Defected Assets ({{ defectedAssets.length }})
+      </button>
     </div>
     <div class="flex gap-8 items-center">
       <ng-container *ngIf="activeTab === 'assets'">
@@ -256,7 +260,7 @@
                       <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
                       Delete
                     </button>
-                    <span *ngIf="!canDeleteAsset(asset) && asset.status?.toLowerCase() !== 'allocated'" class="locked-badge" title="Only available or blank assets can be deleted">
+                    <span *ngIf="!canDeleteAsset(asset) && asset.status?.toLowerCase() !== 'allocated'" class="locked-badge" title="Only available, defected, or blank assets can be deleted">
                       <span class="material-icons-outlined">lock</span>
                       Locked
                     </span>
@@ -298,12 +302,65 @@
     </div>
   </div>
 
+  <div *ngIf="activeTab === 'defected'" class="animate-slide-up">
+    <div class="card">
+      <div class="card-header">
+        <h3>Defected Assets <span class="badge badge-red" style="margin-left: 8px;">{{ defectedAssets.length }}</span></h3>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Asset ID</th>
+                <th style="width: 25%;">Asset Name</th>
+                <th style="width: 25%;">Expiry Date</th>
+                <th style="width: 25%;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let asset of defectedAssets" class="asset-row" (click)="openAssetDetails(asset)">
+                <td>
+                  <span class="tag-label" style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500;">
+                    {{ asset.assetTag || asset.id }}
+                  </span>
+                </td>
+                <td>
+                  <strong style="color: #1e293b;">{{ asset.name }}</strong>
+                </td>
+                <td>
+                  <span style="font-family: 'Inter', sans-serif; font-weight: 500; color: #334155;">
+                    {{ (asset.warrantyExpiry | date:'mediumDate') || 'N/A' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="flex items-center gap-8" style="min-height: 40px;" (click)="$event.stopPropagation()">
+                    <button class="btn btn-sm btn-outline-danger" (click)="deleteAsset(asset.id)" title="Delete defected asset">
+                      <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr *ngIf="defectedAssets.length === 0">
+                <td colspan="4" class="empty-state">
+                  <span class="material-icons-outlined" style="color: #ef4444;">report_problem</span>
+                  No defected assets found
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div class="modal-overlay" *ngIf="showAddAssetModal">
-  <div class="modal-container animate-slide-up asset-modal">
+  <div class="modal-container animate-slide-up asset-modal" [class.defected-modal]="activeTab === 'defected'">
     <div class="modal-header">
-      <h3>Add Asset</h3>
+      <h3>{{ activeTab === 'defected' ? 'Add Defected Asset' : 'Add Asset' }}</h3>
       <button class="btn-icon" (click)="closeAddAssetModal()">
         <span class="material-icons-outlined">close</span>
       </button>
@@ -333,33 +390,64 @@
           </div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" *ngIf="activeTab === 'defected'" style="position: relative;">
+          <label>Name</label>
+          <div class="searchable-select-container">
+            <input type="text" class="form-control search-input" 
+                   [(ngModel)]="defectedAssetSearchQuery" 
+                   (ngModelChange)="onDefectedAssetSearch($event)" 
+                   (focus)="showDefectedDropdown = true"
+                   (blur)="onDefectedSearchBlur()"
+                   placeholder="Type and select asset name...">
+            <span class="material-icons-outlined select-arrow" (click)="$event.stopPropagation(); toggleDefectedDropdown()">arrow_drop_down</span>
+            
+            <div class="dropdown-list-card" *ngIf="showDefectedDropdown">
+              <div class="dropdown-item" 
+                   *ngFor="let asset of getFilteredAssetsForDefectSearch()" 
+                   (mousedown)="selectDefectedAssetFromDropdown(asset)">
+                <div class="asset-option-title">{{ asset.name }}</div>
+                <div class="asset-option-subtitle">{{ asset.serialNumber }} · {{ asset.assetTag }}</div>
+              </div>
+              <div class="dropdown-item empty" *ngIf="getFilteredAssetsForDefectSearch().length === 0">
+                No matching assets found
+              </div>
+            </div>
+          </div>
+          <div class="field-error" *ngIf="submittedAssetForm && !selectedDefectedAssetName">Asset name selection is required.</div>
+        </div>
+
+        <div class="form-group" *ngIf="activeTab !== 'defected'">
           <label>Name</label>
           <input type="text" class="form-control" [(ngModel)]="newAsset.name" (ngModelChange)="onAssetNameChange($event)" placeholder="Asset name">
           <div class="field-error" *ngIf="isFieldInvalid('name')">Asset name is required.</div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" *ngIf="activeTab === 'defected'">
+          <label>Serial Number</label>
+          <input type="text" class="form-control" [value]="selectedAssetForDefect?.serialNumber || ''" readonly placeholder="Serial number will show here...">
+        </div>
+
+        <div class="form-group" *ngIf="activeTab !== 'defected'">
           <label>Serial Number</label>
           <input type="text" class="form-control" [(ngModel)]="newAsset.serialNumber" placeholder="Serial number">
           <div class="field-error" *ngIf="isFieldInvalid('serialNumber')">Serial number is required.</div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" *ngIf="activeTab !== 'defected'">
           <label>Purchase Date</label>
           <input type="date" class="form-control" [(ngModel)]="newAsset.purchaseDate">
           <div class="field-error" *ngIf="submittedAssetForm && !newAsset.purchaseDate">Purchase date is required.</div>
           <div class="field-error" *ngIf="submittedAssetForm && newAsset.purchaseDate && isPurchaseDateFuture()">Purchase date cannot be in the future.</div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" *ngIf="activeTab !== 'defected'">
           <label>Warranty Expiry</label>
           <input type="date" class="form-control" [(ngModel)]="newAsset.warrantyExpiry">
           <div class="field-error" *ngIf="submittedAssetForm && isWarrantyExpiryMandatory() && !newAsset.warrantyExpiry">Warranty expiry is required for this asset type.</div>
           <div class="field-error" *ngIf="submittedAssetForm && newAsset.warrantyExpiry && isWarrantyExpiryPast()">Warranty expiry cannot be in the past.</div>
         </div>
 
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
+        <div class="form-group" *ngIf="activeTab !== 'defected'" style="display: flex; align-items: center; gap: 8px; margin-top: 24px;">
           <input type="checkbox" id="isExpiryMandatory" [(ngModel)]="newAsset.isExpiryMandatory" style="width: 18px; height: 18px; cursor: pointer;">
           <label for="isExpiryMandatory" style="margin: 0; cursor: pointer; font-weight: 500; color: #475569;">For Waranty Expiry Reminder check this box</label>
         </div>
@@ -586,6 +674,101 @@
     </div>
   </div>
 </div>
+
+<!-- Release Asset / Handover Exception Modal -->
+<div class="modal-overlay" *ngIf="showReleaseModal && releasingAsset">
+  <div class="modal-container animate-slide-up asset-modal" style="max-width: 500px;">
+    <div class="modal-header enterprise-header" style="background: #2563eb;">
+      <div class="flex items-center gap-16">
+         <div class="detail-type-icon" style="background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%;">
+            <span class="material-icons-outlined text-white" style="font-size: 24px;">restart_alt</span>
+         </div>
+         <div>
+            <h3 class="m-0 text-white" style="font-size: 1.2rem; font-weight: 700;">Release Asset</h3>
+            <span class="enterprise-badge" style="color: rgba(255,255,255,0.8); font-size: 0.75rem; font-weight: 500;">Asset Handover</span>
+         </div>
+      </div>
+      <button class="btn-icon" (click)="closeReleaseModal()" style="background: rgba(255,255,255,0.1); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <span class="material-icons-outlined" style="font-size: 20px;">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body" style="padding: 24px;">
+      <p style="color: #475569; font-size: 0.95rem; margin: 0 0 20px 0; line-height: 1.6;">
+        You are releasing <strong>{{ releasingAsset.name }}</strong> ({{ releasingAsset.assetTag }}) from <strong>{{ releasingAsset.assignedToName || releasingAsset.assignedTo || 'the current user' }}</strong>. This will mark the status as Available.
+      </p>
+
+      <div class="form-group mb-16" style="margin-bottom: 20px;">
+        <label style="font-weight: 600; color: #334155; margin-bottom: 6px; display: block; font-size: 0.9rem;">Handover Remarks <span class="text-danger" style="color: #ef4444;">*</span></label>
+        <textarea 
+          class="form-control" 
+          rows="3" 
+          [(ngModel)]="releaseAssetRemarks" 
+          placeholder="Describe asset condition, any issues, or observations upon return..."
+          style="resize: none; width: 100%; border-radius: 8px; padding: 12px; font-family: inherit; font-size: 0.9rem; border: 1px solid #cbd5e1; outline: none; transition: border-color 0.2s;"
+        ></textarea>
+        <div class="field-error" *ngIf="submittedReleaseForm && !releaseAssetRemarks.trim()" style="color: #ef4444; font-size: 0.75rem; margin-top: 6px; font-weight: 500;">
+          Remarks are mandatory to document the handover observations.
+        </div>
+      </div>
+
+      <div class="form-group" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 20px;">
+        <input 
+          type="checkbox" 
+          id="notifyHR" 
+          [(ngModel)]="notifyHR" 
+          style="width: 18px; height: 18px; cursor: pointer; margin-top: 2px;"
+        >
+        <label for="notifyHR" style="margin: 0; cursor: pointer; font-weight: 500; color: #475569; font-size: 0.9rem; user-select: none;">
+          Notify Management/HR
+          <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal; display: block; margin-top: 2px; line-height: 1.4;">
+            Check this box to escalate any return exceptions or damage observations.
+          </span>
+        </label>
+      </div>
+
+      <div class="form-group" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 16px;">
+        <input 
+          type="checkbox" 
+          id="isDefective" 
+          [(ngModel)]="isDefective" 
+          (change)="isOnService = isDefective ? false : isOnService"
+          style="width: 18px; height: 18px; cursor: pointer; margin-top: 2px;"
+        >
+        <label for="isDefective" style="margin: 0; cursor: pointer; font-weight: 500; color: #475569; font-size: 0.9rem; user-select: none;">
+          Defected
+          <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal; display: block; margin-top: 2px; line-height: 1.4;">
+            Check this box if the asset is defective. This will mark its status as Defected.
+          </span>
+        </label>
+      </div>
+
+      <div class="form-group" style="display: flex; align-items: flex-start; gap: 10px; margin-top: 16px;">
+        <input 
+          type="checkbox" 
+          id="isOnService" 
+          [(ngModel)]="isOnService" 
+          (change)="isDefective = isOnService ? false : isDefective"
+          style="width: 18px; height: 18px; cursor: pointer; margin-top: 2px;"
+        >
+        <label for="isOnService" style="margin: 0; cursor: pointer; font-weight: 500; color: #475569; font-size: 0.9rem; user-select: none;">
+          On service
+          <span style="font-size: 0.75rem; color: #94a3b8; font-weight: normal; display: block; margin-top: 2px; line-height: 1.4;">
+            Check this box if the asset is sent for repair/service. This will mark its status as OnService.
+          </span>
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="padding: 16px 24px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 12px; background-color: #f8fafc; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;">
+      <button class="btn btn-outline" (click)="closeReleaseModal()" style="border: 1px solid #cbd5e1; background: white; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; color: #475569;">Cancel</button>
+      <button class="btn btn-primary" (click)="confirmReleaseAsset()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s;">
+        {{ isSaving ? 'Releasing...' : 'Confirm Release' }}
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" *ngIf="showConfirmModal">
   <div class="modal-container animate-slide-up confirmation-modal" style="max-width: 450px;">
     <div class="modal-header">

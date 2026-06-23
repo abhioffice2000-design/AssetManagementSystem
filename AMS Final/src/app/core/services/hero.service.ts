@@ -51,6 +51,37 @@ export class HeroService {
         data: data,
         url: '/home/training2025/com.eibus.web.soap.Gateway.wcp',
         success: function success(resp: any) {
+          // Intercept request creation to notify SocketService
+          let methodStr = method || '';
+          if (!methodStr && typeof data === 'string') {
+            const match = data.match(/<([A-Za-z0-9_]+)(?:\s|>)/);
+            if (match) {
+              methodStr = match[1];
+            }
+          }
+
+          if (methodStr && [
+            'UpdateT_request_approvals',
+            'UpdateT_extend_request_approvals',
+            'UpdateT_asset_return_approvals',
+            'UpdateT_service_approvals'
+          ].includes(methodStr)) {
+            try {
+              console.log('[HeroService] Intercepted request approval operation:', methodStr);
+              const event = new CustomEvent('newRequestSoapSuccess', {
+                detail: {
+                  method: methodStr,
+                  response: resp,
+                  requestParams: parameters,
+                  requestData: data
+                }
+              });
+              window.dispatchEvent(event);
+            } catch (e) {
+              console.warn('[HeroService] Failed to dispatch CustomEvent for notification server:', e);
+            }
+          }
+
           rev(resp); // Resolve the Promise on success
         },
         error: function error(e1: any, e2: any, e3: any) {

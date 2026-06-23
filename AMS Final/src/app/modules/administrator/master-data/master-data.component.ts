@@ -4,12 +4,14 @@ import { Asset, AssetCategory, AssetCondition, AssetStatus, AssetType } from '..
 import { AdminDataService, Project } from '../../../core/services/admin-data.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { MailService } from '../../../core/services/mail.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { Chart, ChartData, ChartOptions, registerables } from 'chart.js';
 
 
 Chart.register(...registerables);
 
-type MasterTab = 'types' | 'categories' | 'assets';
+type MasterTab = 'types' | 'categories' | 'assets' | 'defected';
 type AddAssetForm = {
   type: AssetType | string | '';
   category: string;
@@ -74,6 +76,19 @@ export class MasterDataComponent implements OnInit {
   selectedSubCategoryTypeFilter = '';
   submittedAssetForm = false;
   newAsset: AddAssetForm = this.createEmptyAsset();
+  selectedDefectedAssetName = '';
+  selectedAssetForDefect: Asset | null = null;
+  showDefectedDropdown = false;
+  defectedAssetSearchQuery = '';
+
+  showReleaseModal = false;
+  releaseAssetRemarks = '';
+  notifyHR = false;
+  isDefective = false;
+  isOnService = false;
+  releasingAsset: Asset | null = null;
+  submittedReleaseForm = false;
+  currentUser: any = null;
 
   // Confirmation Modal State
   showConfirmModal = false;
@@ -166,10 +181,13 @@ export class MasterDataComponent implements OnInit {
   constructor(
     private assetService: AssetService,
     private adminDataService: AdminDataService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private mailService: MailService,
+    private authService: AuthService
   ) { }
 
   async ngOnInit(): Promise<void> {
+    this.currentUser = this.authService.getCurrentUser();
     await this.loadData();
   }
 
@@ -299,6 +317,10 @@ export class MasterDataComponent implements OnInit {
     return this.assetTypes.reduce((sum, item) => sum + item.value, 0);
   }
 
+  get defectedAssets(): Asset[] {
+    return this.assets.filter(a => (a.status || '').toLowerCase().trim() === 'defected');
+  }
+
   get totalAssetTypeCount(): number {
     return this.assetTypes.reduce((sum, item) => sum + item.count, 0);
   }
@@ -328,12 +350,20 @@ export class MasterDataComponent implements OnInit {
       this.newAsset = this.createEmptyAsset();
       this.selectedCategory = '';
       this.submittedAssetForm = false;
+      this.selectedDefectedAssetName = '';
+      this.selectedAssetForDefect = null;
+      this.showDefectedDropdown = false;
+      this.defectedAssetSearchQuery = '';
     }
   }
 
   closeAddAssetModal(): void {
     this.showAddAssetModal = false;
     this.submittedAssetForm = false;
+    this.selectedDefectedAssetName = '';
+    this.selectedAssetForDefect = null;
+    this.showDefectedDropdown = false;
+    this.defectedAssetSearchQuery = '';
   }
 
   closeAddTypeModal(): void {
@@ -347,6 +377,7 @@ export class MasterDataComponent implements OnInit {
   get addButtonText(): string {
     if (this.activeTab === 'types') return 'Add Asset Type';
     if (this.activeTab === 'categories') return 'Add Subcategory';
+    if (this.activeTab === 'defected') return 'Add Defected Asset';
     return 'Add Asset';
   }
 
@@ -712,6 +743,32 @@ export class MasterDataComponent implements OnInit {
   async saveAsset(): Promise<void> {
     this.submittedAssetForm = true;
 
+    const isDefectedTab = this.activeTab === 'defected';
+
+    if (isDefectedTab) {
+      if (!this.selectedAssetForDefect || !this.selectedDefectedAssetName) {
+        this.notificationService.showToast('Please type or select a valid asset name from the list.', 'error');
+        return;
+      }
+
+      this.isSaving = true;
+      try {
+        const asset = this.selectedAssetForDefect;
+        await this.assetService.updateAssetStatus(asset.id, 'Defected');
+
+        this.notificationService.showToast(`Asset '${asset.name}' status set to Defected successfully!`, 'success');
+        this.closeAddAssetModal();
+        await this.loadData();
+        this.activeTab = 'defected';
+      } catch (e) {
+        console.error(e);
+        this.notificationService.showToast('Failed to update asset status. Please try again.', 'error');
+      } finally {
+        this.isSaving = false;
+      }
+      return;
+    }
+
     // Check for unique asset name
     const trimmedName = (this.newAsset.name || '').trim();
     const isDuplicate = this.assets.some(a => a.name.toLowerCase() === trimmedName.toLowerCase());
@@ -893,14 +950,14 @@ export class MasterDataComponent implements OnInit {
   async deleteAsset(assetId: string): Promise<void> {
     const asset = this.assets.find(a => a.id === assetId);
 
-    // Allow deletion for 'Available' or blank statuses
+    // Allow deletion for 'Available', 'Defected', or blank statuses
     const status = (asset?.status || '').toLowerCase().trim();
-    const canDelete = status === 'available' || status === '';
+    const canDelete = status === 'available' || status === '' || status === 'defected';
 
     if (!asset || !canDelete) {
       this.openConfirmModal(
         'Cannot Delete Asset',
-        `This asset ('${asset?.name || 'Asset'}') is currently in '${asset?.status || 'Unknown'}' status. Only assets with 'Available' or blank status can be deleted.`,
+        `This asset ('${asset?.name || 'Asset'}') is currently in '${asset?.status || 'Unknown'}' status. Only assets with 'Available', 'Defected', or blank status can be deleted.`,
         () => { },
         true // isWarning only (hides the Confirm button)
       );
@@ -926,51 +983,99 @@ export class MasterDataComponent implements OnInit {
     );
   }
 
-  async makeAssetAvailable(asset: Asset): Promise<void> {
-    this.openConfirmModal(
-      'Make Asset Available',
-      `Are you sure you want to release '${asset.name}'? This will remove it from ${asset.assignedToName || 'the current user'}'s holding and make it Available for new allocations.`,
-      async () => {
-        this.isSaving = true;
+  makeAssetAvailable(asset: Asset): void {
+    this.releasingAsset = asset;
+    this.releaseAssetRemarks = '';
+    this.notifyHR = false;
+    this.isDefective = false;
+    this.isOnService = false;
+    this.submittedReleaseForm = false;
+    this.showReleaseModal = true;
+  }
+
+  closeReleaseModal(): void {
+    this.showReleaseModal = false;
+    this.releasingAsset = null;
+    this.releaseAssetRemarks = '';
+    this.notifyHR = false;
+    this.isDefective = false;
+    this.isOnService = false;
+    this.submittedReleaseForm = false;
+  }
+
+  async confirmReleaseAsset(): Promise<void> {
+    this.submittedReleaseForm = true;
+    if (!this.releaseAssetRemarks || !this.releaseAssetRemarks.trim() || !this.releasingAsset) {
+      return;
+    }
+
+    this.isSaving = true;
+    const asset = this.releasingAsset;
+    try {
+      // Resolve raw IDs for the service call
+      const dbTypes = await this.assetService.getAllAssetTypesCordys();
+      const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
+
+      const matchedType = dbTypes.find(t => (t.type_name === asset.type || t.TYPE_NAME === asset.type || t.name === asset.type));
+      const typeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.id) : '';
+
+      const matchedSubCat = dbSubCats.find(c => (c.name === asset.category || c.sub_category_name === asset.category));
+      const subCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : '';
+
+      const rawAsset = {
+        asset_id: asset.id,
+        asset_name: asset.name,
+        type_id: typeId,
+        sub_category_id: subCatId,
+        serial_number: asset.serialNumber,
+        purchase_date: asset.purchaseDate,
+        warranty_expiry: asset.warrantyExpiry,
+        status: asset.status,
+        temp1: asset.assignedTo,
+        temp2: asset.requestId || '',
+        temp3: asset.reminderDays || 30,
+        notes: this.releaseAssetRemarks,
+        temp8: this.releaseAssetRemarks
+      };
+
+      let targetStatus = 'Available';
+      let toastMsg = 'Asset released successfully and is now Available.';
+
+      if (this.isDefective) {
+        targetStatus = 'Defected';
+        toastMsg = 'Asset released successfully and marked as Defected.';
+      } else if (this.isOnService) {
+        targetStatus = 'OnService';
+        toastMsg = 'Asset released successfully and marked as On Service.';
+      }
+
+      await this.assetService.releaseAsset(rawAsset, targetStatus);
+      this.notificationService.showToast(toastMsg, 'success');
+
+      if (this.notifyHR) {
         try {
-          // Resolve raw IDs for the service call
-          const dbTypes = await this.assetService.getAllAssetTypesCordys();
-          const dbSubCats = await this.assetService.getAllSubcategoriesCordys();
-
-          const matchedType = dbTypes.find(t => (t.type_name === asset.type || t.TYPE_NAME === asset.type || t.name === asset.type));
-          const typeId = matchedType ? (matchedType.type_id || matchedType.Type_id || matchedType.id) : '';
-
-          const matchedSubCat = dbSubCats.find(c => (c.name === asset.category || c.sub_category_name === asset.category));
-          const subCatId = matchedSubCat ? (matchedSubCat.sub_category_id || matchedSubCat.SUB_CATEGORY_ID || matchedSubCat.id) : '';
-
-          const rawAsset = {
-            asset_id: asset.id,
-            asset_name: asset.name,
-            type_id: typeId,
-            sub_category_id: subCatId,
-            serial_number: asset.serialNumber,
-            purchase_date: asset.purchaseDate,
-            warranty_expiry: asset.warrantyExpiry,
-            status: asset.status,
-            temp1: asset.assignedTo,
-            temp2: asset.requestId || '',
-            temp3: asset.reminderDays || 30
-          };
-
-          await this.assetService.releaseAsset(rawAsset);
-          this.notificationService.showToast('Asset released successfully and is now Available.', 'success');
-          await this.loadData();
-        } catch (e) {
-          console.error('Error releasing asset:', e);
-          this.notificationService.showToast('Failed to release asset. Please try again.', 'error');
-        } finally {
-          this.isSaving = false;
+          await this.mailService.sendHandoverEscalation({
+            assetName: asset.name,
+            assetTag: asset.assetTag || asset.id,
+            serialNumber: asset.serialNumber,
+            employeeName: asset.assignedToName || asset.assignedTo || 'Employee',
+            remarks: this.releaseAssetRemarks
+          });
+          this.notificationService.showToast('Escalation email sent to HR/Management.', 'success');
+        } catch (mailErr) {
+          console.error('Failed to send escalation email:', mailErr);
+          this.notificationService.showToast('Asset released, but failed to send HR notification email.', 'warning');
         }
-      },
-      false,
-      'Confirm Release',
-      'info'
-    );
+      }
+
+      await this.loadData();
+      this.closeReleaseModal();
+    } catch (e) {
+      console.error('Error releasing asset:', e);
+      this.notificationService.showToast('Failed to release asset. Please try again.', 'error');
+    } finally {
+      this.isSaving = false;
+    }
   }
 
   confirmIcon = 'warning';
@@ -1001,11 +1106,20 @@ export class MasterDataComponent implements OnInit {
 
   canDeleteAsset(asset: Asset): boolean {
     const status = (asset?.status || '').toLowerCase().trim();
-    return status === 'available' || status === '';
+    return status === 'available' || status === '' || status === 'defected';
   }
 
   isFieldInvalid(field: keyof typeof this.newAsset): boolean {
     if (this.submittedAssetForm) {
+      if (this.activeTab === 'defected') {
+        if (field === 'purchaseDate' || field === 'warrantyExpiry' || field === 'serialNumber') {
+          return false;
+        }
+        if (field === 'name') {
+          return !this.selectedDefectedAssetName;
+        }
+      }
+
       if (field === 'warrantyExpiry') {
         if (this.newAsset.isExpiryMandatory && !this.newAsset.warrantyExpiry) return true;
         return this.isWarrantyExpiryPast();
@@ -1133,10 +1247,12 @@ export class MasterDataComponent implements OnInit {
   }
 
   getStatusBadgeClass(status: string): string {
-    const s = status.toLowerCase();
+    const s = (status || '').toLowerCase();
     if (s.includes('available')) return 'badge-green';
     if (s.includes('allocated')) return 'badge-blue';
     if (s.includes('repair') || s.includes('maintenance')) return 'badge-amber';
+    if (s.includes('defected') || s.includes('defective')) return 'badge-red';
+    if (s.includes('onservice') || s.includes('service')) return 'badge-purple';
     if (s.includes('retired')) return 'badge-default';
     if (s.includes('reserved') || s.includes('team')) return 'badge-teal';
     return 'badge-default';
@@ -1165,6 +1281,7 @@ export class MasterDataComponent implements OnInit {
 
   formatAssetStatus(status: string): string {
     if (status === 'MoveToAllocationTeam') return 'Allocation Team';
+    if (status === 'OnService') return 'On Service';
     return status;
   }
 
@@ -1305,6 +1422,77 @@ export class MasterDataComponent implements OnInit {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return expiry < now;
+  }
+
+  getFilteredAssetsForDefectSearch(): Asset[] {
+    const query = (this.defectedAssetSearchQuery || '').trim().toLowerCase();
+    
+    const baseList = this.assets.filter(a => {
+      const status = (a.status || '').toLowerCase().trim();
+      // Only show Available or OnService assets
+      const statusMatch = status === 'available' || status === 'onservice';
+      
+      const assetType = String(a.type || '').trim().toLowerCase();
+      const selectedType = String(this.newAsset.type || '').trim().toLowerCase();
+      const typeMatch = !selectedType || assetType === selectedType;
+      
+      const assetCat = String(a.category || a.subCategory || '').trim().toLowerCase();
+      const selectedCat = String(this.newAsset.category || '').trim().toLowerCase();
+      const categoryMatch = !selectedCat || assetCat === selectedCat;
+      
+      return statusMatch && typeMatch && categoryMatch;
+    });
+
+    if (!query) {
+      return baseList;
+    }
+
+    return baseList.filter(a =>
+      String(a.name || '').toLowerCase().includes(query) ||
+      String(a.serialNumber || '').toLowerCase().includes(query) ||
+      String(a.assetTag || '').toLowerCase().includes(query)
+    );
+  }
+
+  onDefectedAssetSearch(query: string): void {
+    this.defectedAssetSearchQuery = query;
+    this.selectedDefectedAssetName = query;
+    
+    const found = this.assets.find(a => {
+      const status = (a.status || '').toLowerCase().trim();
+      return (
+        String(a.name || '').toLowerCase().trim() === query.toLowerCase().trim() &&
+        (status === 'available' || status === 'onservice')
+      );
+    });
+    if (found) {
+      this.selectedAssetForDefect = found;
+      this.newAsset.serialNumber = found.serialNumber || '';
+      this.newAsset.type = found.type || '';
+      this.newAsset.category = found.category || '';
+    } else {
+      this.selectedAssetForDefect = null;
+    }
+  }
+
+  selectDefectedAssetFromDropdown(asset: Asset): void {
+    this.selectedAssetForDefect = asset;
+    this.selectedDefectedAssetName = asset.name || '';
+    this.defectedAssetSearchQuery = asset.name || '';
+    this.newAsset.serialNumber = asset.serialNumber || '';
+    this.newAsset.type = asset.type || '';
+    this.newAsset.category = asset.category || '';
+    this.showDefectedDropdown = false;
+  }
+
+  toggleDefectedDropdown(): void {
+    this.showDefectedDropdown = !this.showDefectedDropdown;
+  }
+
+  onDefectedSearchBlur(): void {
+    setTimeout(() => {
+      this.showDefectedDropdown = false;
+    }, 200);
   }
 
   private createEmptyAsset(): AddAssetForm {

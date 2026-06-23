@@ -27,6 +27,7 @@ export interface Asset {
   temp5?: string;
   temp6?: string;
   temp7?: string;
+  temp8?: string;
 }
 
 export enum AssetType {

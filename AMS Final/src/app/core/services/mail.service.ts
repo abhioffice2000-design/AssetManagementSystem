@@ -799,6 +799,9 @@ import { Injectable } from '@angular/core';
 import emailjs from '@emailjs/browser';
 import { HeroService } from './hero.service';
 
+declare var $: any;
+
+
 
 /**
  * Generic, reusable email service powered by EmailJS.
@@ -1888,11 +1891,38 @@ Asset Management System
 
 
   /**
-   * Helper to send a raw SOAP email via Cordys WelcomeEmail_BPM activity.
-
+   * Helper to send a raw SOAP email via Cordys.
+   * If it is a welcome email (detected by subject), it uses WelcomeEmail_BPM.
+   * Otherwise, it uses direct SMTP SendMail to avoid the Welcome template formatting.
    */
   private async sendSoapEmail(to: string, name: string, subject: string, body: string): Promise<void> {
-    const soap = `
+    console.log(`[MailService] Preparing to send SOAP Email to ${to}. Subject: "${subject}"`);
+
+    // Refresh SSO authentication context to ensure we have permissions (AMS Administrator context)
+    try {
+      if (typeof $ !== 'undefined' && $.cordys?.authentication?.sso) {
+        console.log('[MailService] Refreshing administrative SSO context...');
+        await new Promise<void>((resolve, reject) => {
+          $.cordys.authentication.sso.authenticate('sourabhs', 'sourabhs')
+            .done(() => {
+              console.log('[MailService] Admin SSO context refreshed successfully.');
+              resolve();
+            })
+            .fail((err: any) => {
+              reject(err);
+            });
+        });
+      }
+    } catch (authErr) {
+      console.warn('[MailService] Failed to authenticate as admin, continuing with active session:', authErr);
+    }
+
+    const isWelcome = subject === 'Your Adnate Asset Management Account is Ready!';
+    let soap = '';
+
+    if (isWelcome) {
+      console.log('[MailService] Dispatching Welcome Email via WelcomeEmail_BPM...');
+      soap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
     <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
@@ -1903,22 +1933,69 @@ Asset Management System
     </WelcomeEmail_BPM>
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
+    } else {
+      console.log('[MailService] Dispatching Generic Email via direct SMTP SendMail...');
+      soap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <SendMail xmlns="http://schemas.cordys.com/1.0/email">
+      <to>
+        <address>
+          <emailAddress>${this.xmlEscape(to)}</emailAddress>
+          <displayName>${this.xmlEscape(name)}</displayName>
+        </address>
+      </to>
+      <subject>${this.xmlEscape(subject)}</subject>
+      <body type="text">${this.xmlEscape(body)}</body>
+    </SendMail>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+    }
 
     try {
       const resp = await this.hs.ajax(null, null, {}, soap);
-
-      // Check for SOAP Fault within a successful AJAX response
       const fault = this.hs.xmltojson(resp, 'Fault');
       if (fault) {
         const faultString = fault.faultstring || fault.Faultstring || JSON.stringify(fault);
         throw new Error(`Cordys SOAP Fault: ${faultString}`);
       }
 
-      console.log(`[MailService] SOAP Email sent to ${to}`);
+      console.log(`[MailService] SOAP Email successfully sent to ${to}`);
     } catch (err: any) {
-      console.error(`[MailService] Failed to send SOAP Email to ${to}`, err);
+      console.error(`[MailService] SOAP Email dispatch failed for ${to}`, err);
       let detail = err?.message || err?.responseText || err?.errorThrown || '';
       if (typeof detail !== 'string') detail = JSON.stringify(err);
+
+      // If generic SendMail failed, attempt WelcomeEmail_BPM as a last-resort fallback
+      if (!isWelcome) {
+        console.warn('[MailService] Direct SMTP SendMail failed. Retrying with WelcomeEmail_BPM fallback...');
+        const fallbackSoap = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <WelcomeEmail_BPM xmlns="http://schemas.cordys.com/default">
+      <toemail>${this.xmlEscape(to)}</toemail>
+      <toname>${this.xmlEscape(name)}</toname>
+      <subject>${this.xmlEscape(subject)}</subject>
+      <body>${this.xmlEscape(body)}</body>
+    </WelcomeEmail_BPM>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+        try {
+          const respFallback = await this.hs.ajax(null, null, {}, fallbackSoap);
+          const faultFallback = this.hs.xmltojson(respFallback, 'Fault');
+          if (faultFallback) {
+            const faultString = faultFallback.faultstring || faultFallback.Faultstring || JSON.stringify(faultFallback);
+            throw new Error(`Cordys fallback SOAP Fault: ${faultString}`);
+          }
+          console.log(`[MailService] Fallback SOAP Email sent to ${to} via WelcomeEmail_BPM`);
+          return;
+        } catch (fallbackErr: any) {
+          console.error('[MailService] Fallback WelcomeEmail_BPM also failed:', fallbackErr);
+          let fallbackDetail = fallbackErr?.message || fallbackErr?.responseText || '';
+          throw new Error(`Email Dispatch Failed (Direct SendMail and WelcomeEmail_BPM fallback both failed. Error: ${detail} | Fallback Error: ${fallbackDetail})`);
+        }
+      }
+
       throw new Error(`Email Dispatch Failed for ${to}: ${detail}`);
     }
   }
@@ -1948,5 +2025,42 @@ Asset Management System
     };
 
     return this.sendEmail(MailService.TEMPLATES.ASSET_REQUEST, templateParams);
+  }
+
+  /**
+   * Sends an escalation email to HR/Management about a return/handover exception.
+   */
+  async sendHandoverEscalation(params: {
+    assetName: string;
+    assetTag: string;
+    serialNumber: string;
+    employeeName: string;
+    remarks: string;
+  }): Promise<void> {
+    const testEmail = 'sourabhsharma1003@gmail.com';
+    const subject = `[Escalation] Asset Handover Exception: ${params.assetTag} - ${params.assetName}`;
+    const body = `
+Dear HR/Management,
+
+An asset handover exception has been flagged by the administrator.
+
+Asset Details:
+---------------------------------------------
+Asset ID: ${params.assetTag}
+Asset Name: ${params.assetName}
+Serial Number: ${params.serialNumber}
+Handed Over By (Previous Holder): ${params.employeeName}
+---------------------------------------------
+
+Observations / Remarks:
+${params.remarks}
+
+Please review the exception flag for this asset.
+
+Best Regards,
+Asset Management System
+    `.trim();
+
+    await this.sendSoapEmail(testEmail, 'HR/Management', subject, body);
   }
 }

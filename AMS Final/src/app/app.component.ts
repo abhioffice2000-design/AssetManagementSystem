@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { WarrantySchedulerService } from './core/services/warranty-scheduler.service';
+import { SocketService } from './core/services/socket.service';
 
 declare var $: any;
 
@@ -11,7 +12,10 @@ declare var $: any;
 export class AppComponent implements OnInit {
   title = 'ams';
 
-  constructor(private warrantyScheduler: WarrantySchedulerService) { }
+  constructor(
+    private warrantyScheduler: WarrantySchedulerService,
+    private socketService: SocketService
+  ) { }
 
   ngOnInit() {
     this.warrantyScheduler.initScheduler();
@@ -22,9 +26,9 @@ export class AppComponent implements OnInit {
       console.log('Cordys SDK found. Configuring paths...');
       if ($.cordys.authentication && $.cordys.authentication.defaults) {
         $.cordys.authentication.defaults.preloginGatewayURL = "/com.eibus.sso.web.authentication.PreLoginInfo.wcp";
-        if ($.cordys.authentication.sso && $.cordys.authentication.sso.defaults) {
-          $.cordys.authentication.sso.defaults.loginGatewayURL = "/com.eibus.web.soap.Gateway.wcp";
-        }
+        // if ($.cordys.authentication.sso && $.cordys.authentication.sso.defaults) {
+        //   $.cordys.authentication.sso.defaults.loginGatewayURL = "/com.eibus.web.soap.Gateway.wcp";
+        // }
         console.log('Cordys paths configured.');
       }
 
