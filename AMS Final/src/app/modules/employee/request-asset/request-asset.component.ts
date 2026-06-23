@@ -19,6 +19,7 @@ import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../..
 export class RequestAssetComponent implements OnInit {
   requestForm!: FormGroup;
   isSubmitting = false;
+  formSubmitted = false;
 
   // Master data from Cordys
   masterAssetTypes: any[] = [];
@@ -170,6 +171,8 @@ export class RequestAssetComponent implements OnInit {
       justification: this.requestForm.get('justification')?.errors,
     });
     if (this.requestForm.invalid) {
+      this.formSubmitted = true;
+      this.requestForm.markAllAsTouched();
       console.warn('[onSubmit] Form is invalid — submission blocked.');
       return;
     }
@@ -202,6 +205,7 @@ export class RequestAssetComponent implements OnInit {
       dbFileName = dbFileName.substring(0, 50 - ext.length) + ext;
     }
 
+    this.isSubmitting = true;
     try {
       // 1. Submit Request
       const request1 = {

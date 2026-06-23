@@ -33,7 +33,10 @@ export class LoginComponent implements OnInit {
   }
 
   ngOnInit(): void {
+
+
     this.checkAutoLogin();
+
   }
 
   /**
@@ -48,6 +51,7 @@ export class LoginComponent implements OnInit {
   checkAutoLogin(): void {
     if (this.authService.hasCheckedAutoLogin()) {
       console.log('Auto-login: Already checked on this page load.');
+      console.log("Entered")
       return;
     }
 
@@ -58,16 +62,18 @@ export class LoginComponent implements OnInit {
 
     this.authService.setAutoLoginChecked(true);
     this.isLoading = true;
-
+    console.log("Checkpoint");
     // Step 1: Get PreLoginInfo to initialize the SSO session context
     $.cordys.authentication.getPreloginInfo()
       .done(() => {
         // Step 2: Get the currently logged-in username from Cordys SSO
         const ssoUsername = $.cordys.authentication.getUserName ? $.cordys.authentication.getUserName() : '';
-
+        console.log("Checkpoint2", ssoUsername)
         if (ssoUsername) {
           // Username resolved directly from SSO, proceed to Org API
-          this.callOrgGetUserDetails(ssoUsername);
+          console.log("Checkpoint3")
+          //  this.callOrgGetUserDetails(ssoUsername);
+
         } else {
           // Fallback: Call standard GetUserDetails (User namespace) to check for active session cookies
           this.heroService.ajax('GetUserDetails', 'http://schemas.cordys.com/UserManagement/1.0/User', {})
@@ -87,6 +93,7 @@ export class LoginComponent implements OnInit {
             .catch((err: any) => {
               // No session cookie active, stay on login page silently
               console.log('Auto-login: No active Cordys session.', err);
+
               this.isLoading = false;
             });
         }

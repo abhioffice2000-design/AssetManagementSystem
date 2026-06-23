@@ -57,7 +57,8 @@ export class AssetService {
           temp4: this.getNullableValue(data?.temp4) || '',
           temp5: this.getNullableValue(data?.temp5) || '',
           temp6: this.getNullableValue(data?.temp6) || '',
-          temp7: this.getNullableValue(data?.temp7) || ''
+          temp7: this.getNullableValue(data?.temp7) || '',
+          temp8: this.getNullableValue(data?.temp8) || ''
         };
       });
 
@@ -100,7 +101,8 @@ export class AssetService {
           temp4: this.getNullableValue(data?.temp4) || '',
           temp5: this.getNullableValue(data?.temp5) || '',
           temp6: this.getNullableValue(data?.temp6) || '',
-          temp7: this.getNullableValue(data?.temp7) || ''
+          temp7: this.getNullableValue(data?.temp7) || '',
+          temp8: this.getNullableValue(data?.temp8) || ''
         };
       });
     } catch (err) {
@@ -109,7 +111,15 @@ export class AssetService {
     }
   }
 
-  async releaseAsset(asset: any): Promise<void> {
+  async releaseAsset(asset: any, status: string = 'Available'): Promise<void> {
+    const isReleased = (status === 'Available');
+    const temp1Xml = isReleased
+      ? '            <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />'
+      : (asset.temp1 ? `            <temp1>${asset.temp1}</temp1>` : '            <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />');
+    const temp2Xml = isReleased
+      ? '            <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />'
+      : (asset.temp2 ? `            <temp2>${asset.temp2}</temp2>` : '            <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />');
+
     const soapMsg = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -118,20 +128,6 @@ export class AssetService {
         <old>
           <m_assets qConstraint="0">
             <asset_id>${asset.asset_id}</asset_id>
-            <asset_name>${asset.asset_name}</asset_name>
-            <type_id>${asset.type_id}</type_id>
-            <sub_category_id>${asset.sub_category_id}</sub_category_id>
-            <serial_number>${asset.serial_number || ''}</serial_number>
-            <purchase_date>${asset.purchase_date || ''}</purchase_date>
-            <warranty_expiry>${asset.warranty_expiry || ''}</warranty_expiry>
-            <status>${asset.status}</status>
-            <temp1>${asset.temp1 || ''}</temp1>
-            <temp2>${asset.temp2 || ''}</temp2>
-            <temp3>${asset.temp3 || ''}</temp3>
-            <temp4>${asset.temp4 || ''}</temp4>
-            <temp5>${asset.temp5 || ''}</temp5>
-            <temp6>${asset.temp6 || ''}</temp6>
-            <temp7>${asset.temp7 || ''}</temp7>
           </m_assets>
         </old>
         <new>
@@ -143,14 +139,15 @@ export class AssetService {
             <serial_number>${asset.serial_number || ''}</serial_number>
             <purchase_date>${asset.purchase_date || ''}</purchase_date>
             <warranty_expiry>${asset.warranty_expiry || ''}</warranty_expiry>
-            <status>Available</status>
-            <temp1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
-            <temp2 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true" />
+            <status>${status}</status>
+${temp1Xml}
+${temp2Xml}
             <temp3>${asset.temp3 || ''}</temp3>
             <temp4>${asset.temp4 || ''}</temp4>
             <temp5>${asset.temp5 || ''}</temp5>
             <temp6>${asset.temp6 || ''}</temp6>
             <temp7>${asset.temp7 || ''}</temp7>
+            <temp8>${asset.temp8 || asset.notes || ''}</temp8>
           </m_assets>
         </new>
       </tuple>
@@ -160,9 +157,54 @@ export class AssetService {
 
     try {
       await this.hs.ajax(null, null, {}, soapMsg);
-      console.log(`Asset ${asset.asset_id} marked as available.`);
+      console.log(`Asset ${asset.asset_id} marked as ${status}.`);
     } catch (err) {
       console.error(`Failed to release asset ${asset.asset_id}:`, err);
+      throw err;
+    }
+  }
+
+  async updateTDefectiveAssets(defectiveAsset: any): Promise<void> {
+    const sequence = [
+      'defect_id', 'asset_id', 'asset_code', 'asset_name', 'user_id', 'user_name',
+      'allocation_id', 'defect_reported_date', 'defect_type', 'defect_description',
+      'severity', 'reported_by', 'approved_by', 'approval_status', 'repairable',
+      'repair_status', 'vendor_name', 'repair_cost', 'repaired_date', 'replacement_asset_id',
+      'disposal_date', 'disposal_reason', 'remarks', 'created_date', 'updated_date',
+      'temp1', 'temp2', 'temp3', 'temp4', 'temp5'
+    ];
+
+    const xmlTags = sequence
+      .filter(key => {
+        const val = defectiveAsset[key];
+        return val !== undefined && val !== null && val !== '';
+      })
+      .map(key => {
+        const val = defectiveAsset[key];
+        return `            <${key}>${val}</${key}>`;
+      })
+      .join('\n');
+
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateT_defective_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <new>
+          <t_defective_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+${xmlTags}
+          </t_defective_assets>
+        </new>
+      </tuple>
+    </UpdateT_defective_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapMsg);
+      console.log(`Defect logged in t_defective_assets for asset ${defectiveAsset.asset_id}.`);
+    } catch (err) {
+      console.error(`Failed to update t_defective_assets for asset ${defectiveAsset.asset_id}:`, err);
       throw err;
     }
   }
@@ -194,6 +236,37 @@ export class AssetService {
       console.log(`Asset ${assetId} temp3 updated to ${temp3Value}.`);
     } catch (err) {
       console.error(`Failed to update temp3 for asset ${assetId}:`, err);
+      throw err;
+    }
+  }
+
+  async updateAssetStatus(assetId: string, status: string): Promise<void> {
+    const soapMsg = `
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <UpdateM_assets xmlns="http://schemas.cordys.com/AMS_Database_Metadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+      <tuple>
+        <old>
+          <m_assets qConstraint="0">
+            <asset_id>${assetId}</asset_id>
+          </m_assets>
+        </old>
+        <new>
+          <m_assets qAccess="0" qConstraint="0" qInit="0" qValues="">
+            <asset_id>${assetId}</asset_id>
+            <status>${status}</status>
+          </m_assets>
+        </new>
+      </tuple>
+    </UpdateM_assets>
+  </SOAP:Body>
+</SOAP:Envelope>`.trim();
+
+    try {
+      await this.hs.ajax(null, null, {}, soapMsg);
+      console.log(`Asset ${assetId} status updated to ${status}.`);
+    } catch (err) {
+      console.error(`Failed to update status for asset ${assetId}:`, err);
       throw err;
     }
   }
@@ -499,12 +572,13 @@ export class AssetService {
       specifications: this.getNullableValue(assetData?.specifications),
       cost: parseFloat(assetData?.cost) || 0,
       condition: this.mapToAssetCondition(this.getNullableValue(assetData?.condition) || 'Good'),
-      notes: this.getNullableValue(assetData?.notes),
+      notes: this.getNullableValue(assetData?.temp8),
       requestId: this.getNullableValue(assetData?.temp2),
       reminderDays: parseInt(this.getNullableValue(assetData?.temp3) || '30'),
       temp3: this.getNullableValue(assetData?.temp3),
       temp5: this.getNullableValue(assetData?.temp5),
-      allocatedDate: assetData?.temp4 || ''
+      allocatedDate: assetData?.temp4 || '',
+      temp8: this.getNullableValue(assetData?.temp8)
     };
   }
 
@@ -805,7 +879,9 @@ export class AssetService {
         condition: (item.Condition || item.condition) as AssetCondition || AssetCondition.GOOD,
         specifications: item.Specifications || item.specifications || '',
         allocatedDate: item.temp4 || item.Temp4 || '',
-        temp3: item.temp3 || item.Temp3 || ''
+        temp3: item.temp3 || item.Temp3 || '',
+        notes: item.temp8 || item.Temp8 || '',
+        temp8: item.temp8 || item.Temp8 || ''
       };
     } catch (error) {
       console.error('Error fetching asset details:', error);

@@ -4,7 +4,7 @@
     <p class="subtitle mt-8">Submit a request for new hardware, software, or other assets.</p>
   </div>
   <div class="card-body">
-    <form [formGroup]="requestForm" (ngSubmit)="onSubmit()" translate="no">
+    <form [formGroup]="requestForm" (ngSubmit)="onSubmit()" translate="no" #formRef="ngForm">
       <div class="grid grid-2 gap-20 form-group">
         <div>
           <label>Asset Type *</label>
@@ -14,6 +14,10 @@
               {{ type.type_name }}
             </option>
           </select>
+          <p class="text-xs" style="color: var(--danger, #e53e3e); margin-top: 4px;"
+            *ngIf="requestForm.get('assetType')?.invalid && (requestForm.get('assetType')?.touched || formSubmitted)">
+            Please select an Asset Type.
+          </p>
         </div>
         <div>
           <label>Urgency *</label>
@@ -34,7 +38,11 @@
               {{ sub.name }}
             </option>
           </select>
-          <p class="text-xs text-muted mt-4" *ngIf="availableSubCategories.length === 0">Please select an Asset Type first.</p>
+          <p class="text-xs text-muted mt-4" *ngIf="availableSubCategories.length === 0 && !requestForm.get('assetType')?.value">Please select an Asset Type first.</p>
+          <p class="text-xs" style="color: var(--danger, #e53e3e); margin-top: 4px;"
+            *ngIf="requestForm.get('subCategory')?.invalid && (requestForm.get('subCategory')?.touched || formSubmitted)">
+            Please select a Sub-Category.
+          </p>
         </div>
       </div>
 
@@ -42,6 +50,10 @@
         <label>Business Justification *</label>
         <textarea formControlName="justification" class="form-control" data-gramm="false" spellcheck="false"
           placeholder="Please explain why you need this asset..." rows="3"></textarea>
+        <p class="text-xs" style="color: var(--danger, #e53e3e); margin-top: 4px;"
+          *ngIf="requestForm.get('justification')?.invalid && (requestForm.get('justification')?.touched || formSubmitted)">
+          Please provide a justification (minimum 5 characters).
+        </p>
       </div>
 
       <div class="form-group mt-24 bg-gray"
@@ -65,7 +77,7 @@
       <div class="mt-24 pt-16"
         style="border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
         <button type="button" class="btn btn-outline" routerLink="/employee/my-requests">Cancel</button>
-        <button type="button" class="btn btn-primary" (click)="onSubmit()">Submit Request</button>
+        <button type="button" class="btn btn-primary" (click)="onSubmit()" [disabled]="isSubmitting">Submit Request</button>
       </div>
     </form>
   </div>

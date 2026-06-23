@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetRequest, ApprovalEntry, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
@@ -16,7 +17,7 @@ import { AdminDataService } from '../../../core/services/admin-data.service';
   templateUrl: './asset-requests.component.html',
   styleUrls: ['./asset-requests.component.scss']
 })
-export class AssetRequestsComponent implements OnInit {
+export class AssetRequestsComponent implements OnInit, OnDestroy {
   allRequests: AssetRequest[] = [];
   allAssetRequests: AssetRequest[] = [];
   filteredRequests: AssetRequest[] = [];
@@ -66,6 +67,7 @@ export class AssetRequestsComponent implements OnInit {
   pageSize = 5;
   protected readonly Math = Math;
   task_id_latest = '';
+  private notifSub: Subscription | null = null;
 
   constructor(
     private requestService: RequestService,
@@ -80,6 +82,15 @@ export class AssetRequestsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadAllData();
+
+    // Reload the requests table whenever the user clicks a notification
+    this.notifSub = this.notificationService.notificationClicked$.subscribe(() => {
+      this.loadAllData();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.notifSub?.unsubscribe();
   }
 
   async loadAllData(): Promise<void> {
