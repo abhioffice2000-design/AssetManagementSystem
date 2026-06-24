@@ -1410,13 +1410,14 @@ export class AllocationTicketsComponent implements OnInit {
     }
 
     const remarks = this.decisionRemarks;
-    this.closeDetails();
+
 
     if (ticket.rawRequest.requestType === RequestType.RETURN_ASSET) {
       await this.rejectAssetReturn(ticket, remarks);
     } else {
       await this.reject(ticket, remarks);
     }
+    this.closeDetails();
   }
 
   handleTableRejectClick(ticket: EnrichedTicket): void {
