@@ -14,6 +14,7 @@ export class SocketService {
   private socket: Socket | null = null;
   private connected$ = new BehaviorSubject<boolean>(false);
   private readonly serverUrl = 'http://localhost:3000'; // Default notification server endpoint
+  // private readonly serverUrl = 'http://43.242.214.41:3000'; //For Server notifictaion
 
   private emittedRequests = new Set<string>();
 
@@ -171,7 +172,7 @@ export class SocketService {
       if (isApprover) {
         this.socket.on('incoming_request_notification', (data: any) => {
           console.log('[SocketService] Received incoming request notification:', data);
-          
+
           const notificationTitle = `New ${data.requestType} Raised`;
           const notificationMsg = `${data.employeeName} has raised a new ${data.requestType} (ID: ${data.requestId}).`;
 
