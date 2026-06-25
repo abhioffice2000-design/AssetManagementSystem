@@ -7,6 +7,7 @@ import { NotificationService } from 'src/app/core/services/notification.service'
 import { AuthService } from 'src/app/core/services/auth.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { AdminDataService } from '../../../core/services/admin-data.service';
+import { LoaderService } from '../../../core/services/loader.service';
 
 @Component({
   selector: 'app-warranty-tickets',
@@ -40,7 +41,8 @@ export class WarrantyTicketsComponent implements OnInit {
     private mailService: MailService,
     private notificationService: NotificationService,
     private authService: AuthService,
-    private adminService: AdminDataService
+    private adminService: AdminDataService,
+    private loaderService: LoaderService
   ) { }
 
   async ngOnInit(): Promise<void> {
@@ -351,15 +353,16 @@ export class WarrantyTicketsComponent implements OnInit {
       return;
     }
 
+    const approvalId = request.approvalId;
+    if (!approvalId) {
+      this.notificationService.showToast('Approval context missing. Cannot proceed.', 'error');
+      return;
+    }
+
+    this.loaderService.show();
     try {
       const requestId = request.id;
-      const approvalId = request.approvalId;
       const assetId = request.assignedAssetId;
-
-      if (!approvalId) {
-        this.notificationService.showToast('Approval context missing. Cannot proceed.', 'error');
-        return;
-      }
 
       // 1. Update status in t_extend_request_approvals to 'Approved'
       await this.requestService.updateWarrantyRequestApproval(
@@ -409,6 +412,8 @@ export class WarrantyTicketsComponent implements OnInit {
     } catch (error) {
       console.error('Failed to approve warranty extension:', error);
       this.notificationService.showToast('Failed to complete approval. Please try again.', 'error');
+    } finally {
+      this.loaderService.hide();
     }
   }
 }

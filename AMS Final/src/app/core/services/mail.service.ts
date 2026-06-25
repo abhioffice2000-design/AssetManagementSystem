@@ -1953,7 +1953,7 @@ Asset Management System
     }
 
     try {
-      const resp = await this.hs.ajax(null, null, {}, soap);
+      const resp = await this.hs.ajax(null, null, {}, soap, false);
       const fault = this.hs.xmltojson(resp, 'Fault');
       if (fault) {
         const faultString = fault.faultstring || fault.Faultstring || JSON.stringify(fault);
@@ -1981,7 +1981,7 @@ Asset Management System
   </SOAP:Body>
 </SOAP:Envelope>`.trim();
         try {
-          const respFallback = await this.hs.ajax(null, null, {}, fallbackSoap);
+          const respFallback = await this.hs.ajax(null, null, {}, fallbackSoap, false);
           const faultFallback = this.hs.xmltojson(respFallback, 'Fault');
           if (faultFallback) {
             const faultString = faultFallback.faultstring || faultFallback.Faultstring || JSON.stringify(faultFallback);

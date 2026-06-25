@@ -8,6 +8,7 @@ import { HeroService } from '../../../core/services/hero.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { MailService } from '../../../core/services/mail.service';
 import { AdminDataService } from '../../../core/services/admin-data.service';
+import { LoaderService } from '../../../core/services/loader.service';
 
 
 @Component({
@@ -47,7 +48,8 @@ export class LeadDashboardComponent implements OnInit {
     private requestService: RequestService,
     private notificationService: NotificationService,
     private mailService: MailService,
-    private adminService: AdminDataService
+    private adminService: AdminDataService,
+    private loaderService: LoaderService
   ) { }
 
   ngOnInit(): void {
@@ -323,6 +325,7 @@ export class LeadDashboardComponent implements OnInit {
       return;
     }
 
+    this.loaderService.show();
     try {
       this.isLoading = true;
       var req1 = {
@@ -393,6 +396,8 @@ export class LeadDashboardComponent implements OnInit {
       console.error("Approval error:", error);
       this.notificationService.showToast("Failed to approve request. Please try again.", "error");
       this.isLoading = false;
+    } finally {
+      this.loaderService.hide();
     }
   }
 
@@ -407,6 +412,7 @@ export class LeadDashboardComponent implements OnInit {
       return;
     }
 
+    this.loaderService.show();
     try {
       this.isLoading = true;
       var req1 = {
@@ -487,6 +493,8 @@ export class LeadDashboardComponent implements OnInit {
       console.error("Rejection error:", error);
       this.notificationService.showToast("Failed to reject request. Please try again.", "error");
       this.isLoading = false;
+    } finally {
+      this.loaderService.hide();
     }
   }
 

@@ -1,4 +1,4 @@
-﻿import { Injectable } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { User, UserRole } from '../models/user.model';
 import { Router } from '@angular/router';
@@ -215,7 +215,7 @@ export class AuthService {
 </SOAP:Envelope>`.trim();
 
     try {
-      const resp = await this.hs.ajax(null, null, {}, getProjectSoap);
+      const resp = await this.hs.ajax(null, null, {}, getProjectSoap, false);
       let projectsData = this.hs.xmltojson(resp, 'm_projects');
 
       if (projectsData) {
@@ -266,7 +266,7 @@ export class AuthService {
 </SOAP:Envelope>`.trim();
 
     try {
-      const resp = await this.hs.ajax(null, null, {}, getTypesSoap);
+      const resp = await this.hs.ajax(null, null, {}, getTypesSoap, false);
       let typesData = this.hs.xmltojson(resp, 'm_asset_types');
 
       if (typesData) {

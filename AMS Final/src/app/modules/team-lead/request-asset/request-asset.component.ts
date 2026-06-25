@@ -10,6 +10,7 @@ import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../..
 import { HeroService } from '../../../core/services/hero.service';
 import { AdminDataService } from '../../../core/services/admin-data.service';
 import { UserRole } from '../../../core/models/user.model';
+import { LoaderService } from '../../../core/services/loader.service';
 
 
 @Component({
@@ -39,6 +40,7 @@ export class RequestAssetComponent implements OnInit {
     private router: Router,
     private hs: HeroService,
     private adminService: AdminDataService,
+    private loaderService: LoaderService,
   ) {}
 
   async ngOnInit(): Promise<void> {
@@ -135,6 +137,7 @@ assetmanagerid:any;
       return;
     }
 
+    this.loaderService.show();
     this.isSubmitting = true;
     const formVal = this.requestForm.value;
 
@@ -222,7 +225,9 @@ assetmanagerid:any;
     } catch (err: any) {
       console.error('[RequestAsset] Submission failed:', err);
       this.notificationService.showToast('Failed to save request to database. Please try again.', 'error');
+    } finally {
       this.isSubmitting = false;
+      this.loaderService.hide();
     }
   }
 }
