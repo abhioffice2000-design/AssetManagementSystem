@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { LoaderService } from './loader.service';
 
 declare var $: any;
 // $.cordys.baseURL = '/home/training2025';
@@ -7,7 +8,7 @@ declare var $: any;
 })
 export class HeroService {
 
-  constructor() { }
+  constructor(private loaderService: LoaderService) { }
 
   /**
    * Converts XML/SOAP response data into a JSON object using the Cordys utility.
@@ -27,10 +28,11 @@ export class HeroService {
    * @param namespace The SOAP namespace (e.g., "http://schemas.cordys.com/...")
    * @param parameters The parameters object for the SOAP call.
    * @param data Optional raw XML string (overrides parameters if provided).
+   * @param showLoader Optional parameter to specify if loader overlay should be displayed. Defaults to true.
    * @returns A Promise that resolves with the response or rejects with the error details.
    */
 
-  ajax(method: any, namespace: any, parameters: any, data?: any) {
+  ajax(method: any, namespace: any, parameters: any, data?: any, showLoader: boolean = true) {
 
     return new Promise((rev, rej) => {
       // Check if $.cordys.ajax is available
@@ -43,58 +45,74 @@ export class HeroService {
         return;
       }
 
-      $.cordys.ajax({
-        method: method,
-        namespace: namespace,
-        dataType: '* json', // Implemented exactly as per your requirement
-        parameters: parameters,
-        data: data,
-        url: '/home/training2025/com.eibus.web.soap.Gateway.wcp',
-        success: function success(resp: any) {
-          // Intercept request creation to notify SocketService
-          let methodStr = method || '';
-          if (!methodStr && typeof data === 'string') {
-            const match = data.match(/<([A-Za-z0-9_]+)(?:\s|>)/);
-            if (match) {
-              methodStr = match[1];
+      if (showLoader) {
+        this.loaderService.show();
+      }
+
+      try {
+        $.cordys.ajax({
+          method: method,
+          namespace: namespace,
+          dataType: '* json', // Implemented exactly as per your requirement
+          parameters: parameters,
+          data: data,
+          url: '/home/training2025/com.eibus.web.soap.Gateway.wcp',
+          success: (resp: any) => {
+            if (showLoader) {
+              this.loaderService.hide();
             }
-          }
-
-          if (methodStr && [
-            'UpdateT_request_approvals',
-            'UpdateT_extend_request_approvals',
-            'UpdateT_asset_return_approvals',
-            'UpdateT_service_approvals'
-          ].includes(methodStr)) {
-            try {
-              console.log('[HeroService] Intercepted request approval operation:', methodStr);
-              const event = new CustomEvent('newRequestSoapSuccess', {
-                detail: {
-                  method: methodStr,
-                  response: resp,
-                  requestParams: parameters,
-                  requestData: data
-                }
-              });
-              window.dispatchEvent(event);
-            } catch (e) {
-              console.warn('[HeroService] Failed to dispatch CustomEvent for notification server:', e);
+            // Intercept request creation to notify SocketService
+            let methodStr = method || '';
+            if (!methodStr && typeof data === 'string') {
+              const match = data.match(/<([A-Za-z0-9_]+)(?:\s|>)/);
+              if (match) {
+                methodStr = match[1];
+              }
             }
-          }
 
-          rev(resp); // Resolve the Promise on success
-        },
-        error: function error(e1: any, e2: any, e3: any) {
-          console.log('err=>', e1, e2, e3);
-          const responseText = e1?.responseText || '';
-          console.log('Response Body:', responseText);
-          // Reject with response text included for better debugging
-          rej({ jqXHR: e1, textStatus: e2, errorThrown: e3, responseText: responseText });
-        },
-      });
+            if (methodStr && [
+              'UpdateT_request_approvals',
+              'UpdateT_extend_request_approvals',
+              'UpdateT_asset_return_approvals',
+              'UpdateT_service_approvals'
+            ].includes(methodStr)) {
+              try {
+                console.log('[HeroService] Intercepted request approval operation:', methodStr);
+                const event = new CustomEvent('newRequestSoapSuccess', {
+                  detail: {
+                    method: methodStr,
+                    response: resp,
+                    requestParams: parameters,
+                    requestData: data
+                  }
+                });
+                window.dispatchEvent(event);
+              } catch (e) {
+                console.warn('[HeroService] Failed to dispatch CustomEvent for notification server:', e);
+              }
+            }
 
-
+            rev(resp); // Resolve the Promise on success
+          },
+          error: (e1: any, e2: any, e3: any) => {
+            if (showLoader) {
+              this.loaderService.hide();
+            }
+            console.log('err=>', e1, e2, e3);
+            const responseText = e1?.responseText || '';
+            console.log('Response Body:', responseText);
+            // Reject with response text included for better debugging
+            rej({ jqXHR: e1, textStatus: e2, errorThrown: e3, responseText: responseText });
+          },
+        });
+      } catch (err) {
+        if (showLoader) {
+          this.loaderService.hide();
+        }
+        rej(err);
+      }
     });
   }
 
 }
+

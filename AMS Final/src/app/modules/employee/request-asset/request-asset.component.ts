@@ -8,6 +8,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { MailService } from '../../../core/services/mail.service';
 import { AssetType, AssetCategory } from '../../../core/models/asset.model';
 import { AdminDataService } from '../../../core/services/admin-data.service';
+import { LoaderService } from '../../../core/services/loader.service';
 
 import { RequestType, RequestUrgency, RequestStatus, ApprovalStage } from '../../../core/models/request.model';
 
@@ -43,6 +44,7 @@ export class RequestAssetComponent implements OnInit {
     private notificationService: NotificationService,
     private mailService: MailService,
     private adminService: AdminDataService,
+    private loaderService: LoaderService,
     private router: Router
   ) { }
 
@@ -205,6 +207,7 @@ export class RequestAssetComponent implements OnInit {
       dbFileName = dbFileName.substring(0, 50 - ext.length) + ext;
     }
 
+    this.loaderService.show();
     this.isSubmitting = true;
     try {
       // 1. Submit Request
@@ -292,6 +295,7 @@ export class RequestAssetComponent implements OnInit {
       this.notificationService.showToast('Failed to submit request.', 'error');
     } finally {
       this.isSubmitting = false;
+      this.loaderService.hide();
     }
   }
 

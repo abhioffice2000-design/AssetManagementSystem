@@ -8,6 +8,7 @@ import { HeaderComponent } from './components/header/header.component';
 import { StatCardComponent } from './components/stat-card/stat-card.component';
 import { StatusBadgeComponent } from './components/status-badge/status-badge.component';
 import { ModalComponent } from './components/modal/modal.component';
+import { LoaderComponent } from './components/loader/loader.component';
 
 @NgModule({
   declarations: [
@@ -15,7 +16,8 @@ import { ModalComponent } from './components/modal/modal.component';
     HeaderComponent,
     StatCardComponent,
     StatusBadgeComponent,
-    ModalComponent
+    ModalComponent,
+    LoaderComponent
   ],
   imports: [
     CommonModule,
@@ -32,9 +34,11 @@ import { ModalComponent } from './components/modal/modal.component';
     HeaderComponent,
     StatCardComponent,
     StatusBadgeComponent,
-    ModalComponent
+    ModalComponent,
+    LoaderComponent
   ]
 })
 export class SharedModule { }
 // Force re-compilation of SharedModule components
+
 

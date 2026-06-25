@@ -1,0 +1,12 @@
+<div *ngIf="isLoading$ | async" class="global-loader-overlay">
+  <div class="loader-container">
+    <div class="spinner-wrapper">
+      <div class="glowing-spinner"></div>
+      <div class="glowing-spinner-inner"></div>
+    </div>
+    <div class="loader-text">
+      Processing...
+    </div>
+    <div class="loader-subtext">Please wait, do not refresh or click back</div>
+  </div>
+</div>

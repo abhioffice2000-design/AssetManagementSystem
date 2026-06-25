@@ -6,6 +6,7 @@ import { AssetRequest, ApprovalEntry, RequestStatus, ApprovalStage, RequestType 
 import { HeroService } from 'src/app/core/services/hero.service';
 import { MailService } from 'src/app/core/services/mail.service';
 import { NotificationService } from 'src/app/core/services/notification.service';
+import { LoaderService } from '../../../core/services/loader.service';
 
 
 export interface EnrichedTicket {
@@ -78,7 +79,8 @@ export class AllocationTicketsComponent implements OnInit {
     private hs: HeroService,
     private mailService: MailService,
     private notificationService: NotificationService,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private loaderService: LoaderService
   ) { }
 
 
@@ -950,9 +952,9 @@ export class AllocationTicketsComponent implements OnInit {
   }
 
   async allocate(ticket: EnrichedTicket): Promise<void> {
-
-
-    var req1 = {
+    this.loaderService.show();
+    try {
+      var req1 = {
       tuple: {
         old: {
           t_request_approvals: {
@@ -1043,11 +1045,23 @@ export class AllocationTicketsComponent implements OnInit {
     });
 
     this.loadTickets();
+    } catch (error) {
+      console.error("Allocation failed:", error);
+      this.notificationService.showToast("Failed to allocate asset.", "error");
+    } finally {
+      this.loaderService.hide();
+    }
   }
 
   async reject(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
+    if (!remarksInput && (!this.decisionRemarks || !this.decisionRemarks.trim())) {
+      alert('Remarks are mandatory for rejection.');
+      return;
+    }
+
     const remarks = remarksInput || this.decisionRemarks || 'Rejected by Allocation Team';
 
+    this.loaderService.show();
     try {
       // Step 1: Update approval record to Rejected
       const reqReject = {
@@ -1084,23 +1098,13 @@ export class AllocationTicketsComponent implements OnInit {
       }
 
       this.notificationService.showToast(`Request ${ticket.ticketId} rejected.`, 'info');
-    } catch (error) {
-      console.error("Standard request rejection failed:", error);
-      this.notificationService.showToast(`Failed to reject request ${ticket.ticketId}.`, 'error');
-    }
+      this.loadTickets();
 
-    this.loadTickets();
-    if (!this.decisionRemarks.trim()) {
-      alert('Remarks are mandatory for rejection.');
-      return;
-    }
-
-    try {
       await this.requestService.rejectRequest(
         ticket.rawRequest.id,
         this.currentUser.id,
         this.currentUser.name,
-        this.decisionRemarks,
+        remarks,
         ApprovalStage.ALLOCATION,
         ticket.approvalid
       );
@@ -1110,6 +1114,8 @@ export class AllocationTicketsComponent implements OnInit {
     } catch (error) {
       console.error('Rejection failed:', error);
       this.notificationService.showToast('Failed to reject request', 'error');
+    } finally {
+      this.loaderService.hide();
     }
   }
   async allocateAssetReturn(ticket: EnrichedTicket): Promise<void> {
@@ -1122,6 +1128,7 @@ export class AllocationTicketsComponent implements OnInit {
       return;
     }
 
+    this.loaderService.show();
     try {
       const assetLookupId = this.getReturnAssetLookupId(ticket);
       const approverId = await this.requestService.resolveReturnApproverId(assetLookupId, 'rol_04');
@@ -1222,6 +1229,8 @@ export class AllocationTicketsComponent implements OnInit {
     } catch (error) {
       console.error("Critical error in allocateAssetReturn workflow:", error);
       this.notificationService.showToast(`Failed to confirm return request ${ticket.ticketId}.`, 'error');
+    } finally {
+      this.loaderService.hide();
     }
   }
 
@@ -1322,6 +1331,7 @@ export class AllocationTicketsComponent implements OnInit {
   async rejectAssetReturn(ticket: EnrichedTicket, remarksInput?: string): Promise<void> {
     const remarks = remarksInput || this.rejectRemarks || 'Rejected by Allocation Team';
 
+    this.loaderService.show();
     try {
       // Step 1: Update current return approval status to "Rejected"
       const reqReject = {
@@ -1389,6 +1399,8 @@ export class AllocationTicketsComponent implements OnInit {
     } catch (error) {
       console.error("Return request rejection failed:", error);
       this.notificationService.showToast(`Failed to reject return request ${ticket.ticketId}.`, 'error');
+    } finally {
+      this.loaderService.hide();
     }
 
     this.loadTickets();

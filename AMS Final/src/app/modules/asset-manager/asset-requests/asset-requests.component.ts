@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { RequestService } from '../../../core/services/request.service';
+import { LoaderService } from '../../../core/services/loader.service';
 import { AssetRequest, ApprovalEntry, ApprovalStage, RequestStatus, RequestUrgency, RequestType } from '../../../core/models/request.model';
 import { AuthService } from '../../../core/services/auth.service';
 import { UserService } from '../../../core/services/user.service';
@@ -77,7 +78,8 @@ export class AssetRequestsComponent implements OnInit, OnDestroy {
     private notificationService: NotificationService,
     private mailService: MailService,
     private hs: HeroService,
-    private adminService: AdminDataService
+    private adminService: AdminDataService,
+    private loaderService: LoaderService
   ) { }
 
   ngOnInit(): void {
@@ -810,8 +812,6 @@ export class AssetRequestsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.notificationService.showToast(`Processing ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
-
     if (action === 'approve') {
       if (request.requestType !== RequestType.RETURN_ASSET) {
         if (!this.selectedAssetId) {
@@ -825,12 +825,20 @@ export class AssetRequestsComponent implements OnInit, OnDestroy {
       }
     }
 
-    this.selectedRequest = request;
-    this.actionType = action;
-    // this.actionComments = ''; // DO NOT RESET HERE, we need the value from UI
-    console.log('Selected Allocation Member ID:', this.selectedAllocationMemberId);
-    await this.confirmAction();
-    this.closeDetailModal();
+    this.loaderService.show();
+    try {
+      this.notificationService.showToast(`Processing ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
+      this.selectedRequest = request;
+      this.actionType = action;
+      console.log('Selected Allocation Member ID:', this.selectedAllocationMemberId);
+      await this.confirmAction();
+      this.closeDetailModal();
+    } catch (error) {
+      console.error('Error confirming action:', error);
+      this.notificationService.showToast('Failed to process action.', 'error');
+    } finally {
+      this.loaderService.hide();
+    }
   }
 
   // async confirmAction(): Promise<void> {
@@ -1155,14 +1163,20 @@ export class AssetRequestsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.notificationService.showToast(`Processing confirmation ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
-
-    this.selectedRequest = request;
-    this.actionType = action;
-    // this.actionComments = ''; // Keep the value given by the user in the UI
-    console.log('[Confirmation] Action triggered:', action, ' | Request:', request);
-    await this.confirmActionForConfirmation();
-    this.closeDetailModal();
+    this.loaderService.show();
+    try {
+      this.notificationService.showToast(`Processing confirmation ${action === 'approve' ? 'approval' : 'rejection'} for request ${request.id}...`, 'info');
+      this.selectedRequest = request;
+      this.actionType = action;
+      console.log('[Confirmation] Action triggered:', action, ' | Request:', request);
+      await this.confirmActionForConfirmation();
+      this.closeDetailModal();
+    } catch (error) {
+      console.error('Error confirming confirmation action:', error);
+      this.notificationService.showToast('Failed to process confirmation.', 'error');
+    } finally {
+      this.loaderService.hide();
+    }
   }
 
   /**

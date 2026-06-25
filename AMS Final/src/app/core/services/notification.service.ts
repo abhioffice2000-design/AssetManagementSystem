@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { AuthService } from './auth.service';
+import { LoaderService } from './loader.service';
 
 export interface Notification {
   id: string;
@@ -21,6 +22,11 @@ export class NotificationService {
   private toastSubject = new BehaviorSubject<{ message: string; type: string } | null>(null);
   toast$ = this.toastSubject.asObservable();
 
+  private isLoaderActive = false;
+  private toastQueue: { message: string; type: 'success' | 'error' | 'warning' | 'info' }[] = [];
+  private currentToastTimeout: any = null;
+  private isDisplayingToast = false;
+
   /** Emits whenever the user clicks/views a notification — subscribers can reload their data. */
   private notificationClickedSubject = new Subject<void>();
   notificationClicked$ = this.notificationClickedSubject.asObservable();
@@ -32,7 +38,17 @@ export class NotificationService {
   private dismissedKeys = new Set<string>();
   private currentUserId: string | null = null;
 
-  constructor(private authService: AuthService) {
+  constructor(
+    private authService: AuthService,
+    private loaderService: LoaderService
+  ) {
+    this.loaderService.isLoading$.subscribe((active) => {
+      this.isLoaderActive = active;
+      if (!active) {
+        this.processToastQueue();
+      }
+    });
+
     this.authService.currentUser$.subscribe((user) => {
       // On logout, clear in-memory list (but keep localStorage intact)
       this.notifications = [];
@@ -124,8 +140,44 @@ export class NotificationService {
   }
 
   showToast(message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info'): void {
+    if (this.isLoaderActive) {
+      this.toastQueue.push({ message, type });
+    } else {
+      this.triggerToast(message, type);
+    }
+  }
+
+  private triggerToast(message: string, type: 'success' | 'error' | 'warning' | 'info'): void {
+    if (this.isDisplayingToast) {
+      this.toastQueue.push({ message, type });
+      return;
+    }
+
+    this.isDisplayingToast = true;
     this.toastSubject.next({ message, type });
-    setTimeout(() => this.toastSubject.next(null), 4000);
+
+    if (this.currentToastTimeout) {
+      clearTimeout(this.currentToastTimeout);
+    }
+
+    this.currentToastTimeout = setTimeout(() => {
+      this.toastSubject.next(null);
+      this.isDisplayingToast = false;
+      this.currentToastTimeout = null;
+      setTimeout(() => {
+        this.processToastQueue();
+      }, 300);
+    }, 4000);
+  }
+
+  private processToastQueue(): void {
+    if (this.isLoaderActive || this.isDisplayingToast || this.toastQueue.length === 0) {
+      return;
+    }
+    const nextToast = this.toastQueue.shift();
+    if (nextToast) {
+      this.triggerToast(nextToast.message, nextToast.type);
+    }
   }
 
   /** Call this when the user clicks a notification so subscribers can refresh their data. */

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { RequestService } from '../../../core/services/request.service';
 import { AssetService } from '../../../core/services/asset.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { LoaderService } from '../../../core/services/loader.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AdminDataService } from '../../../core/services/admin-data.service';
 import { HeroService } from '../../../core/services/hero.service';
@@ -83,7 +84,8 @@ export class ServiceRequestsComponent implements OnInit {
     private notificationService: NotificationService,
     private adminService: AdminDataService,
     private mailService: MailService,
-    private hs: HeroService
+    private hs: HeroService,
+    private loaderService: LoaderService
   ) {}
 
   ngOnInit(): void {
@@ -527,6 +529,7 @@ export class ServiceRequestsComponent implements OnInit {
       return;
     }
     this.isSaving = true;
+    this.loaderService.show();
     try {
       // 1. Update current approval to Approved
       const updateApproval = {
@@ -595,6 +598,7 @@ export class ServiceRequestsComponent implements OnInit {
       this.notificationService.showToast('Failed to approve service request.', 'error');
     } finally {
       this.isSaving = false;
+      this.loaderService.hide();
     }
   }
 
@@ -603,6 +607,7 @@ export class ServiceRequestsComponent implements OnInit {
   async approveStage3(item: any): Promise<void> {
     if (this.isSaving) return;
     this.isSaving = true;
+    this.loaderService.show();
     try {
       const currentUser = this.authService.getCurrentUser();
       await this.requestService.finalServiceApprovalService({
@@ -640,6 +645,7 @@ export class ServiceRequestsComponent implements OnInit {
       throw err; // re-throw so handleApprove can catch and show temp asset modal if needed
     } finally {
       this.isSaving = false;
+      this.loaderService.hide();
     }
   }
 
@@ -652,6 +658,7 @@ export class ServiceRequestsComponent implements OnInit {
       return;
     }
     this.isSaving = true;
+    this.loaderService.show();
     try {
       // Update approval to Rejected
       const updateApproval = {
@@ -681,6 +688,7 @@ export class ServiceRequestsComponent implements OnInit {
       this.notificationService.showToast('Failed to reject service request.', 'error');
     } finally {
       this.isSaving = false;
+      this.loaderService.hide();
     }
   }
 
