@@ -10,6 +10,7 @@ import { HeroService } from '../../../core/services/hero.service';
 import { Router } from '@angular/router';
 import { AdminDataService } from '../../../core/services/admin-data.service';
 import { MailService } from '../../../core/services/mail.service';
+import { LoaderService } from '../../../core/services/loader.service';
 
 interface AssetTypeOption {
   type_id: string;
@@ -52,7 +53,8 @@ export class MyAssetsComponent implements OnInit {
     private hs: HeroService,
     private router: Router,
     private adminService: AdminDataService,
-    private mailService: MailService
+    private mailService: MailService,
+    private loaderService: LoaderService
   ) { }
 
   async ngOnInit(): Promise<void> {
@@ -191,6 +193,8 @@ export class MyAssetsComponent implements OnInit {
       console.error('Failed to fetch assets from Cordys in My Assets page', error);
       this.myAssets = this.assetService.getAssetsByUser(user.id);
       this.applyFilters();
+    } finally {
+      this.loaderService.reset();
     }
   }
 

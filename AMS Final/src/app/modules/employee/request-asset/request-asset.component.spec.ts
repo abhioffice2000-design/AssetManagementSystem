@@ -1,7 +1,7 @@
-import { ComponentFixture, TestBed } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RequestAssetComponent } from './request-asset.component';
 import { ReactiveFormsModule } from '@angular/forms';
-import { RouterTestingModule } from '@angular/router-testing';
+import { RouterTestingModule } from '@angular/router/testing';
 
 describe('RequestAssetComponent', () => {
   let component: RequestAssetComponent;

@@ -95,6 +95,8 @@ export class AdminDashboardComponent implements OnInit {
   ) { }
 
   async ngOnInit(): Promise<void> {
+    console.log("Hi I am walking");
+
     await this.loadDashboardData();
   }
 

@@ -104,13 +104,26 @@ export class PolicyDetailsComponent implements OnInit {
 
   onEmailKeyDown(event: any) {
     if (this.isViewOnly) return;
-    if (event.key === 'Enter' || event.key === ',') {
+    if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
       event.preventDefault();
       this.addEmailChip(this.emailInputValue);
     } else if (event.key === 'Backspace' && !this.emailInputValue && this.emailChips.length > 0) {
       this.removeEmailChip(this.emailChips.length - 1);
     }
   }
+
+  onEmailBlur() {
+    if (this.isViewOnly) return;
+    const val = this.emailInputValue || '';
+    if (val.trim()) {
+      this.addEmailChip(val);
+    }
+    // Delay hiding suggestions so that click event on suggestion can be registered first
+    setTimeout(() => {
+      this.showEmailSuggestions = false;
+    }, 200);
+  }
+
 
   removeEmailChip(index: number) {
     if (this.isViewOnly) return;
@@ -334,7 +347,21 @@ export class PolicyDetailsComponent implements OnInit {
 
   async onSavePolicy() {
     if (this.isViewOnly) return;
-    this.newPolicy.to_mailid = this.emailChips.join('; ');
+
+    if (this.emailInputValue && this.emailInputValue.trim()) {
+      const cleanEmail = this.emailInputValue.trim().replace(/[,;]$/, '');
+      if (cleanEmail) {
+        if (this.validateEmail(cleanEmail)) {
+          this.addEmailChip(cleanEmail);
+        } else {
+          this.errors.to_mailid = 'Please enter a valid email address';
+          this.notificationService.showToast('Please correct the errors in the form', 'warning');
+          return;
+        }
+      }
+    }
+
+    this.newPolicy.to_mailid = this.emailChips.join(';');
 
     if (!this.validateForm()) {
       this.notificationService.showToast('Please correct the errors in the form', 'warning');
@@ -343,6 +370,7 @@ export class PolicyDetailsComponent implements OnInit {
 
     this.isSaving = true;
     try {
+
       if (this.isEditMode) {
         const originalPolicy = this.policies.find(p => p.name === this.newPolicy.policy_name);
         await this.adminDataService.updatePolicyDetail(this.newPolicy, originalPolicy?.policyId);

@@ -290,6 +290,7 @@
                          [(ngModel)]="emailInputValue"
                          (input)="onToEmailInput()"
                          (focus)="onToEmailInput()"
+                         (blur)="onEmailBlur()"
                          (keydown)="onEmailKeyDown($event)"
                          placeholder="Add email and press Enter...">
                 </div>

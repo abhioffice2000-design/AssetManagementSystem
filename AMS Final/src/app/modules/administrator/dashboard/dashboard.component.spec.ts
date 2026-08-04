@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { AdminDashboardComponent } from './dashboard.component';
 import { CommonModule } from '@angular/common';
 

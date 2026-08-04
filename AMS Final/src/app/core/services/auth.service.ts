@@ -69,12 +69,12 @@ export class AuthService {
     await this.ssoAuthenticate(email, password);
 
     // 2. Fetch User Details from DB
-    return await this.getUserFromDB(email);
+    return await this.getUserFromDB(email, true);
   }
 
 
 
-  public async getUserFromDB(email: string): Promise<User> {
+  public async getUserFromDB(email: string, showLoader: boolean = false): Promise<User> {
     const getAllUsersSoap = `
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
@@ -83,7 +83,7 @@ export class AuthService {
 </SOAP:Envelope>`.trim();
 
     console.log('Step 2: Fetching all users from DB...');
-    const resp = await this.hs.ajax(null, null, {}, getAllUsersSoap);
+    const resp = await this.hs.ajax(null, null, {}, getAllUsersSoap, showLoader);
     console.log('Step 2: DB response received:', resp);
 
     let usersData = this.hs.xmltojson(resp, 'm_users');

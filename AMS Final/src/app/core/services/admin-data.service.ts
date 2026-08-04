@@ -1123,6 +1123,7 @@ export class AdminDataService {
     await this.heroService.ajax(null, null, {}, soapMsg);
   }
 
+
   private xmlEscape(value: string): string {
     return value
       .replace(/&/g, '&amp;')

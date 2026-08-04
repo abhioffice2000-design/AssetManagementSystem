@@ -13,8 +13,8 @@ import { HeroService } from './hero.service';
 export class SocketService {
   private socket: Socket | null = null;
   private connected$ = new BehaviorSubject<boolean>(false);
-  private readonly serverUrl = 'http://localhost:3000'; // Default notification server endpoint
-  // private readonly serverUrl = 'http://43.242.214.41:3000'; //For Server notifictaion
+  // private readonly serverUrl = 'http://localhost:3000'; // Default notification server endpoint
+  private readonly serverUrl = 'http://43.242.214.239:3000'; //For Server notifictaion
 
   private emittedRequests = new Set<string>();
 
@@ -140,10 +140,15 @@ export class SocketService {
       this.disconnect();
     }
 
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const targetUrl = isLocalhost ? 'http://localhost:3000' : 'http://43.242.214.239:3000';
+
     try {
-      console.log('[SocketService] Connecting to Socket.io server at:', this.serverUrl);
-      this.socket = io(this.serverUrl, {
-        transports: ['websocket', 'polling']
+      console.log('[SocketService] Connecting to Socket.io server at:', targetUrl);
+      this.socket = io(targetUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 5000,
+        reconnectionAttempts: 2
       });
 
       this.socket.on('connect', () => {
@@ -154,6 +159,11 @@ export class SocketService {
           name: user.name,
           role: user.role
         });
+      });
+
+      this.socket.on('connect_error', (err) => {
+        // Silently handle offline/local socket server connection failure
+        this.connected$.next(false);
       });
 
       this.socket.on('disconnect', () => {

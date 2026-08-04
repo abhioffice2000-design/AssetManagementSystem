@@ -2,7 +2,9 @@ import { Injectable } from '@angular/core';
 import { LoaderService } from './loader.service';
 
 declare var $: any;
-// $.cordys.baseURL = '/home/training2025';
+if (typeof $ !== 'undefined' && $.cordys) {
+  $.cordys.baseURL = '/home/training2025';
+}
 @Injectable({
   providedIn: 'root',
 })
@@ -49,6 +51,8 @@ export class HeroService {
         this.loaderService.show();
       }
 
+      const gatewayUrl = '/home/training2025/com.eibus.web.soap.Gateway.wcp';
+
       try {
         $.cordys.ajax({
           method: method,
@@ -56,7 +60,7 @@ export class HeroService {
           dataType: '* json', // Implemented exactly as per your requirement
           parameters: parameters,
           data: data,
-          url: '/home/training2025/com.eibus.web.soap.Gateway.wcp',
+          url: gatewayUrl,
           success: (resp: any) => {
             if (showLoader) {
               this.loaderService.hide();
@@ -73,23 +77,9 @@ export class HeroService {
             if (methodStr && [
               'UpdateT_request_approvals',
               'UpdateT_extend_request_approvals',
-              'UpdateT_asset_return_approvals',
-              'UpdateT_service_approvals'
+              'UpdateT_asset_return',
+              'UpdateT_asset_transfer'
             ].includes(methodStr)) {
-              try {
-                console.log('[HeroService] Intercepted request approval operation:', methodStr);
-                const event = new CustomEvent('newRequestSoapSuccess', {
-                  detail: {
-                    method: methodStr,
-                    response: resp,
-                    requestParams: parameters,
-                    requestData: data
-                  }
-                });
-                window.dispatchEvent(event);
-              } catch (e) {
-                console.warn('[HeroService] Failed to dispatch CustomEvent for notification server:', e);
-              }
             }
 
             rev(resp); // Resolve the Promise on success
